@@ -45,6 +45,22 @@
       button { background: var(--primary); color: #fff; border: none; cursor: pointer; }
       button:hover { background: var(--primary-dark); }
       .meta { margin: 10px 0; color: var(--muted); font-size: 13px; min-height: 18px; }
+      .freshness {
+        margin: 6px 0 0;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: #475569;
+      }
+      .freshness-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #fff;
+      }
       .tips {
         margin: 10px 0 0;
         padding: 10px 12px;
@@ -94,6 +110,9 @@
       .tag-importance-中 { background: #a16207; color: #fff; border-color: #a16207; }
       .tag-importance-低 { background: #0369a1; color: #fff; border-color: #0369a1; }
       .tag-importance-极低 { background: #475569; color: #fff; border-color: #475569; }
+      .tag-sentiment-偏多 { background: #14532d; color: #fff; border-color: #14532d; }
+      .tag-sentiment-偏空 { background: #7f1d1d; color: #fff; border-color: #7f1d1d; }
+      .tag-sentiment-中性 { background: #475569; color: #fff; border-color: #475569; }
       .pager {
         margin-top: 12px;
         display: flex;
@@ -139,6 +158,7 @@
         </div>
 
         <div class="meta" id="meta">准备就绪</div>
+        <div class="freshness" id="freshness_bar"></div>
         <div class="list" id="list"></div>
 
         <div class="pager">
@@ -172,6 +192,7 @@
         search_btn: document.getElementById('search_btn'),
         fetch_btn: document.getElementById('fetch_btn'),
         meta: document.getElementById('meta'),
+        freshness_bar: document.getElementById('freshness_bar'),
         list: document.getElementById('list'),
         prev_btn: document.getElementById('prev_btn'),
         next_btn: document.getElementById('next_btn'),
@@ -223,8 +244,10 @@
               ${it.llm_summary ? `<div class="item-llm"><strong>LLM摘要：</strong>${escapeHtml(it.llm_summary)}</div>` : ''}
               <div class="tags">
                 <span class="tag tag-importance-${escapeHtml(importance)}">重要程度: ${escapeHtml(importance)}</span>
+                <span class="tag tag-sentiment-${escapeHtml(it.llm_sentiment_label || '中性')}">情绪: ${escapeHtml(it.llm_sentiment_label || '未评')}</span>
                 <span class="tag tag-score">系统评分: ${escapeHtml(it.llm_system_score ?? '-')}</span>
                 <span class="tag tag-impact">财经影响: ${escapeHtml(it.llm_finance_impact_score ?? '-')}</span>
+                <span class="tag">情绪分: ${escapeHtml(it.llm_sentiment_score ?? '-')}</span>
                 ${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
               </div>
             </article>
@@ -236,6 +259,20 @@
         els.page_info.textContent = `第 ${state.page} / ${Math.max(state.total_pages, 1)} 页`;
         els.prev_btn.disabled = state.page <= 1;
         els.next_btn.disabled = state.page >= state.total_pages;
+      }
+
+      async function loadFreshness() {
+        try {
+          const res = await fetch(`${API_BASE}/api/source-monitor`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '请求失败');
+          const items = (data.sources || []).filter((x) => ['stock_daily_prices', 'news_scoring'].includes(x.key));
+          els.freshness_bar.innerHTML = items.map((it) => `
+            <span class="freshness-badge">${escapeHtml(it.name)}: ${escapeHtml(it.last_update || '暂无')}</span>
+          `).join('');
+        } catch (_) {
+          els.freshness_bar.innerHTML = '';
+        }
       }
 
       async function fetchData() {
@@ -382,6 +419,7 @@
       });
 
       fetchData();
+      loadFreshness();
       connectRealtime();
     </script>
   </body>

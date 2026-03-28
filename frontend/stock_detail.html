@@ -566,6 +566,20 @@
         el.innerHTML = htmlItems.length ? htmlItems.join('') : `<div class="empty">${escapeHtml(emptyText)}</div>`;
       }
 
+      function buildFreshnessSummary(data, profile) {
+        const items = [];
+        const latestTradeDate = data.price_summary?.latest_trade_date;
+        const latestMinuteDate = data.latest_minline?.trade_date;
+        const latestMinuteTime = data.latest_minline?.minute_time;
+        const latestNewsPub = data.stock_news_summary?.recent_items?.[0]?.pub_time || '';
+        const latestFin = data.financial_summary?.latest?.report_period || data.financial_summary?.trend?.report_period || '';
+        if (latestTradeDate) items.push(`日线 ${latestTradeDate}`);
+        if (latestMinuteDate) items.push(`分钟线 ${latestMinuteDate}${latestMinuteTime ? ` ${latestMinuteTime}` : ''}`);
+        if (latestNewsPub) items.push(`个股新闻 ${latestNewsPub}`);
+        if (latestFin) items.push(`财报口径 ${latestFin}`);
+        return `${profile.industry || '-'} · ${profile.market || '-'} · ${profile.area || '-'} · 上市状态 ${profile.list_status || '-'}${items.length ? ` · 数据新鲜度：${items.join(' / ')}` : ''}`;
+      }
+
       function buildDateChart(items) {
         const data = (items || []).map((it) => ({
           time: `${String(it.trade_date || '').slice(0, 4)}-${String(it.trade_date || '').slice(4, 6)}-${String(it.trade_date || '').slice(6, 8)}`,
@@ -602,7 +616,7 @@
         pageState.ts_code = profile.ts_code || '';
         pageState.name = profile.name || '';
         els.hero_title.textContent = `${profile.name || '-'} · ${profile.ts_code || ''}`;
-        els.hero_sub.textContent = `${profile.industry || '-'} · ${profile.market || '-'} · ${profile.area || '-'} · 上市状态 ${profile.list_status || '-'}`;
+        els.hero_sub.textContent = buildFreshnessSummary(data, profile);
 
         const ps = data.price_summary || {};
         const score = data.score || {};

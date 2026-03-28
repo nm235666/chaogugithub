@@ -25,7 +25,294 @@ def py_cmd(*parts: str) -> tuple[str, ...]:
     return (PYTHON_BIN, *parts)
 
 
+def bash_cmd(script: str) -> tuple[str, ...]:
+    return ("/bin/bash", "-lc", f"cd {ROOT_DIR} && . {ROOT_DIR}/runtime_env.sh && {script}")
+
+
 DEFAULT_JOBS: tuple[JobDefinition, ...] = (
+    JobDefinition(
+        job_key="intl_news_pipeline",
+        name="国际新闻采集评分映射",
+        category="news",
+        schedule_expr="*/5 * * * *",
+        description="抓取国际新闻、补评分、补情绪、做股票映射",
+        commands=(
+            py_cmd(str(ROOT_DIR / "fetch_news_rss.py"), "--limit", "15", "--timeout", "30"),
+            py_cmd(str(ROOT_DIR / "fetch_news_marketscreener.py"), "--limit", "20", "--timeout", "30"),
+            py_cmd(str(ROOT_DIR / "fetch_news_marketscreener_live.py"), "--limit", "30", "--timeout", "30"),
+            py_cmd(str(ROOT_DIR / "llm_score_news.py"), "--limit", "20", "--retry", "1", "--sleep", "0.1", "--model", "GPT-5.4"),
+            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--limit", "20", "--retry", "1", "--sleep", "0.1", "--model", "GPT-5.4"),
+            py_cmd(str(ROOT_DIR / "map_news_items_to_stocks.py"), "--limit", "200", "--days", "7"),
+        ),
+    ),
+    JobDefinition(
+        job_key="cn_news_pipeline",
+        name="国内新闻采集评分映射",
+        category="news",
+        schedule_expr="*/2 * * * *",
+        description="抓取新浪国内财经新闻并做评分映射",
+        commands=(
+            py_cmd(str(ROOT_DIR / "fetch_cn_news_sina_7x24.py"), "--limit", "60", "--timeout", "30"),
+            py_cmd(str(ROOT_DIR / "llm_score_news.py"), "--source", "cn_sina_7x24", "--limit", "30", "--retry", "1", "--sleep", "0.05", "--model", "GPT-5.4"),
+            py_cmd(str(ROOT_DIR / "map_news_items_to_stocks.py"), "--source", "cn_sina_7x24", "--limit", "300", "--days", "7"),
+        ),
+    ),
+    JobDefinition(
+        job_key="news_stock_map_refresh",
+        name="新闻股票映射刷新",
+        category="news",
+        schedule_expr="*/5 * * * *",
+        description="补做新闻到股票的映射",
+        commands=(
+            py_cmd(str(ROOT_DIR / "map_news_items_to_stocks.py"), "--limit", "300", "--days", "7"),
+        ),
+    ),
+    JobDefinition(
+        job_key="news_sentiment_refresh",
+        name="新闻情绪刷新",
+        category="news",
+        schedule_expr="12 * * * *",
+        description="为国际与国内新闻补统一情绪标签",
+        commands=(
+            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--model", "GPT-5.4", "--limit", "60", "--retry", "1", "--sleep", "0.1"),
+        ),
+    ),
+    JobDefinition(
+        job_key="news_daily_summary_refresh",
+        name="新闻日报总结",
+        category="reports",
+        schedule_expr="30 3,15 * * *",
+        description="生成当日重要新闻总结，失败自动降级模型",
+        commands=(
+            bash_cmd(
+                "timeout 900s python3 -u "
+                f"{ROOT_DIR}/llm_summarize_daily_important_news.py "
+                "--date __CN_DATE__ --importance '极高,高,中' --max-news 30 --min-news 8 "
+                "--max-prompt-chars 9000 --request-timeout 180 --max-retries 2 --retry-backoff 2 "
+                "--model GPT-5.4 "
+                "|| timeout 900s python3 -u "
+                f"{ROOT_DIR}/llm_summarize_daily_important_news.py "
+                "--date __CN_DATE__ --importance '极高,高,中' --max-news 30 --min-news 8 "
+                "--max-prompt-chars 9000 --request-timeout 180 --max-retries 2 --retry-backoff 2 "
+                "--model kimi2.5 "
+                "|| timeout 900s python3 -u "
+                f"{ROOT_DIR}/llm_summarize_daily_important_news.py "
+                "--date __CN_DATE__ --importance '极高,高,中' --max-news 30 --min-news 8 "
+                "--max-prompt-chars 9000 --request-timeout 180 --max-retries 2 --retry-backoff 2 "
+                "--model deepseek-chat"
+            ),
+        ),
+    ),
+    JobDefinition(
+        job_key="database_audit_refresh",
+        name="数据库审核报告刷新",
+        category="audit",
+        schedule_expr="50 16 * * *",
+        description="生成数据库审核报告",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "audit_database_report.py")),),
+    ),
+    JobDefinition(
+        job_key="investment_signal_tracker_refresh",
+        name="投资信号跟踪器刷新",
+        category="signals",
+        schedule_expr="35 * * * *",
+        description="刷新 30d/7d/1d 投资信号总表",
+        commands=(
+            py_cmd(str(ROOT_DIR / "build_investment_signal_tracker.py"), "--lookback-days", "30", "--target-table", "investment_signal_tracker"),
+            py_cmd(str(ROOT_DIR / "build_investment_signal_tracker.py"), "--lookback-days", "7", "--target-table", "investment_signal_tracker_7d", "--skip-history"),
+            py_cmd(str(ROOT_DIR / "build_investment_signal_tracker.py"), "--lookback-days", "1", "--target-table", "investment_signal_tracker_1d", "--skip-history"),
+        ),
+    ),
+    JobDefinition(
+        job_key="logic_view_cache_refresh",
+        name="逻辑视图缓存回填",
+        category="cache",
+        schedule_expr="55 17 * * *",
+        description="回填日报总结与信号逻辑视图缓存",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "backfill_logic_view_cache.py")),),
+    ),
+    JobDefinition(
+        job_key="chatroom_analysis_pipeline",
+        name="群聊分析流水线",
+        category="chatrooms",
+        schedule_expr="15 * * * *",
+        description="群聊投资倾向、情绪、候选池与别名归一",
+        commands=(
+            py_cmd(str(ROOT_DIR / "llm_analyze_chatroom_investment_bias.py"), "--model", "GPT-5.4", "--days", "7", "--limit", "20", "--primary-category", "投资交易", "--retry", "2", "--sleep", "0.5"),
+            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--model", "GPT-5.4", "--limit", "20", "--retry", "1", "--sleep", "0.1"),
+            py_cmd(str(ROOT_DIR / "build_chatroom_candidate_pool.py"), "--min-room-count", "1"),
+            py_cmd(str(ROOT_DIR / "llm_resolve_stock_aliases.py"), "--model", "GPT-5.4", "--limit", "20", "--min-confidence", "0.88", "--retry", "2", "--sleep", "0.3"),
+            py_cmd(str(ROOT_DIR / "build_chatroom_candidate_pool.py"), "--min-room-count", "1"),
+        ),
+    ),
+    JobDefinition(
+        job_key="chatroom_sentiment_refresh",
+        name="群聊情绪刷新",
+        category="chatrooms",
+        schedule_expr="18 * * * *",
+        description="为群聊投资总结补统一情绪",
+        commands=(
+            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--model", "GPT-5.4", "--limit", "30", "--retry", "1", "--sleep", "0.1"),
+        ),
+    ),
+    JobDefinition(
+        job_key="monitored_chatlog_fetch",
+        name="监控群聊天记录拉取",
+        category="chatrooms",
+        schedule_expr="*/3 * * * *",
+        description="拉取处于监控中的群聊消息",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "fetch_monitored_chatlogs_once.py")),),
+    ),
+    JobDefinition(
+        job_key="chatroom_list_refresh",
+        name="群聊列表刷新",
+        category="chatrooms",
+        schedule_expr="5 0 * * *",
+        description="每日同步群聊列表",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "fetch_chatroom_list_to_db.py"), "--once"),),
+    ),
+    JobDefinition(
+        job_key="stock_news_score_refresh",
+        name="个股新闻评分刷新",
+        category="stock_news",
+        schedule_expr="*/10 * * * *",
+        description="为个股新闻补评分与摘要",
+        commands=(
+            py_cmd(str(ROOT_DIR / "llm_score_stock_news.py"), "--model", "GPT-5.4", "--limit", "80", "--retry", "2", "--sleep", "0.2"),
+        ),
+    ),
+    JobDefinition(
+        job_key="stock_news_backfill_missing",
+        name="个股新闻缺口补抓",
+        category="stock_news",
+        schedule_expr="55 * * * *",
+        description="补抓缺失个股新闻",
+        commands=(
+            py_cmd(str(ROOT_DIR / "backfill_stock_news_items.py"), "--missing-only", "--limit-stocks", "200", "--page-size", "20", "--max-pages", "2", "--retry", "2", "--pause", "0.2"),
+        ),
+    ),
+    JobDefinition(
+        job_key="stock_news_expand_focus",
+        name="个股新闻重点扩抓",
+        category="stock_news",
+        schedule_expr="25 * * * *",
+        description="围绕重点股票扩抓个股新闻并评分",
+        commands=(
+            py_cmd(str(ROOT_DIR / "run_stock_news_expand_focus.py"), "--limit-scores", "100", "--limit-candidates", "50", "--max-targets", "120", "--page-size", "20", "--score-after-fetch"),
+        ),
+    ),
+    JobDefinition(
+        job_key="macro_series_akshare_refresh",
+        name="AKShare 宏观数据刷新",
+        category="macro",
+        schedule_expr="20 17 * * *",
+        description="刷新宏观指标数据",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "backfill_macro_series_akshare.py")),),
+    ),
+    JobDefinition(
+        job_key="news_archive_refresh",
+        name="新闻归档",
+        category="maintenance",
+        schedule_expr="30 3,15 * * *",
+        description="归档历史新闻并保留主表热数据",
+        commands=(
+            py_cmd(str(ROOT_DIR / "optimize_and_archive_news.py"), "--retain-days", "180", "--batch-size", "1000", "--max-batches", "50"),
+        ),
+    ),
+    JobDefinition(
+        job_key="news_dedupe_refresh",
+        name="新闻语义去重",
+        category="maintenance",
+        schedule_expr="20 16 * * *",
+        description="清理国际新闻、国内新闻、个股新闻近重复内容",
+        commands=(
+            py_cmd(str(ROOT_DIR / "cleanup_duplicate_items.py")),
+        ),
+    ),
+    JobDefinition(
+        job_key="db_health_check_refresh",
+        name="数据库健康巡检",
+        category="maintenance",
+        schedule_expr="40 16 * * *",
+        description="输出数据库健康检查结果",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "db_health_check.py")),),
+    ),
+    JobDefinition(
+        job_key="daily_postclose_update",
+        name="盘后更新流水线",
+        category="market_data",
+        schedule_expr="30 7 * * *",
+        description="盘后刷新行情、估值、资金流、风险、财务与评分",
+        commands=(
+            bash_cmd(
+                "python3 auto_update_stocks_and_prices.py --pause 0.02;"
+                " python3 backfill_stock_valuation_daily.py --lookback-days 5 --pause 0.02;"
+                " python3 backfill_capital_flow_stock.py --lookback-days 5 --pause 0.02;"
+                " python3 backfill_capital_flow_stock_akshare.py --only-bj --missing-only --pause 0.05;"
+                " python3 backfill_capital_flow_market.py --lookback-days 5 --pause 0.02;"
+                " python3 backfill_fx_daily.py --lookback-days 10 --pause 0.02;"
+                " python3 backfill_rate_curve_points.py --lookback-days 10 --pause 0.02;"
+                " python3 backfill_spread_daily.py --lookback-days 10;"
+                " python3 backfill_risk_scenarios.py --lookback-bars 120;"
+                " python3 fast_backfill_stock_financials.py --recent-periods 4 --pause 0.02;"
+                " python3 backfill_missing_stock_financials.py --recent-periods 4 --pause 0.05;"
+                " python3 update_daily_stock_events.py;"
+                " python3 backfill_stock_scores_daily.py --truncate-date"
+            ),
+        ),
+    ),
+    JobDefinition(
+        job_key="data_completion_nightly",
+        name="夜间补数批次",
+        category="maintenance",
+        schedule_expr="0 17 * * *",
+        description="夜间补治理、事件和评分缺口",
+        commands=(
+            py_cmd(
+                str(ROOT_DIR / "run_data_completion_batches.py"),
+                "--token",
+                "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb",
+                "--governance-batch",
+                "50",
+                "--events-batch",
+                "100",
+                "--rounds",
+                "6",
+                "--skip-flow",
+                "--skip-scores",
+            ),
+            py_cmd(str(ROOT_DIR / "backfill_stock_scores_daily.py"), "--truncate-date"),
+        ),
+    ),
+    JobDefinition(
+        job_key="minline_backfill_recent",
+        name="分钟线最近交易日补抓",
+        category="market_data",
+        schedule_expr="45 7 * * *",
+        description="补抓最近两个交易日的分钟线",
+        commands=(
+            py_cmd(str(ROOT_DIR / "fetch_sina_minline_all_listed.py"), "--trade-date", "__TRADE_DATE_1__", "--workers", "6", "--min-workers", "2", "--max-workers", "10", "--retry", "2", "--batch-size", "300", "--max-rounds", "3", "--max-fail-per-stock", "5", "--stagnation-rounds", "2"),
+            py_cmd(str(ROOT_DIR / "fetch_sina_minline_all_listed.py"), "--trade-date", "__TRADE_DATE_2__", "--workers", "6", "--min-workers", "2", "--max-workers", "10", "--retry", "2", "--batch-size", "300", "--max-rounds", "3", "--max-fail-per-stock", "5", "--stagnation-rounds", "2"),
+        ),
+    ),
+    JobDefinition(
+        job_key="minline_intraday_focus",
+        name="分钟线盘中重点补抓",
+        category="market_data",
+        schedule_expr="*/10 1-3,5-7 * * 1-5",
+        description="盘中围绕重点标的补抓分钟线",
+        commands=(
+            py_cmd(str(ROOT_DIR / "run_minline_focus_once.py"), "--token", "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb", "--limit-scores", "80", "--limit-candidates", "40", "--max-targets", "100"),
+        ),
+    ),
+    JobDefinition(
+        job_key="monitored_chatlog_backfill_midnight",
+        name="监控群跨天补抓",
+        category="chatrooms",
+        schedule_expr="10 0 * * *",
+        description="凌晨补抓昨天和今天的群聊消息",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "fetch_monitored_chatlogs_once.py"), "--yesterday-and-today"),),
+    ),
     JobDefinition(
         job_key="market_expectations_refresh",
         name="市场预期刷新",
@@ -141,4 +428,3 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
 
 def get_default_jobs() -> list[JobDefinition]:
     return list(DEFAULT_JOBS)
-

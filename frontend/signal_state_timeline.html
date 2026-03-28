@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>状态机时间线</title>
+    <style>
+      :root { --bg:#f8fafc; --card:#fff; --text:#0f172a; --muted:#475569; --primary:#0f766e; --primary-dark:#115e59; --border:#d7dee6; }
+      *{box-sizing:border-box} body{margin:0;font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);background:radial-gradient(circle at 0% 0%,#dcfce7 0%,transparent 34%),radial-gradient(circle at 100% 100%,#dbeafe 0%,transparent 42%),var(--bg)}
+      .wrap{max-width:1200px;margin:24px auto 40px;padding:0 16px}.panel{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px}
+      .topbar,.toolbar,.head,.pager,.detail-actions{display:flex;gap:12px;flex-wrap:wrap}.topbar,.head,.pager{justify-content:space-between;align-items:flex-start}
+      h1{margin:0;font-size:28px}.sub,.meta{color:var(--muted);font-size:14px;line-height:1.7}.nav a{color:var(--primary);text-decoration:none;font-size:14px;margin-left:10px}
+      .toolbar{margin-top:16px;display:grid;grid-template-columns:120px 1fr 110px;gap:10px} input,select,button{height:42px;border-radius:12px;border:1px solid var(--border);padding:0 12px;font-size:14px;background:#fff} button{border:none;background:var(--primary);color:#fff;cursor:pointer} button:hover{background:var(--primary-dark)}
+      .detail-actions{margin-top:16px;justify-content:flex-end}.ghost-btn{background:#f8fafc;color:var(--text);border:1px solid var(--border)}.ghost-btn:hover{background:#eef2f7}
+      .summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:16px}.sum{border:1px solid var(--border);border-radius:14px;padding:14px;background:#f8fafc}.sum .v{font-size:22px;font-weight:700;margin-top:6px}
+      .timeline{margin-top:16px;display:grid;gap:12px}.item{border:1px solid var(--border);border-radius:16px;padding:14px;background:#fff}.badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#f8fafc;border:1px solid #d6dde7}
+      .state{background:#4338ca;color:#fff;border-color:#4338ca}.direction-bull{background:#14532d;color:#fff;border-color:#14532d}.direction-bear{background:#7f1d1d;color:#fff;border-color:#7f1d1d}
+      .expect{margin-top:12px;border:1px solid var(--border);border-radius:14px;padding:12px;background:#f8fafc}.expect-item{padding:8px 0;border-top:1px solid #e2e8f0}.expect-item:first-child{border-top:none}
+      .empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:14px}.pager{margin-top:14px}
+      @media (max-width:900px){.summary,.toolbar{grid-template-columns:1fr}}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <div class="topbar">
+          <div><h1>状态机时间线</h1><div class="sub">查看主题或股票信号在“初始 / 强化 / 弱化 / 证伪 / 反转”之间的演化。</div></div>
+          <div class="nav"><a href="/index.html">首页</a><a href="/theme_hotspots.html">主题引擎</a><a href="/investment_signals.html">投资信号</a></div>
+        </div>
+        <div class="toolbar">
+          <select id="signal_scope"><option value="">自动识别</option><option value="theme">主题</option><option value="stock">股票</option></select>
+          <input id="signal_key" placeholder="例如 theme:黄金 或 stock:000001.SZ" />
+          <button id="search_btn">查询</button>
+        </div>
+        <div class="meta" id="meta">准备就绪</div>
+        <div class="detail-actions">
+          <button id="download_md_btn" class="ghost-btn" disabled>下载 Markdown</button>
+          <button id="download_image_btn" class="ghost-btn" disabled>下载为图片</button>
+        </div>
+        <div class="summary" id="summary"></div>
+        <div class="expect" id="expect"></div>
+        <div class="timeline" id="timeline"></div>
+        <div class="pager"><button id="prev_btn">上一页</button><div id="page_info">第 1 / 1 页</div><button id="next_btn">下一页</button></div>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script>
+      const API_BASE=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://127.0.0.1:8077':`http://${location.hostname}:8077`;
+      const params=new URLSearchParams(location.search); const state={signal_scope:params.get('signal_scope')||'',signal_key:params.get('signal_key')||'',page:1,page_size:20,total_pages:1};
+      const els={signal_scope:document.getElementById('signal_scope'),signal_key:document.getElementById('signal_key'),search_btn:document.getElementById('search_btn'),meta:document.getElementById('meta'),summary:document.getElementById('summary'),expect:document.getElementById('expect'),timeline:document.getElementById('timeline'),page_info:document.getElementById('page_info'),prev_btn:document.getElementById('prev_btn'),next_btn:document.getElementById('next_btn'),download_md_btn:document.getElementById('download_md_btn'),download_image_btn:document.getElementById('download_image_btn')};
+      els.signal_scope.value=state.signal_scope; els.signal_key.value=state.signal_key;
+      const escapeHtml=(s)=>String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+      let currentSignal=null; let currentEvents=[]; let currentExpectations=[];
+      function downloadText(content, filename, type='text/plain;charset=utf-8'){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+      function downloadBlob(blob, filename){const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+      function buildBaseFileName(){const key=(currentSignal?.signal_key||state.signal_key||'signal').replace(/[^\w\u4e00-\u9fa5:-]+/g,'_').replaceAll(':','_');return `${key}_状态时间线`;}
+      function buildMarkdown(){
+        const signal=currentSignal||{};
+        const lines=[
+          `# 状态机时间线`,
+          ``,
+          `- 主体: ${signal.subject_name||'-'}`,
+          `- scope: ${signal.signal_scope||state.signal_scope||'-'}`,
+          `- signal_key: ${signal.signal_key||state.signal_key||'-'}`,
+          `- 当前方向: ${signal.direction||'-'}`,
+          `- 当前状态: ${signal.current_state||'-'}`,
+          `- 强度: ${Number(signal.signal_strength||0).toFixed(1)}`,
+          `- 置信度: ${Number(signal.confidence||0).toFixed(1)}%`,
+          ``
+        ];
+        if((currentExpectations||[]).length){
+          lines.push(`## 市场预期层`,``);
+          currentExpectations.forEach((x,idx)=>{lines.push(`${idx+1}. ${x.question||'-'} | 成交量 ${Number(x.volume||0).toFixed(0)} | 流动性 ${Number(x.liquidity||0).toFixed(0)}`);});
+          lines.push(``);
+        }
+        lines.push(`## 状态事件`,``);
+        (currentEvents||[]).forEach((it,idx)=>{
+          lines.push(`### ${idx+1}. ${it.event_time||'-'} ${it.new_state||it.event_type||'-'}`);
+          lines.push(`- 新方向: ${it.new_direction||'-'}`);
+          lines.push(`- 事件摘要: ${it.event_summary||'-'}`);
+          lines.push(`- 强度变化: ${Number(it.old_strength||0).toFixed(1)} -> ${Number(it.new_strength||0).toFixed(1)}`);
+          lines.push(`- 置信度变化: ${Number(it.old_confidence||0).toFixed(1)} -> ${Number(it.new_confidence||0).toFixed(1)}`);
+          lines.push(`- 驱动: ${it.driver_type||'-'} / ${it.driver_title||'-'}`);
+          lines.push(``);
+        });
+        return lines.join('\n');
+      }
+      function renderSummary(signal){
+        if(!signal){els.summary.innerHTML=''; return;}
+        els.summary.innerHTML=[
+          ['主体',signal.subject_name||'-'],
+          ['方向',signal.direction||'-'],
+          ['当前状态',signal.current_state||'-'],
+          ['强度',Number(signal.signal_strength||0).toFixed(1)],
+          ['置信度',`${Number(signal.confidence||0).toFixed(1)}%`],
+        ].map(x=>`<div class="sum"><div class="meta">${escapeHtml(x[0])}</div><div class="v">${escapeHtml(x[1])}</div></div>`).join('');
+      }
+      function renderExpect(items, signal){
+        if(!signal || signal.signal_scope!=='theme'){els.expect.style.display='none'; return;}
+        els.expect.style.display='block';
+        els.expect.innerHTML=`<div class="head"><strong>市场预期层</strong><span class="meta">与该主题直接相关的 Polymarket 市场</span></div>${(items||[]).map(x=>`<div class="expect-item"><div>${escapeHtml(x.question)}</div><div class="meta">成交量 ${Number(x.volume||0).toFixed(0)} · 流动性 ${Number(x.liquidity||0).toFixed(0)}</div></div>`).join('')||'<div class="meta">暂无匹配的市场预期</div>'}`;
+      }
+      function renderTimeline(items){
+        if(!items.length){els.timeline.innerHTML='<div class="empty">暂无状态事件</div>'; return;}
+        els.timeline.innerHTML=items.map(it=>`<article class="item">
+          <div class="head">
+            <div><strong>${escapeHtml(it.subject_name||'-')}</strong><div class="meta">${escapeHtml(it.event_time||'-')}</div></div>
+            <div>
+              <span class="badge state">${escapeHtml(it.new_state||it.event_type||'-')}</span>
+              <span class="badge ${it.new_direction==='看多'?'direction-bull':it.new_direction==='看空'?'direction-bear':''}">${escapeHtml(it.new_direction||'-')}</span>
+            </div>
+          </div>
+          <div style="margin-top:10px;line-height:1.8">${escapeHtml(it.event_summary||'-')}</div>
+          <div class="meta" style="margin-top:8px;">强度 ${Number(it.old_strength||0).toFixed(1)} -> ${Number(it.new_strength||0).toFixed(1)}，置信度 ${Number(it.old_confidence||0).toFixed(1)} -> ${Number(it.new_confidence||0).toFixed(1)}，驱动 ${escapeHtml(it.driver_type||'-')} / ${escapeHtml(it.driver_title||'-')}</div>
+        </article>`).join('');
+      }
+      async function fetchData(){
+        if(!state.signal_key){els.download_md_btn.disabled=true; els.download_image_btn.disabled=true; els.meta.textContent='请输入 signal_key'; return;}
+        const q=new URLSearchParams({signal_scope:state.signal_scope,signal_key:state.signal_key,page:String(state.page),page_size:String(state.page_size)});
+        els.meta.textContent='查询中...';
+        try{
+          const res=await fetch(`${API_BASE}/api/signal-state/timeline?${q.toString()}`); const data=await res.json(); if(!res.ok) throw new Error(data.error||'请求失败');
+          state.total_pages=data.total_pages||1; currentSignal=data.signal||null; currentEvents=data.events||[]; currentExpectations=data.market_expectations||[];
+          renderSummary(currentSignal); renderExpect(currentExpectations, currentSignal); renderTimeline(currentEvents);
+          els.page_info.textContent=`第 ${state.page} / ${Math.max(state.total_pages,1)} 页`; els.prev_btn.disabled=state.page<=1; els.next_btn.disabled=state.page>=state.total_pages;
+          els.download_md_btn.disabled=!currentSignal; els.download_image_btn.disabled=!currentSignal;
+          els.meta.textContent=`共 ${data.total||0} 条状态事件`;
+        }catch(err){currentSignal=null; currentEvents=[]; currentExpectations=[]; els.download_md_btn.disabled=true; els.download_image_btn.disabled=true; els.timeline.innerHTML=`<div class="empty">请求失败: ${escapeHtml(err.message)}</div>`; els.meta.textContent=`请求失败: ${err.message}`;}
+      }
+      function downloadCurrentMarkdown(){if(!currentSignal)return;downloadText(buildMarkdown(),`${buildBaseFileName()}.md`,'text/markdown;charset=utf-8')}
+      async function downloadCurrentImage(){
+        if(!currentSignal){return;}
+        if(typeof html2canvas!=='function'){alert('html2canvas 未加载，暂时无法下载图片');return;}
+        const target=document.querySelector('.panel'); if(!target) return;
+        const oldText=els.download_image_btn.textContent; els.download_image_btn.disabled=true; els.download_image_btn.textContent='导出中...';
+        try{
+          const canvas=await html2canvas(target,{backgroundColor:'#f8fafc',scale:Math.min(window.devicePixelRatio||1,2)*2,useCORS:true});
+          const blob=await new Promise((resolve)=>canvas.toBlob(resolve,'image/png'));
+          if(!blob) throw new Error('图片生成失败');
+          downloadBlob(blob,`${buildBaseFileName()}.png`);
+        }catch(err){alert(`下载失败: ${err.message}`);}
+        finally{els.download_image_btn.disabled=false; els.download_image_btn.textContent=oldText;}
+      }
+      els.search_btn.addEventListener('click',()=>{state.signal_scope=els.signal_scope.value;state.signal_key=els.signal_key.value.trim();state.page=1;fetchData();});
+      els.prev_btn.addEventListener('click',()=>{if(state.page>1){state.page-=1;fetchData();}});
+      els.next_btn.addEventListener('click',()=>{if(state.page<state.total_pages){state.page+=1;fetchData();}});
+      els.download_md_btn.addEventListener('click',downloadCurrentMarkdown);
+      els.download_image_btn.addEventListener('click',downloadCurrentImage);
+      if(state.signal_key) fetchData();
+    </script>
+  </body>
+</html>

@@ -3,130 +3,152 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>系统工作台</title>
+    <title>Zanbo Quant 总控台</title>
     <style>
       :root {
-        --bg: #f4f7f3;
-        --panel: rgba(255, 255, 255, 0.9);
-        --card: #ffffff;
-        --text: #10221a;
-        --muted: #5d6e67;
-        --line: #d7e2dc;
-        --brand: #0f766e;
-        --brand-dark: #115e59;
-        --accent: #b45309;
+        --bg: #f2ede4;
+        --paper: rgba(255, 250, 242, 0.9);
+        --card: #fffdf8;
+        --ink: #1b1916;
+        --muted: #6e6559;
+        --line: #ded3c2;
+        --brand: #0b6b57;
+        --brand-2: #155eef;
+        --accent: #b54708;
         --danger: #b42318;
         --ok: #166534;
         --warn: #b45309;
-        --shadow: 0 18px 48px rgba(16, 34, 26, 0.08);
+        --shadow: 0 20px 60px rgba(40, 28, 17, 0.09);
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
+        color: var(--ink);
         font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-        color: var(--text);
         background:
-          radial-gradient(circle at 0% 0%, rgba(15, 118, 110, 0.13) 0%, transparent 28%),
-          radial-gradient(circle at 100% 100%, rgba(180, 83, 9, 0.14) 0%, transparent 22%),
-          linear-gradient(180deg, #f7fbf8 0%, #eef4f0 100%);
+          radial-gradient(circle at 0% 0%, rgba(11, 107, 87, 0.14), transparent 30%),
+          radial-gradient(circle at 100% 0%, rgba(181, 71, 8, 0.12), transparent 26%),
+          linear-gradient(180deg, #f7f1e8 0%, #efe7db 100%);
       }
-      a { color: inherit; }
+      a { color: inherit; text-decoration: none; }
       .wrap {
-        max-width: 1420px;
+        max-width: 1480px;
         margin: 0 auto;
-        padding: 24px 18px 48px;
+        padding: 24px 18px 56px;
       }
       .hero {
         position: relative;
         overflow: hidden;
-        border: 1px solid rgba(255,255,255,.55);
-        border-radius: 28px;
-        background:
-          linear-gradient(135deg, rgba(16, 34, 26, 0.92) 0%, rgba(15, 118, 110, 0.88) 48%, rgba(180, 83, 9, 0.78) 100%);
-        color: #f8fffc;
         padding: 28px;
+        border-radius: 30px;
+        border: 1px solid rgba(255,255,255,0.45);
+        background:
+          linear-gradient(125deg, rgba(23, 22, 19, 0.96) 0%, rgba(11, 107, 87, 0.90) 46%, rgba(21, 94, 239, 0.72) 100%);
+        color: #fffaf2;
         box-shadow: var(--shadow);
       }
-      .hero::after {
+      .hero::before {
         content: "";
         position: absolute;
-        inset: auto -10% -40% auto;
-        width: 340px;
-        height: 340px;
+        right: -80px;
+        top: -100px;
+        width: 300px;
+        height: 300px;
         border-radius: 50%;
-        background: radial-gradient(circle, rgba(255,255,255,.22) 0%, transparent 68%);
-        pointer-events: none;
+        background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, transparent 68%);
       }
       .hero-grid {
-        display: grid;
-        grid-template-columns: 1.5fr .9fr;
-        gap: 22px;
         position: relative;
         z-index: 1;
+        display: grid;
+        grid-template-columns: 1.45fr 0.95fr;
+        gap: 18px;
       }
       .eyebrow {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 6px 12px;
+        padding: 7px 12px;
         border-radius: 999px;
-        border: 1px solid rgba(255,255,255,.2);
-        background: rgba(255,255,255,.09);
+        border: 1px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.08);
         font-size: 12px;
-        letter-spacing: .08em;
+        letter-spacing: 0.08em;
       }
       h1 {
-        margin: 14px 0 10px;
-        font-size: 38px;
-        line-height: 1.12;
+        margin: 16px 0 10px;
+        font-size: 44px;
+        line-height: 1.08;
       }
-      .hero p {
-        margin: 0;
-        max-width: 760px;
-        color: rgba(248,255,252,.86);
+      .hero-desc {
+        max-width: 780px;
+        color: rgba(255,250,242,0.84);
         line-height: 1.85;
+        font-size: 15px;
       }
-      .hero-meta {
-        margin-top: 18px;
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
+      .hero-stats {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 20px;
       }
       .hero-stat {
-        min-width: 126px;
-        padding: 12px 14px;
-        border-radius: 18px;
-        background: rgba(255,255,255,.1);
-        border: 1px solid rgba(255,255,255,.12);
+        padding: 14px;
+        border-radius: 20px;
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(255,255,255,0.12);
       }
       .hero-stat .k {
         font-size: 12px;
-        color: rgba(248,255,252,.7);
+        color: rgba(255,250,242,0.68);
       }
       .hero-stat .v {
         margin-top: 8px;
-        font-size: 24px;
+        font-size: 28px;
+        font-weight: 800;
+      }
+      .hero-cta {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .hero-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 16px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.16);
+        color: #fff;
+        font-size: 14px;
         font-weight: 700;
+      }
+      .hero-btn.primary {
+        background: #fff7eb;
+        color: #173126;
       }
       .hero-side {
         display: grid;
         gap: 12px;
-        align-content: start;
       }
-      .hero-side-card {
-        padding: 16px;
-        border-radius: 20px;
-        background: rgba(6, 18, 14, 0.22);
-        border: 1px solid rgba(255,255,255,.12);
+      .hero-card {
+        border-radius: 22px;
+        padding: 18px;
+        background: rgba(8, 15, 18, 0.26);
+        border: 1px solid rgba(255,255,255,0.12);
       }
-      .hero-side-card h3 {
+      .hero-card h3 {
         margin: 0 0 10px;
         font-size: 14px;
-        letter-spacing: .04em;
+        letter-spacing: 0.04em;
       }
-      .hero-side-card p {
+      .hero-card p {
+        margin: 0;
+        line-height: 1.75;
         font-size: 13px;
-        line-height: 1.7;
+        color: rgba(255,250,242,0.84);
       }
       .hero-links {
         display: grid;
@@ -134,13 +156,10 @@
         gap: 10px;
       }
       .hero-link {
-        display: block;
         padding: 12px 14px;
         border-radius: 16px;
-        text-decoration: none;
-        background: rgba(255,255,255,.11);
-        border: 1px solid rgba(255,255,255,.14);
-        color: #fff;
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(255,255,255,0.13);
       }
       .hero-link strong {
         display: block;
@@ -150,16 +169,16 @@
         display: block;
         margin-top: 6px;
         font-size: 12px;
-        color: rgba(248,255,252,.75);
+        color: rgba(255,250,242,0.76);
       }
       .section {
         margin-top: 22px;
-        background: var(--panel);
-        border: 1px solid rgba(215, 226, 220, .9);
-        border-radius: 24px;
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(10px);
         padding: 18px;
+        border-radius: 26px;
+        border: 1px solid rgba(222, 211, 194, 0.95);
+        background: var(--paper);
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow);
       }
       .section-head {
         display: flex;
@@ -171,7 +190,7 @@
       }
       .section-head h2 {
         margin: 0;
-        font-size: 22px;
+        font-size: 24px;
       }
       .section-head p {
         margin: 6px 0 0;
@@ -180,75 +199,126 @@
       }
       .sub-link {
         color: var(--brand);
-        text-decoration: none;
         font-size: 13px;
       }
-      .metric-grid {
+      .grid-6 {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 12px;
       }
-      .metric-card {
-        padding: 16px;
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
-      }
-      .metric-card .k {
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .metric-card .v {
-        margin-top: 10px;
-        font-size: 28px;
-        font-weight: 700;
-      }
-      .metric-card .tip {
-        margin-top: 8px;
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .two-col {
+      .grid-4 {
         display: grid;
-        grid-template-columns: 1.15fr .85fr;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
         gap: 16px;
       }
-      .panel-card {
-        border: 1px solid var(--line);
+      .metric-card,
+      .nav-card,
+      .panel-card,
+      .health-card,
+      .news-card,
+      .query-card {
         border-radius: 20px;
-        background: #fff;
-        padding: 16px;
+        border: 1px solid var(--line);
+        background: var(--card);
       }
-      .panel-card h3 {
-        margin: 0 0 12px;
+      .metric-card {
+        padding: 16px;
+        background: linear-gradient(180deg, #fffdf8 0%, #f7f0e5 100%);
+      }
+      .metric-card .k,
+      .health-card .k {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .metric-card .v,
+      .health-card .v {
+        margin-top: 8px;
+        font-size: 30px;
+        font-weight: 800;
+      }
+      .metric-card .tip,
+      .health-card .tip {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+      .nav-card {
+        padding: 16px;
+        background: linear-gradient(180deg, #fffdfa 0%, #fff7ef 100%);
+      }
+      .nav-card h3,
+      .panel-card h3,
+      .query-card h3 {
+        margin: 0 0 10px;
         font-size: 17px;
       }
-      .status-list, .simple-list {
+      .nav-list,
+      .status-list,
+      .simple-list,
+      .job-feed,
+      .news-list {
         display: grid;
         gap: 10px;
       }
-      .status-item, .simple-item {
-        border: 1px solid var(--line);
-        border-radius: 16px;
+      .nav-list a,
+      .simple-item,
+      .status-item,
+      .job-item,
+      .news-item {
         padding: 12px 14px;
-        background: #fbfcfb;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: #fffdfa;
       }
-      .status-top, .simple-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
+      .nav-list a {
+        display: block;
       }
-      .status-name, .simple-title {
+      .nav-list strong {
+        display: block;
         font-size: 14px;
-        font-weight: 700;
       }
-      .status-meta, .simple-meta {
-        margin-top: 8px;
+      .nav-list span,
+      .status-meta,
+      .simple-meta,
+      .job-meta,
+      .news-meta {
+        display: block;
+        margin-top: 6px;
         color: var(--muted);
         font-size: 12px;
         line-height: 1.7;
+      }
+      .panel-card,
+      .query-card {
+        padding: 16px;
+      }
+      .status-top,
+      .simple-top,
+      .job-top,
+      .news-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .status-name,
+      .simple-title,
+      .job-title,
+      .news-title {
+        font-size: 14px;
+        font-weight: 700;
       }
       .pill {
         display: inline-flex;
@@ -256,40 +326,48 @@
         padding: 5px 10px;
         border-radius: 999px;
         border: 1px solid var(--line);
+        background: #f5f0e8;
         font-size: 12px;
         font-weight: 700;
-        background: #f6f8f7;
       }
-      .pill.ok { background: #eaf8ee; color: var(--ok); border-color: #b7e0c0; }
-      .pill.warn { background: #fff4e5; color: var(--warn); border-color: #f2cf9d; }
-      .pill.error { background: #feebeb; color: var(--danger); border-color: #efb1b1; }
-      .pill.brand { background: #e8fffb; color: var(--brand); border-color: #a8e3db; }
-      .quick-grid {
+      .pill.ok { color: var(--ok); background: #eaf8ee; border-color: #b7e0c0; }
+      .pill.warn { color: var(--warn); background: #fff4e5; border-color: #f2cf9d; }
+      .pill.error { color: var(--danger); background: #feebeb; border-color: #efb1b1; }
+      .pill.brand { color: var(--brand); background: #e8fffb; border-color: #a8e3db; }
+      .pill.blue { color: var(--brand-2); background: #eaf1ff; border-color: #bdd0ff; }
+      .health-card {
+        padding: 14px;
+        background: linear-gradient(180deg, #fffdf9 0%, #f9f3eb 100%);
+      }
+      .control-grid {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
       }
-      .quick-card {
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        background: linear-gradient(180deg, #ffffff 0%, #f8fbfa 100%);
-        padding: 16px;
-      }
-      .quick-card h3 {
-        margin: 0 0 10px;
-        font-size: 16px;
-      }
-      .quick-links {
-        display: grid;
-        gap: 8px;
-      }
-      .quick-links a {
-        padding: 10px 12px;
+      input,
+      select,
+      button {
+        width: 100%;
+        height: 44px;
         border-radius: 14px;
-        text-decoration: none;
-        background: #f3f7f5;
-        color: var(--text);
+        border: 1px solid var(--line);
+        background: #fff;
+        padding: 0 12px;
         font-size: 14px;
+      }
+      button {
+        border: none;
+        cursor: pointer;
+        background: var(--brand);
+        color: #fff;
+        font-weight: 700;
+      }
+      button:hover { background: #085643; }
+      .meta {
+        margin: 12px 0;
+        min-height: 18px;
+        color: var(--muted);
+        font-size: 13px;
       }
       .table-wrap {
         overflow: auto;
@@ -299,90 +377,55 @@
       }
       table {
         width: 100%;
+        min-width: 920px;
         border-collapse: collapse;
-        min-width: 900px;
       }
-      th, td {
+      th,
+      td {
         padding: 12px 14px;
-        border-bottom: 1px solid #eef2ef;
+        border-bottom: 1px solid #f0e7da;
         text-align: left;
-        font-size: 14px;
         white-space: nowrap;
+        font-size: 14px;
       }
       th {
-        background: #f6faf8;
+        background: #faf3e8;
         color: var(--muted);
         font-size: 12px;
-      }
-      .controls {
-        display: grid;
-        grid-template-columns: 1fr 120px 120px 120px 120px 100px;
-        gap: 10px;
-        margin-bottom: 12px;
-      }
-      input, select, button {
-        height: 42px;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        padding: 0 12px;
-        font-size: 14px;
-        background: #fff;
-      }
-      button {
-        border: none;
-        background: var(--brand);
-        color: #fff;
-        cursor: pointer;
-      }
-      button:hover { background: var(--brand-dark); }
-      .meta {
-        color: var(--muted);
-        font-size: 13px;
-        min-height: 18px;
-        margin-bottom: 12px;
       }
       .pager {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
         margin-top: 12px;
-      }
-      .news-list {
-        display: grid;
-        gap: 10px;
-      }
-      .news-item {
-        border: 1px solid var(--line);
-        border-radius: 16px;
-        padding: 12px 14px;
-        background: #fff;
-      }
-      .news-title {
-        font-size: 14px;
-        font-weight: 700;
-        line-height: 1.6;
-      }
-      .news-meta {
-        margin-top: 8px;
-        color: var(--muted);
-        font-size: 12px;
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
       }
-      @media (max-width: 1200px) {
-        .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .empty {
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px dashed var(--line);
+        color: var(--muted);
+        background: rgba(255,255,255,0.55);
+      }
+      @media (max-width: 1280px) {
+        .grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
       @media (max-width: 980px) {
-        .hero-grid, .two-col { grid-template-columns: 1fr; }
-        .controls { grid-template-columns: 1fr 1fr; }
+        .hero-grid,
+        .grid-2,
+        .grid-3,
+        .grid-4,
+        .control-grid { grid-template-columns: 1fr; }
+        .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
-      @media (max-width: 680px) {
-        .metric-grid, .quick-grid, .hero-links { grid-template-columns: 1fr; }
-        .controls { grid-template-columns: 1fr; }
-        h1 { font-size: 30px; }
+      @media (max-width: 720px) {
+        .wrap { padding: 14px; }
+        .hero { padding: 20px; }
+        h1 { font-size: 34px; }
+        .grid-6,
+        .hero-links,
+        .hero-stats { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -391,26 +434,34 @@
       <section class="hero">
         <div class="hero-grid">
           <div>
-            <div class="eyebrow">Zanbo Quant Workspace</div>
-            <h1>系统工作台</h1>
-            <p>把股票数据、新闻情报、LLM 分析和运行状态收进一个首页。先看今天系统是否正常，再决定是去盯数据、看新闻、做分析，还是查候选池。</p>
-            <div class="hero-meta">
-              <div class="hero-stat"><div class="k">数据源正常</div><div class="v" id="hero_source_ok">-</div></div>
+            <div class="eyebrow">Zanbo Quant Control Center</div>
+            <h1>量化研究总控台</h1>
+            <div class="hero-desc" id="hero_focus">
+              正在汇总系统状态、热点研究入口、实时链路与数据新鲜度。
+            </div>
+            <div class="hero-stats">
+              <div class="hero-stat"><div class="k">数据源在线</div><div class="v" id="hero_source_ok">-</div></div>
               <div class="hero-stat"><div class="k">运行中任务</div><div class="v" id="hero_jobs_running">-</div></div>
               <div class="hero-stat"><div class="k">候选池标的</div><div class="v" id="hero_candidate_total">-</div></div>
               <div class="hero-stat"><div class="k">日报总结</div><div class="v" id="hero_summary_total">-</div></div>
+              <div class="hero-stat"><div class="k">监控群聊</div><div class="v" id="hero_chatroom_total">-</div></div>
+            </div>
+            <div class="hero-cta">
+              <a class="hero-btn primary" href="/stock_detail.html">进入单只股票详情页</a>
+              <a class="hero-btn" href="/theme_hotspots.html">进入主题热点引擎</a>
+              <a class="hero-btn" href="/source_monitor.html#orchestrator">查看调度编排</a>
             </div>
           </div>
           <div class="hero-side">
-            <div class="hero-side-card">
-              <h3>今日焦点</h3>
-              <p id="hero_focus">正在加载系统状态与最新摘要...</p>
+            <div class="hero-card">
+              <h3>系统节奏</h3>
+              <p id="hero_status_text">正在加载今日主流程状态...</p>
             </div>
             <div class="hero-links">
-              <a class="hero-link" href="/news_daily_summary.html"><strong>新闻日报总结</strong><span>查看最新结论与下载结果</span></a>
-              <a class="hero-link" href="/multi_role_review.html"><strong>LLM 多角色分析</strong><span>异步跑公司深度分析</span></a>
-              <a class="hero-link" href="/chatroom_candidate_pool.html"><strong>股票候选池</strong><span>看群聊观点聚合后的方向</span></a>
-              <a class="hero-link" href="/source_monitor.html"><strong>数据源监控</strong><span>看采集链路和进程是否在线</span></a>
+              <a class="hero-link" href="/news_daily_summary.html"><strong>新闻日报总结</strong><span>看今日重点事件是否已沉淀成报告</span></a>
+              <a class="hero-link" href="/research_reports.html"><strong>标准投研报告</strong><span>把主题、股票、事件压成统一报告</span></a>
+              <a class="hero-link" href="/investment_signals.html"><strong>投资信号总览</strong><span>看新闻、群聊、个股新闻如何合流</span></a>
+              <a class="hero-link" href="/source_monitor.html#realtime"><strong>实时链路</strong><span>看 Stream / WebSocket / Worker 是否活着</span></a>
             </div>
           </div>
         </div>
@@ -419,131 +470,125 @@
       <section class="section">
         <div class="section-head">
           <div>
-            <h2>核心概览</h2>
-            <p>先判断系统有没有新鲜数据，再决定去哪里深入看。</p>
+            <h2>核心指标</h2>
+            <p>先判断系统今天是否够新、够全、够稳。</p>
           </div>
           <div class="sub-link" id="dashboard_time">最近刷新：-</div>
         </div>
-        <div class="metric-grid" id="metric_grid"></div>
+        <div class="grid-6" id="metric_grid"></div>
       </section>
 
       <section class="section">
         <div class="section-head">
           <div>
-            <h2>业务导航</h2>
-            <p>按工作流组织，不按脚本文件组织。</p>
+            <h2>研究入口</h2>
+            <p>按真实工作流分组，不再按旧页面堆叠。</p>
           </div>
         </div>
-        <div class="quick-grid">
-          <div class="quick-card">
-            <h3>市场数据</h3>
-            <div class="quick-links">
-              <a href="/prices.html">股票日线价格</a>
-              <a href="/stock_detail.html">单只股票详情页</a>
-              <a href="/minline.html">股票分钟线图</a>
-              <a href="/stock_scores.html">股票综合评分</a>
-              <a href="/macro.html">宏观看板</a>
+        <div class="grid-4">
+          <div class="nav-card">
+            <h3>股票研究</h3>
+            <div class="nav-list">
+              <a href="/stock_detail.html"><strong>单只股票详情页</strong><span>价格、评分、新闻、群聊观点与 LLM 按股票聚合</span></a>
+              <a href="/stock_scores.html"><strong>股票综合评分</strong><span>行业内评分、基础面与新闻面统一比较</span></a>
+              <a href="/llm_trend.html"><strong>LLM 走势分析</strong><span>从日线结构直接生成趋势判断</span></a>
+              <a href="/multi_role_review.html"><strong>LLM 多角色公司分析</strong><span>宏观、股票、国际资本、汇率多视角分析</span></a>
             </div>
           </div>
-          <div class="quick-card">
+          <div class="nav-card">
+            <h3>事件与信号</h3>
+            <div class="nav-list">
+              <a href="/theme_hotspots.html"><strong>统一热点主题引擎</strong><span>主题热度、方向、市场预期与传导链</span></a>
+              <a href="/signal_state_timeline.html"><strong>信号状态时间线</strong><span>初始、强化、弱化、证伪、反转全过程</span></a>
+              <a href="/investment_signals.html"><strong>投资信号总览</strong><span>股票与主题在 1d/7d 口径上的动态强弱</span></a>
+              <a href="/research_reports.html"><strong>标准投研报告</strong><span>把证据链、观点和风险提示拼成报告</span></a>
+            </div>
+          </div>
+          <div class="nav-card">
             <h3>新闻情报</h3>
-            <div class="quick-links">
-              <a href="/news.html">国际财经资讯</a>
-              <a href="/cn_news.html">国内财经资讯</a>
-              <a href="/stock_news.html">股票相关新闻</a>
-              <a href="/news_daily_summary.html">新闻日报总结</a>
+            <div class="nav-list">
+              <a href="/news.html"><strong>国际财经资讯</strong><span>国际新闻、评分、情绪、资产映射</span></a>
+              <a href="/cn_news.html"><strong>国内财经资讯</strong><span>新浪 / 东财等国内快讯独立跟踪</span></a>
+              <a href="/stock_news.html"><strong>股票相关新闻</strong><span>个股相关新闻、评分、摘要与立即采集</span></a>
+              <a href="/news_daily_summary.html"><strong>新闻日报总结</strong><span>将高重要新闻收束为日报结论</span></a>
             </div>
           </div>
-          <div class="quick-card">
-            <h3>LLM 分析</h3>
-            <div class="quick-links">
-              <a href="/llm_trend.html">LLM 股票走势分析</a>
-              <a href="/multi_role_review.html">LLM 多角色公司分析</a>
-              <a href="/news_daily_summary.html">新闻总结任务</a>
-            </div>
-          </div>
-          <div class="quick-card">
-            <h3>群聊洞察</h3>
-            <div class="quick-links">
-              <a href="/wechat_chatlog.html">微信群聊天记录</a>
-              <a href="/chatrooms.html">群聊总览</a>
-              <a href="/chatroom_investment.html">群聊投资倾向</a>
-              <a href="/chatroom_candidate_pool.html">股票候选池</a>
+          <div class="nav-card">
+            <h3>系统与监控</h3>
+            <div class="nav-list">
+              <a href="/source_monitor.html#orchestrator"><strong>调度编排</strong><span>看 cron / job orchestrator / 最近任务结果</span></a>
+              <a href="/source_monitor.html#realtime"><strong>实时链路</strong><span>看 Redis Stream / WebSocket / Worker</span></a>
+              <a href="/database_audit.html"><strong>数据库审核报告</strong><span>缺口、重复、未评分、异常指标集中看</span></a>
+              <a href="/signal_audit.html"><strong>信号质量审计</strong><span>查误映射、弱信号、噪声与清洗策略</span></a>
             </div>
           </div>
         </div>
       </section>
 
       <section class="section">
-        <div class="two-col">
+        <div class="grid-2">
           <div class="panel-card">
             <div class="section-head">
               <div>
-                <h2>运行状态</h2>
-                <p>挑最关键的 6 条链路放在首页，先看有没有掉线。</p>
+                <h2>系统状态板</h2>
+                <p>数据库新鲜度、缺口、重复、未评分堆积一眼看全。</p>
               </div>
-              <a class="sub-link" href="/source_monitor.html">查看完整监控</a>
+              <a class="sub-link" href="/database_audit.html">进入数据库审核页</a>
             </div>
-            <div class="status-list" id="source_list"></div>
+            <div class="grid-3" id="db_health_list"></div>
           </div>
           <div class="panel-card">
             <div class="section-head">
               <div>
-                <h2>后台任务</h2>
-                <p>重点看 LLM 长任务是否还在跑，是否有失败堆积。</p>
+                <h2>实时链路与后台任务</h2>
+                <p>把在线链路和当前后台活动压到同一块看。</p>
               </div>
+              <a class="sub-link" href="/source_monitor.html">完整监控</a>
             </div>
+            <div class="status-list" id="source_list"></div>
+            <div style="height:10px"></div>
             <div class="status-list" id="job_list"></div>
           </div>
         </div>
       </section>
 
       <section class="section">
-        <div class="two-col">
+        <div class="grid-2">
           <div class="panel-card">
             <div class="section-head">
               <div>
-                <h2>评分领先股票</h2>
-                <p>取最新评分日中靠前的标的，适合先点进去看细节。</p>
+                <h2>研究优先队列</h2>
+                <p>把最值得先看的一批股票与群聊候选并排放出来。</p>
               </div>
-              <a class="sub-link" href="/stock_scores.html">进入综合评分</a>
             </div>
-            <div class="simple-list" id="score_list"></div>
+            <div class="grid-2">
+              <div>
+                <h3>评分领先股票</h3>
+                <div class="simple-list" id="score_list"></div>
+              </div>
+              <div>
+                <h3>群聊候选池</h3>
+                <div class="simple-list" id="candidate_list"></div>
+              </div>
+            </div>
           </div>
           <div class="panel-card">
             <div class="section-head">
               <div>
-                <h2>群聊候选池</h2>
-                <p>按净分和群聊覆盖度挑出当前最热的方向。</p>
+                <h2>今日资讯摘要</h2>
+                <p>先看最新日报是否生成，再看高重要新闻样本。</p>
               </div>
-              <a class="sub-link" href="/chatroom_candidate_pool.html">查看候选池</a>
             </div>
-            <div class="simple-list" id="candidate_list"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="section">
-        <div class="two-col">
-          <div class="panel-card">
-            <div class="section-head">
+            <div class="grid-2">
               <div>
-                <h2>最近日报总结</h2>
-                <p>优先看最新总结落库是否正常，模型是否按预期产出。</p>
+                <h3>最近日报</h3>
+                <div class="simple-list" id="daily_summary_list"></div>
               </div>
-              <a class="sub-link" href="/news_daily_summary.html">进入日报总结</a>
-            </div>
-            <div class="simple-list" id="daily_summary_list"></div>
-          </div>
-          <div class="panel-card">
-            <div class="section-head">
               <div>
-                <h2>高重要新闻</h2>
-                <p>首页只展示最高优先级的几条，避免一上来信息过载。</p>
+                <h3>高重要新闻</h3>
+                <div class="news-list" id="important_news_list"></div>
               </div>
-              <a class="sub-link" href="/news.html">进入新闻页</a>
             </div>
-            <div class="news-list" id="important_news_list"></div>
           </div>
         </div>
       </section>
@@ -551,54 +596,63 @@
       <section class="section">
         <div class="section-head">
           <div>
-            <h2>股票代码查询</h2>
-            <p>保留原来的高频查询功能，首页可以直接搜代码、简称、市场和地区。</p>
+            <h2>任务编排回放</h2>
+            <p>首页直接看最近几条 orchestrator 任务，而不是只看抽象计数。</p>
+          </div>
+          <a class="sub-link" href="/source_monitor.html#orchestrator">看全部任务记录</a>
+        </div>
+        <div class="job-feed" id="job_run_feed"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>股票快速检索</h2>
+            <p>首页仍保留代码、简称、市场、地区筛选，方便快速跳研究。</p>
           </div>
         </div>
-
-        <div class="controls">
-          <input id="keyword" placeholder="输入代码/简称，如 000001 或 平安" />
-          <select id="status">
-            <option value="">全部状态</option>
-            <option value="L">上市(L)</option>
-            <option value="D">退市(D)</option>
-            <option value="P">暂停(P)</option>
-          </select>
-          <select id="market"><option value="">全部市场</option></select>
-          <select id="area"><option value="">全部地区</option></select>
-          <select id="page_size">
-            <option value="20">20/页</option>
-            <option value="50">50/页</option>
-            <option value="100">100/页</option>
-          </select>
-          <button id="search_btn">查询</button>
-        </div>
-
-        <div class="meta" id="meta">准备就绪</div>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>股票代码</th>
-                <th>交易代码</th>
-                <th>股票简称</th>
-                <th>地区</th>
-                <th>行业</th>
-                <th>市场</th>
-                <th>上市日期</th>
-                <th>退市日期</th>
-                <th>上市状态</th>
-              </tr>
-            </thead>
-            <tbody id="tbody"></tbody>
-          </table>
-        </div>
-
-        <div class="pager">
-          <button id="prev_btn">上一页</button>
-          <div id="page_info">第 1 / 1 页</div>
-          <button id="next_btn">下一页</button>
+        <div class="query-card">
+          <div class="control-grid">
+            <input id="keyword" placeholder="输入代码/简称，如 000001 或 平安" />
+            <select id="status">
+              <option value="">全部状态</option>
+              <option value="L">上市(L)</option>
+              <option value="D">退市(D)</option>
+              <option value="P">暂停(P)</option>
+            </select>
+            <select id="market"><option value="">全部市场</option></select>
+            <select id="area"><option value="">全部地区</option></select>
+            <select id="page_size">
+              <option value="20">20/页</option>
+              <option value="50">50/页</option>
+              <option value="100">100/页</option>
+            </select>
+            <button id="search_btn">查询</button>
+          </div>
+          <div class="meta" id="meta">准备就绪</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>股票代码</th>
+                  <th>交易代码</th>
+                  <th>股票简称</th>
+                  <th>地区</th>
+                  <th>行业</th>
+                  <th>市场</th>
+                  <th>上市日期</th>
+                  <th>退市日期</th>
+                  <th>上市状态</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button id="prev_btn">上一页</button>
+            <div id="page_info">第 1 / 1 页</div>
+            <button id="next_btn">下一页</button>
+          </div>
         </div>
       </section>
     </div>
@@ -633,12 +687,16 @@
         candidate_list: document.getElementById('candidate_list'),
         daily_summary_list: document.getElementById('daily_summary_list'),
         important_news_list: document.getElementById('important_news_list'),
+        db_health_list: document.getElementById('db_health_list'),
+        job_run_feed: document.getElementById('job_run_feed'),
         dashboard_time: document.getElementById('dashboard_time'),
         hero_source_ok: document.getElementById('hero_source_ok'),
         hero_jobs_running: document.getElementById('hero_jobs_running'),
         hero_candidate_total: document.getElementById('hero_candidate_total'),
         hero_summary_total: document.getElementById('hero_summary_total'),
+        hero_chatroom_total: document.getElementById('hero_chatroom_total'),
         hero_focus: document.getElementById('hero_focus'),
+        hero_status_text: document.getElementById('hero_status_text'),
       };
 
       function escapeHtml(str) {
@@ -656,26 +714,30 @@
         return 'error';
       }
 
-      function renderMetrics(overview) {
-        const cards = [
-          ['上市股票', overview.listed_total, `总股票 ${overview.stock_total}`],
-          ['国际/国内新闻', overview.news_total, `个股新闻 ${overview.stock_news_total}`],
-          ['群聊记录', overview.chatlog_total, `群聊数 ${overview.chatroom_total}`],
-          ['监控中的群', overview.monitored_chatroom_total, '用于实时/补抓监控'],
-          ['候选池标的', overview.candidate_total, '来自群聊投资倾向聚合'],
-          ['日报总结', overview.daily_summary_total, '新闻重要内容总结入库'],
-        ];
-        els.metric_grid.innerHTML = cards.map(([k, v, tip]) => `
+      function metricCard(title, value, tip) {
+        return `
           <div class="metric-card">
-            <div class="k">${escapeHtml(k)}</div>
-            <div class="v">${escapeHtml(String(v ?? 0))}</div>
-            <div class="tip">${escapeHtml(tip)}</div>
+            <div class="k">${escapeHtml(title)}</div>
+            <div class="v">${escapeHtml(String(value ?? 0))}</div>
+            <div class="tip">${escapeHtml(tip || '')}</div>
           </div>
-        `).join('');
+        `;
+      }
+
+      function renderMetrics(overview, sourceSummary) {
+        const cards = [
+          ['上市股票', overview.listed_total, `总股票 ${overview.stock_total || 0}`],
+          ['国际/国内新闻', overview.news_total, `个股新闻 ${overview.stock_news_total || 0}`],
+          ['群聊记录', overview.chatlog_total, `群聊数 ${overview.chatroom_total || 0}`],
+          ['监控群聊', overview.monitored_chatroom_total, '纳入实时与补抓'],
+          ['候选池标的', overview.candidate_total, '来自群聊与信号聚合'],
+          ['在线数据源', `${sourceSummary.source_ok || 0}/${sourceSummary.source_total || 0}`, `告警 ${sourceSummary.source_warn || 0} · 错误 ${sourceSummary.source_error || 0}`],
+        ];
+        els.metric_grid.innerHTML = cards.map(([k, v, tip]) => metricCard(k, v, tip)).join('');
       }
 
       function renderSources(items) {
-        els.source_list.innerHTML = (items || []).map((it) => `
+        els.source_list.innerHTML = (items || []).slice(0, 4).map((it) => `
           <div class="status-item">
             <div class="status-top">
               <div class="status-name">${escapeHtml(it.name || it.key || '-')}</div>
@@ -684,14 +746,14 @@
             <div class="status-meta">最近更新：${escapeHtml(it.last_update || '-')}</div>
             <div class="status-meta">${escapeHtml(it.detail || '')}</div>
           </div>
-        `).join('') || '<div class="status-item"><div class="status-name">暂无状态数据</div></div>';
+        `).join('') || '<div class="empty">暂无状态数据</div>';
       }
 
       function renderJobs(asyncJobs) {
         const rows = [
           ['多角色分析运行中', asyncJobs.multi_role_running || 0, 'brand'],
           ['多角色分析失败', asyncJobs.multi_role_error || 0, (asyncJobs.multi_role_error || 0) > 0 ? 'error' : 'ok'],
-          ['日报总结运行中', asyncJobs.daily_summary_running || 0, 'brand'],
+          ['日报总结运行中', asyncJobs.daily_summary_running || 0, 'blue'],
           ['日报总结失败', asyncJobs.daily_summary_error || 0, (asyncJobs.daily_summary_error || 0) > 0 ? 'error' : 'ok'],
         ];
         els.job_list.innerHTML = rows.map(([k, v, cls]) => `
@@ -704,82 +766,126 @@
         `).join('');
       }
 
+      function renderDatabaseHealth(health) {
+        const cards = [
+          ['日线/分钟线', `${health.daily_latest || '-'} / ${health.minline_latest || '-'}`, `评分最新 ${health.scores_latest || '-'}`],
+          ['事件/治理缺口', `${health.miss_events ?? '-'} / ${health.miss_governance ?? '-'}`, `资金流缺口 ${health.miss_flow ?? '-'} · 分钟线缺口 ${health.miss_minline ?? '-'}`],
+          ['新闻未评分', health.news_unscored ?? '-', `个股新闻未评分 ${health.stock_news_unscored ?? '-'}`],
+          ['新闻重复组', health.news_dup_link ?? '-', `个股新闻重复组 ${health.stock_news_dup_link ?? '-'}`],
+          ['宏观发布日期缺失', health.macro_publish_empty ?? '-', '越接近 0 越健康'],
+          ['群聊去重异常', health.chatlog_dup_key ?? '-', '理论上应尽量接近 0'],
+        ];
+        els.db_health_list.innerHTML = cards.map(([k, v, tip]) => `
+          <div class="health-card">
+            <div class="k">${escapeHtml(k)}</div>
+            <div class="v">${escapeHtml(String(v))}</div>
+            <div class="tip">${escapeHtml(tip)}</div>
+          </div>
+        `).join('');
+      }
+
       function renderScoreList(items) {
-        els.score_list.innerHTML = (items || []).map((it) => `
+        els.score_list.innerHTML = (items || []).slice(0, 5).map((it) => `
           <div class="simple-item">
             <div class="simple-top">
               <div class="simple-title">${escapeHtml(it.name || it.ts_code || '-')}</div>
-              <span class="pill brand">总分 ${Number(it.industry_total_score ?? it.total_score ?? 0).toFixed(1)}</span>
+              <span class="pill brand">${Number(it.industry_total_score ?? it.total_score ?? 0).toFixed(1)}</span>
             </div>
             <div class="simple-meta">${escapeHtml(it.ts_code || '-')} · ${escapeHtml(it.industry || '-')} · ${escapeHtml(it.market || '-')}</div>
           </div>
-        `).join('') || '<div class="simple-item"><div class="simple-title">暂无评分数据</div></div>';
+        `).join('') || '<div class="empty">暂无评分数据</div>';
       }
 
       function renderCandidateList(items) {
-        els.candidate_list.innerHTML = (items || []).map((it) => `
+        els.candidate_list.innerHTML = (items || []).slice(0, 5).map((it) => `
           <div class="simple-item">
             <div class="simple-top">
               <div class="simple-title">${escapeHtml(it.candidate_name || '-')}</div>
               <span class="pill ${it.dominant_bias === '看多' ? 'ok' : 'warn'}">${escapeHtml(it.dominant_bias || '-')}</span>
             </div>
-            <div class="simple-meta">${escapeHtml(it.candidate_type || '-')} · 净分 ${escapeHtml(String(it.net_score ?? 0))} · 群数 ${escapeHtml(String(it.room_count ?? 0))} · 提及 ${escapeHtml(String(it.mention_count ?? 0))}</div>
+            <div class="simple-meta">${escapeHtml(it.candidate_type || '-')} · 净分 ${escapeHtml(String(it.net_score ?? 0))} · 群数 ${escapeHtml(String(it.room_count ?? 0))}</div>
           </div>
-        `).join('') || '<div class="simple-item"><div class="simple-title">暂无候选池数据</div></div>';
+        `).join('') || '<div class="empty">暂无候选池数据</div>';
       }
 
       function renderDailySummaryList(items) {
-        els.daily_summary_list.innerHTML = (items || []).map((it) => `
+        els.daily_summary_list.innerHTML = (items || []).slice(0, 4).map((it) => `
           <div class="simple-item">
             <div class="simple-top">
               <div class="simple-title">${escapeHtml(it.summary_date || '-')}</div>
-              <span class="pill brand">${escapeHtml(it.model || '-')}</span>
+              <span class="pill blue">${escapeHtml(it.model || '-')}</span>
             </div>
             <div class="simple-meta">新闻数 ${escapeHtml(String(it.news_count ?? 0))} · 生成时间 ${escapeHtml(it.created_at || '-')}</div>
           </div>
-        `).join('') || '<div class="simple-item"><div class="simple-title">暂无日报总结</div></div>';
+        `).join('') || '<div class="empty">暂无日报总结</div>';
       }
 
       function renderImportantNews(items) {
-        els.important_news_list.innerHTML = (items || []).map((it) => `
+        els.important_news_list.innerHTML = (items || []).slice(0, 4).map((it) => `
           <div class="news-item">
-            <div class="news-title">${escapeHtml(it.title || '-')}</div>
-            <div class="news-meta">
-              <span>${escapeHtml(it.source || '-')}</span>
-              <span>${escapeHtml(it.llm_finance_importance || '未评级')}</span>
-              <span>${escapeHtml(it.pub_date || '-')}</span>
+            <div class="news-top">
+              <div class="news-title">${escapeHtml(it.title || '-')}</div>
             </div>
+            <div class="news-meta">${escapeHtml(it.source || '-')} · ${escapeHtml(it.llm_finance_importance || '未评级')} · ${escapeHtml(it.pub_date || '-')}</div>
           </div>
-        `).join('') || '<div class="news-item"><div class="news-title">暂无新闻数据</div></div>';
+        `).join('') || '<div class="empty">暂无新闻数据</div>';
+      }
+
+      function renderJobRuns(items) {
+        els.job_run_feed.innerHTML = (items || []).slice(0, 8).map((it) => {
+          const cls = it.status === 'success' ? 'ok' : (it.status === 'running' ? 'brand' : 'error');
+          return `
+            <div class="job-item">
+              <div class="job-top">
+                <div class="job-title">${escapeHtml(it.job_key || '-')}</div>
+                <span class="pill ${cls}">${escapeHtml(it.status || '-')}</span>
+              </div>
+              <div class="job-meta">触发方式 ${escapeHtml(it.trigger_mode || '-')} · 开始 ${escapeHtml(it.started_at || '-')}</div>
+              <div class="job-meta">耗时 ${escapeHtml(it.duration_seconds == null ? '-' : String(it.duration_seconds))} 秒 · 退出码 ${escapeHtml(it.exit_code == null ? '-' : String(it.exit_code))}</div>
+            </div>
+          `;
+        }).join('') || '<div class="empty">暂无任务运行记录</div>';
       }
 
       async function fetchDashboard() {
         try {
           const res = await fetch(`${API_BASE}/api/dashboard`);
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || '工作台请求失败');
-          renderMetrics(data.overview || {});
+          if (!res.ok) throw new Error(data.error || '总控台请求失败');
+
+          const overview = data.overview || {};
+          const sourceSummary = data.source_monitor?.summary || {};
+          const asyncJobs = data.async_jobs || {};
+          const topNews = (data.important_news || [])[0];
+          const sourceWarn = Number(sourceSummary.source_warn || 0) + Number(sourceSummary.source_error || 0);
+          const runningJobs = Number(asyncJobs.multi_role_running || 0) + Number(asyncJobs.daily_summary_running || 0);
+
+          renderMetrics(overview, sourceSummary);
           renderSources(data.source_monitor?.sources || []);
-          renderJobs(data.async_jobs || {});
+          renderJobs(asyncJobs);
+          renderDatabaseHealth(data.database_health || {});
           renderScoreList(data.top_scores || []);
           renderCandidateList(data.candidate_pool_top || []);
           renderDailySummaryList(data.recent_daily_summaries || []);
           renderImportantNews(data.important_news || []);
+          renderJobRuns(data.orchestrator_jobs || []);
 
-          const sm = data.source_monitor?.summary || {};
-          const asyncJobs = data.async_jobs || {};
           els.dashboard_time.textContent = `最近刷新：${data.generated_at || '-'}`;
-          els.hero_source_ok.textContent = `${sm.source_ok ?? 0}/${sm.source_total ?? 0}`;
-          els.hero_jobs_running.textContent = (Number(asyncJobs.multi_role_running || 0) + Number(asyncJobs.daily_summary_running || 0)).toString();
-          els.hero_candidate_total.textContent = String(data.overview?.candidate_total ?? 0);
-          els.hero_summary_total.textContent = String(data.overview?.daily_summary_total ?? 0);
-          const topNews = (data.important_news || [])[0];
+          els.hero_source_ok.textContent = `${sourceSummary.source_ok ?? 0}/${sourceSummary.source_total ?? 0}`;
+          els.hero_jobs_running.textContent = String(runningJobs);
+          els.hero_candidate_total.textContent = String(overview.candidate_total ?? 0);
+          els.hero_summary_total.textContent = String(overview.daily_summary_total ?? 0);
+          els.hero_chatroom_total.textContent = String(overview.monitored_chatroom_total ?? 0);
+
           els.hero_focus.textContent = topNews
-            ? `当前最值得先看的是“${topNews.title || ''}”。如果你今天先做新闻面判断，建议从国际/国内新闻页或日报总结页进入。`
-            : '当前没有高优先新闻摘要，适合先去看候选池、评分榜或数据源健康状态。';
+            ? `当前最值得先看的是“${topNews.title || ''}”。首页现在更适合作为总控台：先看系统健康，再决定去做股票研究、主题研究、新闻研判，还是追实时任务。`
+            : '当前没有高优先新闻样本，今天更适合先检查候选池、评分榜、主题热点和数据新鲜度。';
+
+          els.hero_status_text.textContent = `当前在线数据源 ${sourceSummary.source_ok ?? 0}/${sourceSummary.source_total ?? 0}，告警/异常 ${sourceWarn} 项；前台长任务运行中 ${runningJobs} 个；监控群聊 ${overview.monitored_chatroom_total ?? 0} 个；股票候选池 ${overview.candidate_total ?? 0} 个。`;
         } catch (err) {
-          els.dashboard_time.textContent = `工作台加载失败：${err.message}`;
-          els.hero_focus.textContent = `工作台摘要加载失败：${err.message}`;
+          els.dashboard_time.textContent = `加载失败：${err.message}`;
+          els.hero_focus.textContent = `总控台摘要加载失败：${err.message}`;
+          els.hero_status_text.textContent = `系统状态读取失败：${err.message}`;
         }
       }
 
@@ -825,18 +931,17 @@
             }
             if (msg.channel !== 'app') return;
             const evt = msg.event || '';
-            if (
-              [
-                'daily_summary_job_update',
-                'multi_role_job_update',
-                'stock_news_update',
-                'stock_scores_update',
-                'chatroom_candidate_pool_update',
-                'chatroom_list_update',
-                'chatlog_monitor_update',
-              ].includes(evt)
-            ) {
-              scheduleDashboardRefresh(400);
+            if ([
+              'daily_summary_job_update',
+              'multi_role_job_update',
+              'stock_news_update',
+              'stock_scores_update',
+              'chatroom_candidate_pool_update',
+              'chatroom_list_update',
+              'chatlog_monitor_update',
+              'job_run_update',
+            ].includes(evt)) {
+              scheduleDashboardRefresh(350);
             }
           } catch (_) {}
         };

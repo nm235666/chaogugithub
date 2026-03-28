@@ -140,6 +140,135 @@
         padding: 0;
         color: inherit;
       }
+      .logic-board {
+        margin: 0 0 14px;
+        padding: 14px;
+        border: 1px solid #dbe4ec;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #f8fffe 0%, #f8fafc 100%);
+      }
+      .logic-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .logic-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .logic-sub {
+        font-size: 12px;
+        color: #64748b;
+      }
+      .logic-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .logic-summary-card {
+        border: 1px solid #dbe4ec;
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+      .logic-summary-label {
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .logic-summary-value {
+        font-size: 13px;
+        color: #0f172a;
+        line-height: 1.7;
+        white-space: pre-wrap;
+      }
+      .logic-chain-list {
+        display: grid;
+        gap: 10px;
+      }
+      .logic-chain-card {
+        border: 1px solid #dbe4ec;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fff;
+      }
+      .logic-chain-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 8px;
+      }
+      .logic-chain-raw {
+        font-size: 12px;
+        color: #475569;
+        margin-top: 8px;
+        line-height: 1.7;
+      }
+      .logic-nodes {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .logic-node {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #ecfeff;
+        border: 1px solid #bae6fd;
+        color: #0f172a;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.45;
+      }
+      .logic-arrow {
+        color: #0f766e;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .logic-empty {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px dashed #cbd5e1;
+        color: #64748b;
+        font-size: 13px;
+      }
+      .role-panels {
+        margin-top: 14px;
+        display: grid;
+        gap: 12px;
+      }
+      .role-panel {
+        border: 1px solid #dbe4ec;
+        border-radius: 14px;
+        padding: 12px;
+        background: #fcfdff;
+      }
+      .role-panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .role-panel-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .role-panel-mark {
+        font-size: 12px;
+        color: #64748b;
+      }
       .data-dimensions {
         margin: 0 0 14px;
         padding: 12px 14px;
@@ -301,6 +430,7 @@
       @media (max-width: 980px) {
         .controls { grid-template-columns: 1fr 1fr; }
         .grid { grid-template-columns: 1fr; }
+        .logic-summary-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -343,6 +473,7 @@
             <div class="box-header">
               <h3>多角色分析结论</h3>
               <div class="download-actions">
+                <button id="download_logic_btn" class="ghost-btn" disabled>下载链路图</button>
                 <button id="download_btn" class="ghost-btn" disabled>下载整篇 .md</button>
               </div>
             </div>
@@ -385,6 +516,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -397,6 +529,7 @@
         model: document.getElementById('model'),
         roles: document.getElementById('roles'),
         run_btn: document.getElementById('run_btn'),
+        download_logic_btn: document.getElementById('download_logic_btn'),
         download_btn: document.getElementById('download_btn'),
         role_downloads: document.getElementById('role_downloads'),
         meta: document.getElementById('meta'),
@@ -412,6 +545,7 @@
       let currentJobId = '';
       let latestAnalysisMarkdown = '';
       let latestAnalysisSections = [];
+      let latestLogicView = { summary: {}, chains: [], has_logic: false };
       let stockSuggestionTimer = null;
       let currentStockSuggestions = [];
       let realtimeSocket = null;
@@ -502,10 +636,12 @@
         els.data_dimensions_tags_missing.innerHTML = missingHtml.join('') || '<span class="dim-tag dim-tag-used"><strong>完整</strong><span class="dim-tag-name">本次无缺失维度</span></span>';
       }
 
-      function renderAnalysis(text, roleSections = []) {
+      function renderAnalysis(text, roleSections = [], logicView = null) {
         const raw = (text || '').trim();
         latestAnalysisMarkdown = raw;
         latestAnalysisSections = normalizeRoleSections(roleSections, parseRolesInput(els.roles.value), raw);
+        latestLogicView = logicView || deriveAnalysisView(raw);
+        els.download_logic_btn.disabled = !latestLogicView?.has_logic && !(latestLogicView?.chains || []).length;
         els.download_btn.disabled = !raw;
         renderRoleDownloadButtons();
         if (!raw) {
@@ -516,7 +652,12 @@
           gfm: true,
           breaks: true,
         });
-        els.analysis.innerHTML = marked.parse(raw);
+        const rolePanels = renderRolePanels(latestAnalysisSections);
+        els.analysis.innerHTML = `
+          ${renderLogicBoard(latestLogicView, '综合结论传导链路', 'multi_role_logic_board')}
+          <div class="markdown-rendered">${marked.parse(raw)}</div>
+          ${rolePanels}
+        `;
       }
 
       function parseRolesInput(raw) {
@@ -540,6 +681,208 @@
             matched: false,
           };
         });
+      }
+
+      function cleanLine(line) {
+        return String(line || '')
+          .replace(/^\s*[-*]\s*/, '')
+          .replace(/^\s*\d+\.\s*/, '')
+          .replace(/^\s*>\s*/, '')
+          .trim();
+      }
+
+      function stripStrong(text) {
+        return String(text || '').replace(/\*\*/g, '').trim();
+      }
+
+      function normalizeChainText(text) {
+        return cleanLine(text)
+          .replace(/[“”"]/g, '')
+          .replace(/\s*[-=]*>\s*/g, ' -> ')
+          .replace(/\s*→\s*/g, ' -> ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function splitChainNodes(text) {
+        return normalizeChainText(text)
+          .split(/\s*->\s*/)
+          .map((part) => stripStrong(part).replace(/^事件发生\s*/, '').trim())
+          .filter(Boolean);
+      }
+
+      function parseHeadlineFromLine(line) {
+        const m = String(line || '').match(/^\d+\.\s*\*\*(.+?)\*\*/);
+        return m ? m[1].trim() : '';
+      }
+
+      function deriveAnalysisView(markdown) {
+        const lines = String(markdown || '').split(/\r?\n/);
+        const chains = [];
+        const summary = {
+          conclusion: '',
+          focus: '',
+          risk: '',
+        };
+        let currentTitle = '';
+        let captureNextChain = false;
+
+        for (let i = 0; i < lines.length; i += 1) {
+          const raw = lines[i] || '';
+          const line = raw.trim();
+          const maybeTitle = parseHeadlineFromLine(line);
+          if (maybeTitle) currentTitle = maybeTitle;
+          const plain = stripStrong(cleanLine(line));
+
+          if (/^核心结论[:：]/.test(plain)) {
+            summary.conclusion = plain.replace(/^核心结论[:：]\s*/, '').trim();
+          } else if (/^最值得关注的方向[:：]/.test(plain)) {
+            summary.focus = plain.replace(/^最值得关注的方向[:：]\s*/, '').trim();
+          } else if (/^当前最需要警惕的风险[:：]/.test(plain)) {
+            summary.risk = plain.replace(/^当前最需要警惕的风险[:：]\s*/, '').trim();
+          }
+
+          if (/影响传导路径[:：]/.test(plain)) {
+            const inline = plain.replace(/^影响传导路径[:：]\s*/, '').trim();
+            if (inline) {
+              chains.push({
+                title: currentTitle || `链路 ${chains.length + 1}`,
+                raw: inline,
+                nodes: splitChainNodes(inline),
+              });
+              captureNextChain = false;
+            } else {
+              captureNextChain = true;
+            }
+            continue;
+          }
+
+          if (captureNextChain) {
+            const candidate = cleanLine(line);
+            if (!candidate || /^确定性判断[:：]/.test(stripStrong(candidate)) || /^可能受影响的市场[:：]/.test(stripStrong(candidate))) {
+              captureNextChain = false;
+              continue;
+            }
+            chains.push({
+              title: currentTitle || `链路 ${chains.length + 1}`,
+              raw: candidate,
+              nodes: splitChainNodes(candidate),
+            });
+            captureNextChain = false;
+          }
+        }
+
+        return {
+          summary,
+          chains: chains.filter((item) => item.nodes.length >= 2).slice(0, 8),
+        };
+      }
+
+      function renderLogicBoard(derived, title = '传导链路预览', boardId = '') {
+        const summary = derived?.summary || {};
+        const chains = derived?.chains || [];
+        return `
+          <section class="logic-board" ${boardId ? `id="${boardId}"` : ''}>
+            <div class="logic-head">
+              <div class="logic-title">${escapeHtml(title)}</div>
+              <div class="logic-sub">先把关键判断拆成“事件 -> 变量 -> 行业/资产 -> 标的”，阅读会更顺，也更方便核对逻辑。</div>
+            </div>
+            <div class="logic-summary-grid">
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">核心结论</div>
+                <div class="logic-summary-value">${escapeHtml(summary.conclusion || '暂无提取到明确结论')}</div>
+              </div>
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">最值得关注的方向</div>
+                <div class="logic-summary-value">${escapeHtml(summary.focus || '暂无提取到明确方向')}</div>
+              </div>
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">当前最需要警惕的风险</div>
+                <div class="logic-summary-value">${escapeHtml(summary.risk || '暂无提取到明确风险')}</div>
+              </div>
+            </div>
+            <div class="logic-chain-list">
+              ${
+                chains.length
+                  ? chains.map((chain) => `
+                    <div class="logic-chain-card">
+                      <div class="logic-chain-name">${escapeHtml(chain.title)}</div>
+                      <div class="logic-nodes">
+                        ${chain.nodes.map((node, idx) => `
+                          ${idx ? '<span class="logic-arrow">→</span>' : ''}
+                          <span class="logic-node">${escapeHtml(node)}</span>
+                        `).join('')}
+                      </div>
+                      <div class="logic-chain-raw">原始链路：${escapeHtml(chain.raw)}</div>
+                    </div>
+                  `).join('')
+                  : '<div class="logic-empty">当前这条分析里还没有稳定提取到“影响传导路径”字段，下面仍可查看完整 Markdown 原文。</div>'
+              }
+            </div>
+          </section>
+        `;
+      }
+
+      function renderRolePanels(roleSections) {
+        const sections = Array.isArray(roleSections) ? roleSections : [];
+        if (!sections.length) return '';
+        return `
+          <section class="role-panels">
+            ${sections.map((section) => {
+              const content = String(section?.content || '').trim();
+              const derived = section?.logic_view || deriveAnalysisView(content);
+              return `
+                <article class="role-panel">
+                  <div class="role-panel-head">
+                    <div class="role-panel-title">${escapeHtml(section.role || '角色结论')}</div>
+                    <div class="role-panel-mark">${section.matched === false ? '该角色为兜底切分内容' : '已按角色独立返回'}</div>
+                  </div>
+                  ${renderLogicBoard(derived, `${section.role || '角色'}传导链路`)}
+                </article>
+              `;
+            }).join('')}
+          </section>
+        `;
+      }
+
+      function buildLogicDownloadFileName() {
+        const tsCode = (els.ts_code.value || 'UNKNOWN').trim().toUpperCase() || 'UNKNOWN';
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        return `${tsCode}${yyyy}${mm}${dd}LLM 多角色公司分析链路图.png`;
+      }
+
+      async function downloadLogicBoardAsImage() {
+        const board = document.getElementById('multi_role_logic_board');
+        if (!board) {
+          els.meta.textContent = '当前没有可下载的链路图';
+          return;
+        }
+        if (typeof html2canvas !== 'function') {
+          els.meta.textContent = '图片导出组件未加载成功';
+          return;
+        }
+        els.download_logic_btn.disabled = true;
+        try {
+          const canvas = await html2canvas(board, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true,
+          });
+          const a = document.createElement('a');
+          a.href = canvas.toDataURL('image/png');
+          a.download = buildLogicDownloadFileName();
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          els.meta.textContent = `链路图已下载：${buildLogicDownloadFileName()}`;
+        } catch (err) {
+          els.meta.textContent = `链路图下载失败: ${err.message}`;
+        } finally {
+          els.download_logic_btn.disabled = !latestAnalysisMarkdown.trim();
+        }
       }
 
       function fmtContext(ctx, roles) {
@@ -741,7 +1084,7 @@
           }
 
           if (data.status === 'done') {
-            renderAnalysis(data.analysis || '', data.role_sections || []);
+            renderAnalysis(data.analysis || '', data.role_sections || [], data.logic_view || null);
             els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，模型 ${data.model}`;
             return;
           }
@@ -766,7 +1109,7 @@
           renderDataDimensions(data.context);
         }
         if (data.status === 'done') {
-          renderAnalysis(data.analysis || '', data.role_sections || []);
+          renderAnalysis(data.analysis || '', data.role_sections || [], data.logic_view || null);
           els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，模型 ${data.model}`;
           currentJobId = '';
         } else if (data.status === 'error') {
@@ -809,14 +1152,14 @@
           currentJobId = data.job_id || '';
           const matchHint = stock.matched_name && stock.matched_name !== data.name ? `（简称匹配：${stock.matched_name}）` : '';
           els.meta.textContent = `任务已创建：${data.ts_code} ${data.name || ''}${matchHint}，模型 ${data.model}`;
-          renderAnalysis('', []);
+          renderAnalysis('', [], null);
           els.context.textContent = fmtContext(data.context, data.roles);
           renderDataDimensions(data.context);
           els.analysis.innerHTML = '<p>上下文已准备完成，正在等待大模型输出分析结论...</p>';
           await pollMultiRoleJob(currentJobId, `任务进行中：${data.ts_code} ${data.name || ''}，模型 ${data.model}`);
         } catch (err) {
           els.meta.textContent = `请求失败: ${err.message}`;
-          renderAnalysis('', []);
+          renderAnalysis('', [], null);
           els.context.textContent = '';
           renderDataDimensions(null, err.message || '请求失败');
         } finally {
@@ -873,6 +1216,7 @@
       renderDataDimensions(null);
 
       els.run_btn.addEventListener('click', run);
+      els.download_logic_btn.addEventListener('click', downloadLogicBoardAsImage);
       els.download_btn.addEventListener('click', downloadAnalysis);
       els.ts_code.addEventListener('input', () => {
         clearTimeout(stockSuggestionTimer);

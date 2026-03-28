@@ -3360,6 +3360,22 @@ def _status_text(status: str):
     return {"ok": "正常", "warn": "延迟", "error": "异常"}.get(status, status)
 
 
+def _combine_process_data_status(
+    process_running: bool,
+    data_age_seconds: float | None,
+    ok_within: float,
+    warn_within: float,
+):
+    data_status = _status_by_age(data_age_seconds, ok_within, warn_within)
+    if not process_running:
+        return "error"
+    if data_status == "error":
+        return "error"
+    if data_status == "warn":
+        return "warn"
+    return "ok"
+
+
 def _iso_from_mtime(path: Path):
     if not path.exists():
         return ""
@@ -3442,6 +3458,10 @@ def query_source_monitor():
             conn,
             "SELECT MAX(pub_date) FROM news_feed_items WHERE source = 'cn_eastmoney_fastnews'",
         )
+        latest_eastmoney_fetch = _table_max(
+            conn,
+            "SELECT MAX(fetched_at) FROM news_feed_items WHERE source = 'cn_eastmoney_fastnews'",
+        )
         latest_scored_news = _table_max(
             conn,
             "SELECT MAX(llm_scored_at) FROM news_feed_items WHERE llm_scored_at IS NOT NULL AND llm_scored_at <> ''",
@@ -3461,6 +3481,13 @@ def query_source_monitor():
         conn.close()
 
     eastmoney_running, eastmoney_pid = _pid_running(TMP_DIR / "cn_eastmoney_10s.pid")
+    eastmoney_data_age = _age_seconds_from_dt(_parse_iso_datetime(latest_eastmoney_fetch or latest_eastmoney_news))
+    eastmoney_status = _combine_process_data_status(
+        process_running=eastmoney_running,
+        data_age_seconds=eastmoney_data_age,
+        ok_within=1800,
+        warn_within=3 * 3600,
+    )
     ws_health = _fetch_local_json("http://127.0.0.1:8010/health", timeout_s=2)
     redis_client = get_redis_client()
     latest_ws_broadcast = ""
@@ -3518,9 +3545,14 @@ def query_source_monitor():
             "key": "cn_eastmoney_fastnews",
             "name": "国内新闻-东方财富",
             "category": "新闻",
-            "status": "ok" if eastmoney_running else "error",
-            "last_update": latest_eastmoney_news or "",
-            "detail": f"10秒循环抓取，进程PID={eastmoney_pid or '-'}",
+            "status": eastmoney_status,
+            "last_update": latest_eastmoney_fetch or latest_eastmoney_news or "",
+            "detail": (
+                f"10秒循环抓取，进程PID={eastmoney_pid or '-'}，"
+                f"进程={'在线' if eastmoney_running else '离线'}，"
+                f"最近入库年龄={int(eastmoney_data_age) if eastmoney_data_age is not None else '-'}秒，"
+                f"最近新闻发布时间={latest_eastmoney_news or '-'}"
+            ),
             "rows": None,
         },
         {
@@ -3800,6 +3832,58 @@ def query_database_audit(refresh: bool = False):
     }
 
 
+def query_database_health():
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        payload = {
+            "daily_latest": conn.execute("SELECT MAX(trade_date) FROM stock_daily_prices").fetchone()[0],
+            "minline_latest": conn.execute("SELECT MAX(trade_date) FROM stock_minline").fetchone()[0],
+            "scores_latest": conn.execute("SELECT MAX(score_date) FROM stock_scores_daily").fetchone()[0],
+            "miss_events": conn.execute(
+                "SELECT COUNT(*) FROM stock_codes s WHERE s.list_status='L' "
+                "AND NOT EXISTS (SELECT 1 FROM stock_events e WHERE e.ts_code=s.ts_code)"
+            ).fetchone()[0],
+            "miss_governance": conn.execute(
+                "SELECT COUNT(*) FROM stock_codes s WHERE s.list_status='L' "
+                "AND NOT EXISTS (SELECT 1 FROM company_governance g WHERE g.ts_code=s.ts_code)"
+            ).fetchone()[0],
+            "miss_flow": conn.execute(
+                "SELECT COUNT(*) FROM stock_codes s WHERE s.list_status='L' "
+                "AND NOT EXISTS (SELECT 1 FROM capital_flow_stock c WHERE c.ts_code=s.ts_code)"
+            ).fetchone()[0],
+            "miss_minline": conn.execute(
+                "SELECT COUNT(*) FROM stock_codes s WHERE s.list_status='L' "
+                "AND NOT EXISTS (SELECT 1 FROM stock_minline m WHERE m.ts_code=s.ts_code)"
+            ).fetchone()[0],
+            "news_unscored": conn.execute(
+                "SELECT COUNT(*) FROM news_feed_items WHERE COALESCE(llm_finance_importance,'')=''"
+            ).fetchone()[0],
+            "stock_news_unscored": conn.execute(
+                "SELECT COUNT(*) FROM stock_news_items WHERE COALESCE(llm_finance_importance,'')=''"
+            ).fetchone()[0],
+            "news_dup_link": conn.execute(
+                "SELECT COUNT(*) FROM (SELECT source, COALESCE(link,''), COUNT(*) c "
+                "FROM news_feed_items GROUP BY source, COALESCE(link,'') "
+                "HAVING COALESCE(link,'')<>'' AND COUNT(*)>1) t"
+            ).fetchone()[0],
+            "stock_news_dup_link": conn.execute(
+                "SELECT COUNT(*) FROM (SELECT ts_code, COALESCE(link,''), COUNT(*) c "
+                "FROM stock_news_items GROUP BY ts_code, COALESCE(link,'') "
+                "HAVING COALESCE(link,'')<>'' AND COUNT(*)>1) t"
+            ).fetchone()[0],
+            "macro_publish_empty": conn.execute(
+                "SELECT COUNT(*) FROM macro_series WHERE COALESCE(publish_date,'')=''"
+            ).fetchone()[0],
+            "chatlog_dup_key": conn.execute(
+                "SELECT COUNT(*) FROM (SELECT message_key, COUNT(*) c FROM wechat_chatlog_clean_items "
+                "GROUP BY message_key HAVING COUNT(*)>1) t"
+            ).fetchone()[0],
+        }
+    finally:
+        conn.close()
+    return payload
+
+
 def _safe_float(v):
     if v is None:
         return None
@@ -3974,6 +4058,7 @@ def query_dashboard():
             "daily_summary_error": sum(1 for x in daily_summary_jobs if x.get("status") == "error"),
         },
         "orchestrator_jobs": query_job_runs(limit=8).get("items", []),
+        "database_health": query_database_health(),
         "top_scores": top_scores,
         "candidate_pool_top": candidate_pool_top,
         "recent_daily_summaries": recent_daily_summaries,
@@ -5970,6 +6055,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                 payload = query_database_audit(refresh=refresh)
             except Exception as exc:  # pragma: no cover
                 self._send_json({"error": f"审核报告查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/db-health":
+            try:
+                payload = query_database_health()
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"数据库健康查询失败: {exc}"}, status=500)
                 return
             self._send_json(payload)
             return

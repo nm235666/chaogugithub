@@ -168,7 +168,9 @@ def release_lock(lock_info) -> None:
     client, key, token = lock_info
     try:
         current = client.get(key)
-        if current and current.decode("utf-8", errors="ignore") == token:
+        if isinstance(current, bytes):
+            current = current.decode("utf-8", errors="ignore")
+        if current and current == token:
             client.delete(key)
     except Exception:
         pass

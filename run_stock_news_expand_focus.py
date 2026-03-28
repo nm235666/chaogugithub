@@ -51,31 +51,31 @@ def load_targets(conn, args: argparse.Namespace) -> list[str]:
 
     rows = conn.execute(
         """
-        SELECT candidate_name
+        SELECT candidate_name, ts_code
         FROM chatroom_stock_candidate_pool
         WHERE candidate_type IN ('股票', '标的')
-        ORDER BY bull_room_count DESC NULLS LAST, mention_count DESC NULLS LAST, candidate_name
+        ORDER BY bullish_room_count DESC NULLS LAST, mention_count DESC NULLS LAST, candidate_name
         LIMIT ?
         """,
         (args.limit_candidates,),
     ).fetchall()
     for row in rows:
         name = str(row[0] or "").strip()
-        if not name:
-            continue
-        resolved = conn.execute(
-            """
-            SELECT ts_code
-            FROM stock_codes
-            WHERE name = ?
-            ORDER BY CASE list_status WHEN 'L' THEN 0 ELSE 1 END, ts_code
-            LIMIT 1
-            """,
-            (name,),
-        ).fetchone()
-        if not resolved:
-            continue
-        code = str(resolved[0]).strip().upper()
+        direct_code = str(row[1] or "").strip().upper()
+        code = direct_code
+        if not code and name:
+            resolved = conn.execute(
+                """
+                SELECT ts_code
+                FROM stock_codes
+                WHERE name = ?
+                ORDER BY CASE list_status WHEN 'L' THEN 0 ELSE 1 END, ts_code
+                LIMIT 1
+                """,
+                (name,),
+            ).fetchone()
+            if resolved:
+                code = str(resolved[0]).strip().upper()
         if code and code not in seen:
             seen.add(code)
             targets.append(code)

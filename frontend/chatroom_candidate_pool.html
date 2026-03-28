@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>股票候选池</title>
+    <title>股票候选池（近7天累计）</title>
     <style>
       :root {
         --bg: #f8fafc;
@@ -109,8 +109,8 @@
       <div class="panel">
         <div class="topbar">
           <div>
-            <h1>股票候选池</h1>
-            <div class="sub">将群聊里的看多看空标的与主题做聚合，形成一个便于追踪的候选池。你可以从这里看到哪些方向被更多群聊持续看多或看空。</div>
+            <h1>股票候选池（近7天累计）</h1>
+            <div class="sub">将近 7 天群聊里的看多看空标的与主题做累计聚合，形成一个便于追踪的候选池。你可以从这里看到哪些方向在最近一周被更多群聊持续看多或看空。</div>
           </div>
           <div class="nav">
             <a href="/index.html">首页</a>
@@ -232,9 +232,10 @@
           return `
             <article class="list-row">
               <div class="cell cell-name">
-                <div class="title">${escapeHtml(it.candidate_name || '')}</div>
+                <div class="title">${escapeHtml(it.display_name || it.candidate_name || '')}</div>
                 <div class="badges">
                   <span class="badge badge-type">${escapeHtml(it.candidate_type || '未知')}</span>
+                  ${it.ts_code ? `<span class="badge">${escapeHtml(it.ts_code)}</span>` : ''}
                 </div>
               </div>
               <div class="cell">

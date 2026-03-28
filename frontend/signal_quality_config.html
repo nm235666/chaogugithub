@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>信号质量配置</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --primary: #0f766e;
+        --primary-dark: #115e59;
+        --border: #d7dee6;
+        --ok: #166534;
+        --warn: #b45309;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 0% 0%, #dcfce7 0%, transparent 34%),
+          radial-gradient(circle at 100% 100%, #dbeafe 0%, transparent 42%),
+          var(--bg);
+      }
+      .wrap { max-width: 1420px; margin: 24px auto 40px; padding: 0 16px; }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: 0 12px 30px rgba(15,23,42,.06);
+        padding: 18px;
+      }
+      .topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+      h1 { margin:0; font-size:28px; }
+      .sub { margin-top:6px; color:var(--muted); font-size:14px; line-height:1.75; }
+      .nav { display:flex; gap:10px; flex-wrap:wrap; }
+      .nav a { color:var(--primary); text-decoration:none; font-size:14px; }
+      .toolbar { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }
+      button, .ghost-btn {
+        height:40px; padding:0 14px; border-radius:999px; border:1px solid var(--border);
+        background:#fff; color:#334155; font-size:13px; font-weight:700; cursor:pointer;
+      }
+      button.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+      .meta { margin-top:12px; color:var(--muted); font-size:13px; min-height:18px; }
+      .stats { margin-top:16px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+      .stat-card { border:1px solid var(--border); border-radius:14px; padding:14px; background:linear-gradient(180deg,#fff 0%,#f8fafc 100%); }
+      .stat-label { color:var(--muted); font-size:12px; }
+      .stat-value { margin-top:6px; font-size:26px; font-weight:700; }
+      .section { margin-top:18px; border:1px solid var(--border); border-radius:16px; overflow:hidden; background:#fff; }
+      .section-head { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:14px 16px; background:#f8fafc; }
+      .section-title { font-size:17px; font-weight:700; }
+      .section-desc { font-size:12px; color:var(--muted); }
+      .table-wrap { overflow:auto; }
+      table { width:100%; border-collapse:collapse; min-width:980px; }
+      th, td { padding:10px 12px; border-top:1px solid var(--border); text-align:left; vertical-align:top; font-size:13px; }
+      th { color:#475569; font-size:12px; background:#fbfdff; }
+      tr:nth-child(even) td { background:#fcfdff; }
+      input[type="text"], select, textarea {
+        width:100%; border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+        font-size:13px; color:var(--text); background:#fff;
+      }
+      textarea { resize:vertical; min-height:40px; }
+      input[type="checkbox"] { transform:scale(1.1); }
+      .row-actions { display:flex; gap:8px; align-items:center; }
+      .mini-btn {
+        height:30px; padding:0 10px; border-radius:999px; border:1px solid var(--border);
+        background:#fff; cursor:pointer; font-size:12px; font-weight:700; color:#475569;
+      }
+      .mini-btn.danger { color:var(--danger); border-color:#fecaca; background:#fff7f7; }
+      .hint { margin-top:10px; color:var(--muted); font-size:12px; line-height:1.7; }
+      .ok { color:var(--ok); }
+      .warn { color:var(--warn); }
+      @media (max-width: 1100px) {
+        .stats { grid-template-columns:1fr 1fr; }
+      }
+      @media (max-width: 720px) {
+        .stats { grid-template-columns:1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <div class="topbar">
+          <div>
+            <h1>信号质量配置</h1>
+            <div class="sub">把“什么该压制、什么该放行、阈值该设多少”前置成可配置项。这里改完后，可以回到“信号质量审计”对照看是否把噪音压下去了。</div>
+          </div>
+          <div class="nav">
+            <a href="/index.html">首页</a>
+            <a href="/investment_signals.html">投资信号总览</a>
+            <a href="/signal_audit.html">信号质量审计</a>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <button type="button" id="reload_btn">重新加载</button>
+          <button type="button" id="add_rule_btn">新增规则</button>
+          <button type="button" id="add_block_btn">新增黑名单</button>
+          <button type="button" class="primary" id="save_btn">保存全部配置</button>
+        </div>
+
+        <div class="meta" id="meta">准备加载信号质量配置...</div>
+
+        <div class="stats">
+          <div class="stat-card"><div class="stat-label">规则数</div><div class="stat-value" id="rule_count">-</div></div>
+          <div class="stat-card"><div class="stat-label">启用规则</div><div class="stat-value" id="rule_enabled_count">-</div></div>
+          <div class="stat-card"><div class="stat-label">黑名单项</div><div class="stat-value" id="block_count">-</div></div>
+          <div class="stat-card"><div class="stat-label">启用黑名单项</div><div class="stat-value" id="block_enabled_count">-</div></div>
+        </div>
+
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-title">规则参数</div>
+              <div class="section-desc">适合调节阈值、权重、开关。改完后会直接影响后续信号重建逻辑。</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>启用</th>
+                  <th>规则键</th>
+                  <th>值</th>
+                  <th>值类型</th>
+                  <th>分类</th>
+                  <th>说明</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="rules_tbody"></tbody>
+            </table>
+          </div>
+          <div class="hint">常用值类型：`number`、`bool`、`text`。若只是临时试验，建议优先改 `enabled` 或小幅调整数值，不要一次改太多项。</div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-title">映射黑名单</div>
+              <div class="section-desc">用于拦截“主题词被误认成股票”或明显不该进股票信号榜的词。</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>启用</th>
+                  <th>词项</th>
+                  <th>目标类型</th>
+                  <th>匹配方式</th>
+                  <th>来源</th>
+                  <th>原因</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="block_tbody"></tbody>
+            </table>
+          </div>
+          <div class="hint">建议先把“宏观主题词、海外大票、宽泛市场词”挡住，再看是否还需要补更细的别名归一。</div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://127.0.0.1:8077'
+        : `http://${window.location.hostname}:8077`;
+
+      const state = { rules: [], blocklist: [] };
+      const els = {
+        meta: document.getElementById('meta'),
+        ruleCount: document.getElementById('rule_count'),
+        ruleEnabledCount: document.getElementById('rule_enabled_count'),
+        blockCount: document.getElementById('block_count'),
+        blockEnabledCount: document.getElementById('block_enabled_count'),
+        rulesTbody: document.getElementById('rules_tbody'),
+        blockTbody: document.getElementById('block_tbody'),
+        reloadBtn: document.getElementById('reload_btn'),
+        addRuleBtn: document.getElementById('add_rule_btn'),
+        addBlockBtn: document.getElementById('add_block_btn'),
+        saveBtn: document.getElementById('save_btn'),
+      };
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function updateStats() {
+        els.ruleCount.textContent = state.rules.length;
+        els.ruleEnabledCount.textContent = state.rules.filter((x) => x.enabled).length;
+        els.blockCount.textContent = state.blocklist.length;
+        els.blockEnabledCount.textContent = state.blocklist.filter((x) => x.enabled).length;
+      }
+
+      function renderRules() {
+        if (!state.rules.length) {
+          els.rulesTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;">当前没有规则</td></tr>';
+          return;
+        }
+        els.rulesTbody.innerHTML = state.rules.map((item, idx) => `
+          <tr>
+            <td><input type="checkbox" data-kind="rule-enabled" data-index="${idx}" ${item.enabled ? 'checked' : ''}></td>
+            <td><input type="text" data-kind="rule-key" data-index="${idx}" value="${escapeHtml(item.rule_key)}"></td>
+            <td><input type="text" data-kind="rule-value" data-index="${idx}" value="${escapeHtml(item.rule_value)}"></td>
+            <td>
+              <select data-kind="rule-type" data-index="${idx}">
+                <option value="number" ${item.value_type === 'number' ? 'selected' : ''}>数值</option>
+                <option value="bool" ${item.value_type === 'bool' ? 'selected' : ''}>布尔</option>
+                <option value="text" ${item.value_type === 'text' ? 'selected' : ''}>文本</option>
+              </select>
+            </td>
+            <td><input type="text" data-kind="rule-category" data-index="${idx}" value="${escapeHtml(item.category)}"></td>
+            <td><textarea data-kind="rule-description" data-index="${idx}">${escapeHtml(item.description)}</textarea></td>
+            <td><div class="row-actions"><button type="button" class="mini-btn danger" data-kind="rule-remove" data-index="${idx}">移除</button></div></td>
+          </tr>
+        `).join('');
+      }
+
+      function renderBlocklist() {
+        if (!state.blocklist.length) {
+          els.blockTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;">当前没有黑名单</td></tr>';
+          return;
+        }
+        els.blockTbody.innerHTML = state.blocklist.map((item, idx) => `
+          <tr>
+            <td><input type="checkbox" data-kind="block-enabled" data-index="${idx}" ${item.enabled ? 'checked' : ''}></td>
+            <td><input type="text" data-kind="block-term" data-index="${idx}" value="${escapeHtml(item.term)}"></td>
+            <td>
+              <select data-kind="block-target" data-index="${idx}">
+                <option value="stock" ${item.target_type === 'stock' ? 'selected' : ''}>股票</option>
+                <option value="theme" ${item.target_type === 'theme' ? 'selected' : ''}>主题</option>
+                <option value="all" ${item.target_type === 'all' ? 'selected' : ''}>全部</option>
+              </select>
+            </td>
+            <td>
+              <select data-kind="block-match" data-index="${idx}">
+                <option value="exact" ${item.match_type === 'exact' ? 'selected' : ''}>精确</option>
+                <option value="contains" ${item.match_type === 'contains' ? 'selected' : ''}>包含</option>
+                <option value="prefix" ${item.match_type === 'prefix' ? 'selected' : ''}>前缀</option>
+              </select>
+            </td>
+            <td><input type="text" data-kind="block-source" data-index="${idx}" value="${escapeHtml(item.source)}"></td>
+            <td><textarea data-kind="block-reason" data-index="${idx}">${escapeHtml(item.reason)}</textarea></td>
+            <td><div class="row-actions"><button type="button" class="mini-btn danger" data-kind="block-remove" data-index="${idx}">移除</button></div></td>
+          </tr>
+        `).join('');
+      }
+
+      function renderAll() {
+        updateStats();
+        renderRules();
+        renderBlocklist();
+      }
+
+      function normalizeRule(item = {}) {
+        return {
+          rule_key: String(item.rule_key || '').trim(),
+          rule_value: item.rule_value == null ? '' : String(item.rule_value),
+          value_type: String(item.value_type || 'number').trim() || 'number',
+          category: String(item.category || '').trim(),
+          description: String(item.description || '').trim(),
+          enabled: !!Number(item.enabled ?? 1) || item.enabled === true,
+        };
+      }
+
+      function normalizeBlock(item = {}) {
+        return {
+          id: item.id ?? null,
+          term: String(item.term || '').trim(),
+          target_type: String(item.target_type || 'stock').trim() || 'stock',
+          match_type: String(item.match_type || 'exact').trim() || 'exact',
+          source: String(item.source || 'signal_quality_admin').trim() || 'signal_quality_admin',
+          reason: String(item.reason || '').trim(),
+          enabled: !!Number(item.enabled ?? 1) || item.enabled === true,
+        };
+      }
+
+      function collectFromDom() {
+        state.rules = state.rules.map((item, idx) => normalizeRule({
+          ...item,
+          enabled: document.querySelector(`[data-kind="rule-enabled"][data-index="${idx}"]`)?.checked ? 1 : 0,
+          rule_key: document.querySelector(`[data-kind="rule-key"][data-index="${idx}"]`)?.value || '',
+          rule_value: document.querySelector(`[data-kind="rule-value"][data-index="${idx}"]`)?.value || '',
+          value_type: document.querySelector(`[data-kind="rule-type"][data-index="${idx}"]`)?.value || 'number',
+          category: document.querySelector(`[data-kind="rule-category"][data-index="${idx}"]`)?.value || '',
+          description: document.querySelector(`[data-kind="rule-description"][data-index="${idx}"]`)?.value || '',
+        })).filter((item) => item.rule_key);
+
+        state.blocklist = state.blocklist.map((item, idx) => normalizeBlock({
+          ...item,
+          enabled: document.querySelector(`[data-kind="block-enabled"][data-index="${idx}"]`)?.checked ? 1 : 0,
+          term: document.querySelector(`[data-kind="block-term"][data-index="${idx}"]`)?.value || '',
+          target_type: document.querySelector(`[data-kind="block-target"][data-index="${idx}"]`)?.value || 'stock',
+          match_type: document.querySelector(`[data-kind="block-match"][data-index="${idx}"]`)?.value || 'exact',
+          source: document.querySelector(`[data-kind="block-source"][data-index="${idx}"]`)?.value || 'signal_quality_admin',
+          reason: document.querySelector(`[data-kind="block-reason"][data-index="${idx}"]`)?.value || '',
+        })).filter((item) => item.term);
+      }
+
+      async function loadConfig() {
+        els.meta.textContent = '正在加载信号质量配置...';
+        try {
+          const resp = await fetch(`${API_BASE}/api/signal-quality/config`);
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || '请求失败');
+          state.rules = (data.rules || []).map(normalizeRule);
+          state.blocklist = (data.blocklist || []).map(normalizeBlock);
+          renderAll();
+          els.meta.innerHTML = `<span class="ok">配置已加载</span> | 生成时间(UTC)：${escapeHtml(data.generated_at || '-')}`;
+        } catch (err) {
+          els.meta.innerHTML = `<span class="warn">加载失败</span>：${escapeHtml(err.message)}`;
+        }
+      }
+
+      async function saveAll() {
+        collectFromDom();
+        renderAll();
+        els.meta.textContent = '正在保存规则与黑名单...';
+        try {
+          const [ruleResp, blockResp] = await Promise.all([
+            fetch(`${API_BASE}/api/signal-quality/rules/save`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: state.rules }),
+            }),
+            fetch(`${API_BASE}/api/signal-quality/blocklist/save`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: state.blocklist }),
+            }),
+          ]);
+          const ruleData = await ruleResp.json();
+          const blockData = await blockResp.json();
+          if (!ruleResp.ok) throw new Error(ruleData.error || '规则保存失败');
+          if (!blockResp.ok) throw new Error(blockData.error || '黑名单保存失败');
+          els.meta.innerHTML = `<span class="ok">保存成功</span> | 规则 ${ruleData.affected || 0} 条 | 黑名单 ${blockData.affected || 0} 条`;
+          await loadConfig();
+        } catch (err) {
+          els.meta.innerHTML = `<span class="warn">保存失败</span>：${escapeHtml(err.message)}`;
+        }
+      }
+
+      document.addEventListener('click', (event) => {
+        const target = event.target;
+        const kind = target?.getAttribute?.('data-kind');
+        const index = Number(target?.getAttribute?.('data-index'));
+        if (!kind || Number.isNaN(index)) return;
+        if (kind === 'rule-remove') {
+          collectFromDom();
+          state.rules.splice(index, 1);
+          renderAll();
+        }
+        if (kind === 'block-remove') {
+          collectFromDom();
+          state.blocklist.splice(index, 1);
+          renderAll();
+        }
+      });
+
+      els.reloadBtn.addEventListener('click', loadConfig);
+      els.addRuleBtn.addEventListener('click', () => {
+        collectFromDom();
+        state.rules.push(normalizeRule({
+          rule_key: '',
+          rule_value: '',
+          value_type: 'number',
+          category: 'manual',
+          description: '',
+          enabled: 1,
+        }));
+        renderAll();
+      });
+      els.addBlockBtn.addEventListener('click', () => {
+        collectFromDom();
+        state.blocklist.push(normalizeBlock({
+          term: '',
+          target_type: 'stock',
+          match_type: 'exact',
+          source: 'signal_quality_admin',
+          reason: '',
+          enabled: 1,
+        }));
+        renderAll();
+      });
+      els.saveBtn.addEventListener('click', saveAll);
+
+      loadConfig();
+    </script>
+  </body>
+</html>

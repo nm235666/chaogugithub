@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import math
+import re
 import sys
 import time
 from datetime import date, datetime, timezone
@@ -18,7 +20,7 @@ import pandas as pd
 import akshare as ak
 
 
-DEFAULT_SPECS = [
+DEFAULT_CHINA_SPECS = [
     {
         "api": "macro_china_cpi_yearly",
         "freq": "M",
@@ -98,6 +100,25 @@ DEFAULT_SPECS = [
     },
 ]
 
+EXCLUDED_AUTO_APIS = {
+    "macro_info_ws",
+    "macro_cnbs",
+    "macro_stock_finance",
+    "macro_bank_china_interest_rate",
+    "macro_rmb_deposit",
+    "macro_rmb_loan",
+}
+
+PERIOD_CANDIDATES = ["日期", "时间", "月份", "月度", "季度", "date", "period", "month", "year"]
+PUBLISH_CANDIDATES = ["发布日期", "公布时间", "公布日期", "发布日", "日期"]
+ITEM_CANDIDATES = ["商品", "指标", "名称", "项目", "item", "name"]
+METRIC_ALIASES = {
+    "今值": "current",
+    "现值": "current",
+    "预测值": "forecast",
+    "前值": "previous",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="使用 AKShare 回填宏观数据到 macro_series")
@@ -109,10 +130,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--table-name", default="macro_series", help="目标表名")
     parser.add_argument(
         "--apis",
-        default=",".join(spec["api"] for spec in DEFAULT_SPECS),
-        help="要抓取的 AKShare 宏观接口，逗号分隔",
+        default="",
+        help="要抓取的 AKShare 宏观接口，逗号分隔；留空则按 china + overseas 自动组合",
     )
     parser.add_argument("--max-apis", type=int, default=0, help="最多处理多少个接口，0=全部")
+    parser.add_argument("--china-only", action="store_true", help="只抓中国宏观接口")
+    parser.add_argument("--overseas-only", action="store_true", help="只抓海外宏观接口")
     parser.add_argument("--retry", type=int, default=2, help="单接口失败重试次数")
     parser.add_argument("--backoff", type=float, default=1.0, help="失败后的指数退避基数秒")
     parser.add_argument("--pause", type=float, default=0.2, help="每个接口之间暂停秒数")
@@ -205,6 +228,97 @@ def normalize_publish_date(value) -> str:
     return text
 
 
+def slugify(text: str) -> str:
+    value = str(text or "").strip().lower()
+    value = value.replace("%", "pct")
+    value = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    return value or "value"
+
+
+def infer_freq(api_name: str, df: pd.DataFrame, period_col: str) -> str:
+    lower = api_name.lower()
+    if any(token in lower for token in ["quarterly", "_qoq", "_quarter", "_gdp", "employment_change_qoq"]):
+        return "Q"
+    if any(token in lower for token in ["weekly", "_week", "_api_crude_stock", "_eia_crude_rate", "_initial_jobless", "_rig_count"]):
+        return "W"
+    if any(token in lower for token in ["daily", "_bdi", "_bpi", "_bci", "_bcti", "_sox_index", "_lme_", "_sentiment"]):
+        return "D"
+
+    sample_values = []
+    if period_col and period_col in df.columns:
+        for value in df[period_col].head(20).tolist():
+            if value is None:
+                continue
+            sample_values.append(str(value))
+    if any("季度" in x or "Q" in x for x in sample_values):
+        return "Q"
+    if any(("年" in x and "月" in x) for x in sample_values):
+        return "M"
+    return "M"
+
+
+def discover_overseas_api_names() -> list[str]:
+    names: list[str] = []
+    for name in dir(ak):
+        if not name.startswith("macro_"):
+            continue
+        if name.startswith("macro_china"):
+            continue
+        if name in EXCLUDED_AUTO_APIS:
+            continue
+        fn = getattr(ak, name, None)
+        if not callable(fn):
+            continue
+        try:
+            sig = inspect.signature(fn)
+        except Exception:
+            continue
+        required = [
+            p for p in sig.parameters.values()
+            if p.default is inspect._empty
+            and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+        ]
+        if required:
+            continue
+        names.append(name)
+    return sorted(names)
+
+
+def build_auto_spec(api_name: str, df: pd.DataFrame) -> dict | None:
+    if df is None or df.empty:
+        return None
+
+    period_col = next((c for c in PERIOD_CANDIDATES if c in df.columns), "")
+    if not period_col:
+        return None
+    publish_col = next((c for c in PUBLISH_CANDIDATES if c in df.columns), "")
+    item_col = next((c for c in ITEM_CANDIDATES if c in df.columns), "")
+
+    metrics: list[tuple[str, str, str]] = []
+    for col in df.columns:
+        if col in {period_col, publish_col, item_col}:
+            continue
+        series = pd.to_numeric(df[col], errors="coerce")
+        if not series.notna().any():
+            continue
+        metric_code = METRIC_ALIASES.get(col, slugify(col))
+        unit = "pct" if any(token in str(col) for token in ["率", "%", "pct"]) else ""
+        metrics.append((col, metric_code, unit))
+
+    if not metrics:
+        return None
+
+    return {
+        "api": api_name,
+        "freq": infer_freq(api_name, df, period_col),
+        "period_col": period_col,
+        "publish_col": publish_col,
+        "item_col": item_col,
+        "metrics": metrics,
+    }
+
+
 def build_rows_from_spec(spec: dict, df: pd.DataFrame) -> list[tuple]:
     rows: list[tuple] = []
     if df is None or df.empty:
@@ -285,13 +399,27 @@ def fetch_with_retry(api_name: str, retry: int, backoff: float) -> pd.DataFrame:
 def main() -> int:
     args = parse_args()
     db_path = Path(args.db_path).resolve()
-    spec_map = {spec["api"]: spec for spec in DEFAULT_SPECS}
-    api_names = [x.strip() for x in args.apis.split(",") if x.strip()]
+    china_map = {spec["api"]: spec for spec in DEFAULT_CHINA_SPECS}
+    overseas_names = discover_overseas_api_names()
+
+    if args.china_only and args.overseas_only:
+        print("不能同时传 --china-only 和 --overseas-only")
+        return 1
+
+    if args.apis.strip():
+        api_names = [x.strip() for x in args.apis.split(",") if x.strip()]
+    else:
+        api_names = []
+        if not args.overseas_only:
+            api_names.extend(spec["api"] for spec in DEFAULT_CHINA_SPECS)
+        if not args.china_only:
+            api_names.extend(overseas_names)
+
     if args.max_apis > 0:
         api_names = api_names[: args.max_apis]
     if not api_names:
         print("没有可处理的接口。")
-        return 1
+        return 2
 
     conn = sqlite3.connect(db_path)
     try:
@@ -301,12 +429,12 @@ def main() -> int:
         failed = 0
 
         for idx, api_name in enumerate(api_names, start=1):
-            spec = spec_map.get(api_name)
-            if not spec:
-                print(f"[{idx}/{len(api_names)}] {api_name}: 未配置，跳过")
-                continue
             try:
                 df = fetch_with_retry(api_name, retry=args.retry, backoff=args.backoff)
+                spec = china_map.get(api_name) or build_auto_spec(api_name, df)
+                if spec is None:
+                    print(f"[{idx}/{len(api_names)}] {api_name}: 无法识别字段结构，跳过")
+                    continue
                 rows = build_rows_from_spec(spec, df)
                 written = upsert_rows(conn, args.table_name, rows)
                 total_written += written

@@ -64,6 +64,22 @@
       button { background: var(--primary); color: #fff; border: none; cursor: pointer; }
       button:hover { background: var(--primary-dark); }
       .meta { margin: 10px 0; color: var(--muted); font-size: 13px; min-height: 18px; }
+      .freshness {
+        margin: 6px 0 0;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: #475569;
+      }
+      .freshness-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid #d1d5db;
+        background: #fff;
+      }
       .realtime {
         margin: 8px 0 0;
         display: flex;
@@ -133,6 +149,9 @@
       .badge-impact-up { background: #dcfce7; color: #14532d; border-color: #bbf7d0; }
       .badge-impact-down { background: #fee2e2; color: #7f1d1d; border-color: #fecaca; }
       .badge-impact-neutral { background: #f1f5f9; color: #334155; border-color: #e2e8f0; }
+      .badge-sentiment-bull { background: #14532d; color: #fff; border-color: #14532d; }
+      .badge-sentiment-bear { background: #7f1d1d; color: #fff; border-color: #7f1d1d; }
+      .badge-sentiment-neutral { background: #475569; color: #fff; border-color: #475569; }
       .pager {
         margin-top: 12px;
         display: flex;
@@ -180,6 +199,7 @@
         </div>
 
         <div class="meta" id="meta">准备就绪</div>
+        <div class="freshness" id="freshness_bar"></div>
         <div class="realtime">
           <span class="realtime-dot" id="rt_dot"></span>
           <span id="rt_meta">实时流: 未连接</span>
@@ -224,6 +244,7 @@
         search_btn: document.getElementById('search_btn'),
         importance_filter: document.getElementById('importance_filter'),
         meta: document.getElementById('meta'),
+        freshness_bar: document.getElementById('freshness_bar'),
         list: document.getElementById('list'),
         rt_dot: document.getElementById('rt_dot'),
         rt_meta: document.getElementById('rt_meta'),
@@ -262,12 +283,34 @@
             <div class="impact-area">${renderImpacts(it.llm_impacts_json)}</div>
             <div class="badge-area">
               <span class="badge badge-importance-${escapeHtml(it.llm_finance_importance || '极低')}">重要程度: ${escapeHtml(it.llm_finance_importance || '未评')}</span>
+              <span class="badge ${sentimentBadgeClass(it.llm_sentiment_label)}">情绪: ${escapeHtml(it.llm_sentiment_label || '未评')}</span>
               <span class="badge ${it.llm_scored_at ? 'badge-status-ok' : 'badge-status-pending'}">${it.llm_scored_at ? '已评分' : '待评分'}</span>
               <span class="badge">系统: ${it.llm_system_score ?? '-'}</span>
               <span class="badge">财经影响: ${it.llm_finance_impact_score ?? '-'}</span>
             </div>
           </article>
         `).join('');
+      }
+
+      async function loadFreshness() {
+        try {
+          const res = await fetch(`${API_BASE}/api/source-monitor`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '请求失败');
+          const items = (data.sources || []).filter((x) => ['cn_sina_7x24', 'cn_eastmoney_fastnews', 'news_scoring'].includes(x.key));
+          els.freshness_bar.innerHTML = items.map((it) => `
+            <span class="freshness-badge">${escapeHtml(it.name)}: ${escapeHtml(it.last_update || '暂无')}</span>
+          `).join('');
+        } catch (_) {
+          els.freshness_bar.innerHTML = '';
+        }
+      }
+
+      function sentimentBadgeClass(label) {
+        const text = String(label || '').trim();
+        if (text === '偏多') return 'badge-sentiment-bull';
+        if (text === '偏空') return 'badge-sentiment-bear';
+        return 'badge-sentiment-neutral';
       }
 
       function renderImpacts(rawJson) {
@@ -434,6 +477,7 @@
       });
 
       fetchData();
+      loadFreshness();
       connectRealtime();
     </script>
   </body>

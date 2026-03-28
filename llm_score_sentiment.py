@@ -9,6 +9,7 @@ from pathlib import Path
 
 import db_compat as sqlite3
 from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
+from realtime_streams import publish_app_event
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
@@ -215,12 +216,18 @@ def main():
     model = normalize_model_name(args.model)
     temperature = normalize_temperature_for_model(model, args.temperature)
     base_url, api_key = resolve_provider(model, args.base_url, args.api_key)
+    publish_app_event(
+        event="llm_sentiment_update",
+        payload={"status": "running", "target": args.target, "model": model, "limit": int(args.limit)},
+        producer="llm_score_sentiment.py",
+    )
     conn = sqlite3.connect(args.db_path)
     try:
         conn.row_factory = sqlite3.Row
         targets = ["news_feed_items", "stock_news_items"] if args.target == "all" else (
             ["news_feed_items"] if args.target == "news" else ["stock_news_items"]
         )
+        summary = {}
         for table_name in targets:
             result = score_table(
                 conn,
@@ -234,11 +241,25 @@ def main():
                 retry=args.retry,
                 sleep_s=args.sleep,
             )
+            summary[table_name] = result
             print(f"{table_name}: ok={result['ok']} failed={result['failed']} total={result['total']}")
+        publish_app_event(
+            event="llm_sentiment_update",
+            payload={"status": "done", "target": args.target, "model": model, "summary": summary},
+            producer="llm_score_sentiment.py",
+        )
         return 0
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        publish_app_event(
+            event="llm_sentiment_update",
+            payload={"status": "error", "error": str(exc)},
+            producer="llm_score_sentiment.py",
+        )
+        raise

@@ -109,6 +109,108 @@
         cursor: not-allowed;
       }
       .markdown-body { line-height: 1.9; color: #1f2937; font-size: 15px; }
+      .logic-board {
+        margin-bottom: 14px;
+        padding: 14px;
+        border: 1px solid #dbe4ec;
+        border-radius: 14px;
+        background:
+          linear-gradient(180deg, #f8fffe 0%, #f8fafc 100%);
+      }
+      .logic-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .logic-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .logic-sub {
+        font-size: 12px;
+        color: #64748b;
+      }
+      .logic-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .logic-summary-card {
+        border: 1px solid #dbe4ec;
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+      .logic-summary-label {
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .logic-summary-value {
+        font-size: 13px;
+        color: #0f172a;
+        line-height: 1.7;
+        white-space: pre-wrap;
+      }
+      .logic-chain-list {
+        display: grid;
+        gap: 10px;
+      }
+      .logic-chain-card {
+        border: 1px solid #dbe4ec;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fff;
+      }
+      .logic-chain-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 8px;
+      }
+      .logic-chain-raw {
+        font-size: 12px;
+        color: #475569;
+        margin-top: 8px;
+        line-height: 1.7;
+      }
+      .logic-nodes {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .logic-node {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #ecfeff;
+        border: 1px solid #bae6fd;
+        color: #0f172a;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.45;
+      }
+      .logic-arrow {
+        color: #0f766e;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .logic-empty {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px dashed #cbd5e1;
+        color: #64748b;
+        font-size: 13px;
+      }
       .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
         margin: 10px 0 8px;
         line-height: 1.45;
@@ -132,6 +234,7 @@
         .controls { grid-template-columns: 1fr 1fr; }
         .grid { grid-template-columns: 1fr; }
         .detail, .list { min-height: auto; max-height: none; }
+        .logic-summary-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -187,6 +290,7 @@
             <div class="detail-toolbar">
               <div class="detail-title" id="detail_title">日报总结详情</div>
               <div class="detail-actions">
+                <button id="download_logic_btn" class="ghost-btn" disabled>下载链路图</button>
                 <button id="download_md_btn" class="ghost-btn" disabled>下载 Markdown</button>
                 <button id="download_image_btn" class="ghost-btn" disabled>下载为图片</button>
               </div>
@@ -230,6 +334,7 @@
         gen_model: document.getElementById('gen_model'),
         gen_btn: document.getElementById('gen_btn'),
         detail_title: document.getElementById('detail_title'),
+        download_logic_btn: document.getElementById('download_logic_btn'),
         download_md_btn: document.getElementById('download_md_btn'),
         download_image_btn: document.getElementById('download_image_btn'),
         meta: document.getElementById('meta'),
@@ -279,17 +384,201 @@
       function renderDetail(item) {
         if (!item) {
           els.detail_title.textContent = '日报总结详情';
+          els.download_logic_btn.disabled = true;
           els.download_md_btn.disabled = true;
           els.download_image_btn.disabled = true;
           els.detail.textContent = '请选择左侧一条日报总结查看内容。';
           return;
         }
         els.detail_title.textContent = `${item.summary_date || ''} | ${item.model || ''}`;
+        els.download_logic_btn.disabled = false;
         els.download_md_btn.disabled = false;
         els.download_image_btn.disabled = false;
         marked.setOptions({ gfm: true, breaks: true });
         const md = item.summary_markdown || '';
-        els.detail.innerHTML = marked.parse(md);
+        const derived = item.logic_view || deriveSummaryView(md);
+        els.detail.innerHTML = `
+          ${renderLogicBoard(derived, 'daily_summary_logic_board')}
+          <div class="markdown-rendered">${marked.parse(md)}</div>
+        `;
+      }
+
+      function cleanLine(line) {
+        return String(line || '')
+          .replace(/^\s*[-*]\s*/, '')
+          .replace(/^\s*\d+\.\s*/, '')
+          .replace(/^\s*>\s*/, '')
+          .trim();
+      }
+
+      function stripStrong(text) {
+        return String(text || '').replace(/\*\*/g, '').trim();
+      }
+
+      function normalizeChainText(text) {
+        return cleanLine(text)
+          .replace(/[“”"]/g, '')
+          .replace(/\s*[-=]*>\s*/g, ' -> ')
+          .replace(/\s*→\s*/g, ' -> ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function splitChainNodes(text) {
+        return normalizeChainText(text)
+          .split(/\s*->\s*/)
+          .map((part) => stripStrong(part).replace(/^事件发生\s*/, '').trim())
+          .filter(Boolean);
+      }
+
+      function parseHeadlineFromLine(line) {
+        const m = String(line || '').match(/^\d+\.\s*\*\*(.+?)\*\*/);
+        return m ? m[1].trim() : '';
+      }
+
+      function deriveSummaryView(markdown) {
+        const lines = String(markdown || '').split(/\r?\n/);
+        const chains = [];
+        const summary = {
+          conclusion: '',
+          focus: '',
+          risk: '',
+        };
+        let currentTitle = '';
+        let captureNextChain = false;
+
+        for (let i = 0; i < lines.length; i += 1) {
+          const raw = lines[i] || '';
+          const line = raw.trim();
+          const maybeTitle = parseHeadlineFromLine(line);
+          if (maybeTitle) currentTitle = maybeTitle;
+
+          const plain = stripStrong(cleanLine(line));
+          if (/^核心结论[:：]/.test(plain)) {
+            summary.conclusion = plain.replace(/^核心结论[:：]\s*/, '').trim();
+          } else if (/^最值得关注的方向[:：]/.test(plain)) {
+            summary.focus = plain.replace(/^最值得关注的方向[:：]\s*/, '').trim();
+          } else if (/^当前最需要警惕的风险[:：]/.test(plain)) {
+            summary.risk = plain.replace(/^当前最需要警惕的风险[:：]\s*/, '').trim();
+          }
+
+          if (/影响传导路径[:：]/.test(plain)) {
+            const inline = plain.replace(/^影响传导路径[:：]\s*/, '').trim();
+            if (inline) {
+              chains.push({
+                title: currentTitle || `链路 ${chains.length + 1}`,
+                raw: inline,
+                nodes: splitChainNodes(inline),
+              });
+              captureNextChain = false;
+            } else {
+              captureNextChain = true;
+            }
+            continue;
+          }
+
+          if (captureNextChain) {
+            const candidate = cleanLine(line);
+            if (!candidate || /^确定性判断[:：]/.test(stripStrong(candidate)) || /^可能受影响的市场[:：]/.test(stripStrong(candidate))) {
+              captureNextChain = false;
+              continue;
+            }
+            chains.push({
+              title: currentTitle || `链路 ${chains.length + 1}`,
+              raw: candidate,
+              nodes: splitChainNodes(candidate),
+            });
+            captureNextChain = false;
+          }
+        }
+
+        return {
+          summary,
+          chains: chains.filter((item) => item.nodes.length >= 2).slice(0, 8),
+        };
+      }
+
+      function renderLogicBoard(derived, boardId = '') {
+        const summary = derived?.summary || {};
+        const chains = derived?.chains || [];
+        return `
+          <section class="logic-board" ${boardId ? `id="${boardId}"` : ''}>
+            <div class="logic-head">
+              <div class="logic-title">市场传导链路预览</div>
+              <div class="logic-sub">把日报里的关键逻辑先拆成“事件 -> 变量 -> 资产/行业 -> 标的”结构，阅读会更顺。</div>
+            </div>
+            <div class="logic-summary-grid">
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">核心结论</div>
+                <div class="logic-summary-value">${escapeHtml(summary.conclusion || '暂无提取到明确结论')}</div>
+              </div>
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">最值得关注的方向</div>
+                <div class="logic-summary-value">${escapeHtml(summary.focus || '暂无提取到明确方向')}</div>
+              </div>
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">当前最需要警惕的风险</div>
+                <div class="logic-summary-value">${escapeHtml(summary.risk || '暂无提取到明确风险')}</div>
+              </div>
+            </div>
+            <div class="logic-chain-list">
+              ${
+                chains.length
+                  ? chains.map((chain) => `
+                    <div class="logic-chain-card">
+                      <div class="logic-chain-name">${escapeHtml(chain.title)}</div>
+                      <div class="logic-nodes">
+                        ${chain.nodes.map((node, idx) => `
+                          ${idx ? '<span class="logic-arrow">→</span>' : ''}
+                          <span class="logic-node">${escapeHtml(node)}</span>
+                        `).join('')}
+                      </div>
+                      <div class="logic-chain-raw">原始链路：${escapeHtml(chain.raw)}</div>
+                    </div>
+                  `).join('')
+                  : '<div class="logic-empty">当前这条总结里还没有稳定提取到“影响传导路径”字段，下面仍可查看完整 Markdown 原文。</div>'
+              }
+            </div>
+          </section>
+        `;
+      }
+
+      function buildLogicImageFileName(item) {
+        const dateText = (item?.summary_date || 'unknown-date').replaceAll('-', '');
+        const modelText = (item?.model || 'unknown-model').replaceAll(/[\\/:*?"<>|\\s]+/g, '_');
+        return `${dateText}_新闻日报总结_链路图_${modelText}.png`;
+      }
+
+      async function downloadCurrentLogicBoardAsImage() {
+        const item = (state.items || []).find((x) => x.id === state.active_id);
+        const board = document.getElementById('daily_summary_logic_board');
+        if (!item || !board) {
+          els.meta.textContent = '当前没有可下载的链路图';
+          return;
+        }
+        if (typeof html2canvas !== 'function') {
+          els.meta.textContent = '图片导出组件未加载成功';
+          return;
+        }
+        els.download_logic_btn.disabled = true;
+        try {
+          const canvas = await html2canvas(board, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true,
+          });
+          const link = document.createElement('a');
+          link.href = canvas.toDataURL('image/png');
+          link.download = buildLogicImageFileName(item);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          els.meta.textContent = `链路图已生成：${buildLogicImageFileName(item)}`;
+        } catch (err) {
+          els.meta.textContent = `链路图下载失败: ${err.message}`;
+        } finally {
+          els.download_logic_btn.disabled = false;
+        }
       }
 
       function buildImageFileName(item) {
@@ -564,6 +853,7 @@
 
       els.search_btn.addEventListener('click', () => search(true));
       els.gen_btn.addEventListener('click', generateTodaySummary);
+      els.download_logic_btn.addEventListener('click', downloadCurrentLogicBoardAsImage);
       els.download_md_btn.addEventListener('click', downloadCurrentDetailAsMarkdown);
       els.download_image_btn.addEventListener('click', downloadCurrentDetailAsImage);
       [els.summary_date, els.source_filter].forEach((el) => {

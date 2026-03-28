@@ -51,6 +51,12 @@ run_step "capital_flow_stock_365d" \
     --pause 0.01 \
     --all-status
 
+run_step "capital_flow_stock_bj_akshare_missing" \
+  python3 backfill_capital_flow_stock_akshare.py \
+    --only-bj \
+    --missing-only \
+    --pause 0.05
+
 run_step "capital_flow_market_365d" \
   python3 backfill_capital_flow_market.py \
     --token "${TUSHARE_TOKEN_VALUE}" \
@@ -95,4 +101,3 @@ run_step "loop_score_unscored_news" \
   python3 loop_score_unscored_news.py --batch-limit 50 --max-rounds 20 --sleep-seconds 2
 
 echo "[$(date -Iseconds)] ===== data completion end (${APP_DB_LABEL}) =====" >> "$LOG_FILE"
-

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
+from realtime_streams import publish_app_event
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
@@ -340,6 +341,11 @@ def main() -> int:
 
     base_url, api_key = resolve_provider(args.model, args.base_url, args.api_key)
     prompt_version = "daily_news_summary_v1"
+    publish_app_event(
+        event="news_daily_summary_update",
+        payload={"status": "running", "summary_date": date_ymd, "model": args.model},
+        producer="llm_summarize_daily_important_news.py",
+    )
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -417,6 +423,17 @@ def main() -> int:
             summary_markdown=summary,
         )
         print(f"已生成并入库 summary_id={sid}, date={date_ymd}, news_count={len(used_rows)}")
+        publish_app_event(
+            event="news_daily_summary_update",
+            payload={
+                "status": "done",
+                "summary_date": date_ymd,
+                "summary_id": sid,
+                "news_count": len(used_rows),
+                "model": args.model,
+            },
+            producer="llm_summarize_daily_important_news.py",
+        )
         print("\n===== Summary =====\n")
         print(summary)
     finally:
@@ -426,4 +443,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        publish_app_event(
+            event="news_daily_summary_update",
+            payload={"status": "error", "error": str(exc)},
+            producer="llm_summarize_daily_important_news.py",
+        )
+        raise

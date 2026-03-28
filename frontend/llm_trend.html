@@ -81,8 +81,113 @@
         padding: 0;
         color: inherit;
       }
+      .logic-board {
+        margin: 0 0 14px;
+        padding: 14px;
+        border: 1px solid #dbe4ec;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #f8fffe 0%, #f8fafc 100%);
+      }
+      .logic-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .logic-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .logic-sub {
+        font-size: 12px;
+        color: #64748b;
+      }
+      .logic-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .logic-summary-card {
+        border: 1px solid #dbe4ec;
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+      .logic-summary-label {
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .logic-summary-value {
+        font-size: 13px;
+        color: #0f172a;
+        line-height: 1.7;
+        white-space: pre-wrap;
+      }
+      .logic-chain-list {
+        display: grid;
+        gap: 10px;
+      }
+      .logic-chain-card {
+        border: 1px solid #dbe4ec;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fff;
+      }
+      .logic-chain-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 8px;
+      }
+      .logic-chain-raw {
+        font-size: 12px;
+        color: #475569;
+        margin-top: 8px;
+        line-height: 1.7;
+      }
+      .logic-nodes {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .logic-node {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #ecfeff;
+        border: 1px solid #bae6fd;
+        color: #0f172a;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.45;
+      }
+      .logic-arrow {
+        color: #0f766e;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .logic-empty {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px dashed #cbd5e1;
+        color: #64748b;
+        font-size: 13px;
+      }
 
-      @media (max-width: 900px) { .controls { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: 1fr; } }
+      @media (max-width: 900px) {
+        .controls { grid-template-columns: 1fr 1fr; }
+        .grid { grid-template-columns: 1fr; }
+        .logic-summary-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
@@ -119,7 +224,10 @@
 
         <div class="grid">
           <div class="box">
-            <h3 style="margin:0 0 8px;">分析结论</h3>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 8px;">
+              <h3 style="margin:0;">分析结论</h3>
+              <button id="download_logic_btn" style="height:32px;padding:0 12px;border-radius:999px;border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;" disabled>下载链路图</button>
+            </div>
             <div id="analysis" class="markdown-body">
               <p>（点击“分析”开始）</p>
             </div>
@@ -133,6 +241,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -143,14 +252,16 @@
         lookback: document.getElementById('lookback'),
         model: document.getElementById('model'),
         run_btn: document.getElementById('run_btn'),
+        download_logic_btn: document.getElementById('download_logic_btn'),
         meta: document.getElementById('meta'),
         analysis: document.getElementById('analysis'),
         features: document.getElementById('features'),
       };
 
-      function renderAnalysis(text) {
+      function renderAnalysis(text, logicView = null) {
         const raw = (text || '').trim();
         if (!raw) {
+          els.download_logic_btn.disabled = true;
           els.analysis.innerHTML = '<p>暂无分析结果</p>';
           return;
         }
@@ -158,7 +269,191 @@
           gfm: true,
           breaks: true,
         });
-        els.analysis.innerHTML = marked.parse(raw);
+        const derived = logicView || deriveTrendView(raw);
+        els.download_logic_btn.disabled = !derived?.has_logic && !(derived?.chains || []).length;
+        els.analysis.innerHTML = `
+          ${renderLogicBoard(derived, '走势判断传导链路', 'trend_logic_board')}
+          <div class="markdown-rendered">${marked.parse(raw)}</div>
+        `;
+      }
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function cleanLine(line) {
+        return String(line || '')
+          .replace(/^\s*[-*]\s*/, '')
+          .replace(/^\s*\d+\.\s*/, '')
+          .replace(/^\s*>\s*/, '')
+          .trim();
+      }
+
+      function stripStrong(text) {
+        return String(text || '').replace(/\*\*/g, '').trim();
+      }
+
+      function normalizeChainText(text) {
+        return cleanLine(text)
+          .replace(/[“”"]/g, '')
+          .replace(/\s*[-=]*>\s*/g, ' -> ')
+          .replace(/\s*→\s*/g, ' -> ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function splitChainNodes(text) {
+        return normalizeChainText(text)
+          .split(/\s*->\s*/)
+          .map((part) => stripStrong(part).replace(/^事件发生\s*/, '').trim())
+          .filter(Boolean);
+      }
+
+      function deriveTrendView(markdown) {
+        const lines = String(markdown || '').split(/\r?\n/);
+        const chains = [];
+        const summary = {
+          conclusion: '',
+          focus: '',
+          risk: '',
+        };
+        let captureNextChain = false;
+
+        for (let i = 0; i < lines.length; i += 1) {
+          const line = (lines[i] || '').trim();
+          const plain = stripStrong(cleanLine(line));
+          if (/^核心结论[:：]/.test(plain) || /^结论[:：]/.test(plain)) {
+            summary.conclusion = plain.replace(/^(核心结论|结论)[:：]\s*/, '').trim();
+          } else if (/^最值得关注的方向[:：]/.test(plain) || /^关注方向[:：]/.test(plain)) {
+            summary.focus = plain.replace(/^(最值得关注的方向|关注方向)[:：]\s*/, '').trim();
+          } else if (/^当前最需要警惕的风险[:：]/.test(plain) || /^风险提示[:：]/.test(plain)) {
+            summary.risk = plain.replace(/^(当前最需要警惕的风险|风险提示)[:：]\s*/, '').trim();
+          }
+
+          if (/影响传导路径[:：]/.test(plain) || /传导路径[:：]/.test(plain) || /逻辑链条[:：]/.test(plain)) {
+            const inline = plain.replace(/^(影响传导路径|传导路径|逻辑链条)[:：]\s*/, '').trim();
+            if (inline) {
+              chains.push({
+                title: `链路 ${chains.length + 1}`,
+                raw: inline,
+                nodes: splitChainNodes(inline),
+              });
+              captureNextChain = false;
+            } else {
+              captureNextChain = true;
+            }
+            continue;
+          }
+
+          if (captureNextChain) {
+            const candidate = cleanLine(line);
+            if (!candidate) {
+              captureNextChain = false;
+              continue;
+            }
+            chains.push({
+              title: `链路 ${chains.length + 1}`,
+              raw: candidate,
+              nodes: splitChainNodes(candidate),
+            });
+            captureNextChain = false;
+          }
+        }
+
+        return {
+          summary,
+          chains: chains.filter((item) => item.nodes.length >= 2).slice(0, 6),
+        };
+      }
+
+      function renderLogicBoard(derived, title = '传导链路预览', boardId = '') {
+        const summary = derived?.summary || {};
+        const chains = derived?.chains || [];
+        return `
+          <section class="logic-board" ${boardId ? `id="${boardId}"` : ''}>
+            <div class="logic-head">
+              <div class="logic-title">${escapeHtml(title)}</div>
+              <div class="logic-sub">先把大模型的判断拆成“触发因素 -> 关键变量 -> 价格/资金 -> 交易判断”，更方便快速阅读。</div>
+            </div>
+            <div class="logic-summary-grid">
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">核心结论</div>
+                <div class="logic-summary-value">${escapeHtml(summary.conclusion || '暂无提取到明确结论')}</div>
+              </div>
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">关注方向</div>
+                <div class="logic-summary-value">${escapeHtml(summary.focus || '暂无提取到明确方向')}</div>
+              </div>
+              <div class="logic-summary-card">
+                <div class="logic-summary-label">风险提示</div>
+                <div class="logic-summary-value">${escapeHtml(summary.risk || '暂无提取到明确风险')}</div>
+              </div>
+            </div>
+            <div class="logic-chain-list">
+              ${
+                chains.length
+                  ? chains.map((chain) => `
+                    <div class="logic-chain-card">
+                      <div class="logic-chain-name">${escapeHtml(chain.title)}</div>
+                      <div class="logic-nodes">
+                        ${chain.nodes.map((node, idx) => `
+                          ${idx ? '<span class="logic-arrow">→</span>' : ''}
+                          <span class="logic-node">${escapeHtml(node)}</span>
+                        `).join('')}
+                      </div>
+                      <div class="logic-chain-raw">原始链路：${escapeHtml(chain.raw)}</div>
+                    </div>
+                  `).join('')
+                  : '<div class="logic-empty">当前这条走势分析里还没有稳定提取到“传导路径/逻辑链条”字段，下面仍可查看完整 Markdown 原文。</div>'
+              }
+            </div>
+          </section>
+        `;
+      }
+
+      function buildLogicFileName() {
+        const tsCode = (els.ts_code.value || 'UNKNOWN').trim().toUpperCase() || 'UNKNOWN';
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        return `${tsCode}${yyyy}${mm}${dd}LLM 股票走势分析链路图.png`;
+      }
+
+      async function downloadLogicBoardAsImage() {
+        const board = document.getElementById('trend_logic_board');
+        if (!board) {
+          els.meta.textContent = '当前没有可下载的链路图';
+          return;
+        }
+        if (typeof html2canvas !== 'function') {
+          els.meta.textContent = '图片导出组件未加载成功';
+          return;
+        }
+        els.download_logic_btn.disabled = true;
+        try {
+          const canvas = await html2canvas(board, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true,
+          });
+          const a = document.createElement('a');
+          a.href = canvas.toDataURL('image/png');
+          a.download = buildLogicFileName();
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          els.meta.textContent = `链路图已下载：${buildLogicFileName()}`;
+        } catch (err) {
+          els.meta.textContent = `链路图下载失败: ${err.message}`;
+        } finally {
+          els.download_logic_btn.disabled = false;
+        }
       }
 
       function fmtFeatures(f) {
@@ -200,11 +495,11 @@
           if (!res.ok) throw new Error(data.error || '请求失败');
 
           els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，模型 ${data.model}`;
-          renderAnalysis(data.analysis || '');
+          renderAnalysis(data.analysis || '', data.logic_view || null);
           els.features.textContent = fmtFeatures(data.features);
         } catch (err) {
           els.meta.textContent = `请求失败: ${err.message}`;
-          renderAnalysis('');
+          renderAnalysis('', null);
           els.features.textContent = '';
         } finally {
           els.run_btn.disabled = false;
@@ -212,6 +507,7 @@
       }
 
       els.run_btn.addEventListener('click', run);
+      els.download_logic_btn.addEventListener('click', downloadLogicBoardAsImage);
       [els.ts_code, els.lookback].forEach((el) => {
         el.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') run();

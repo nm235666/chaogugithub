@@ -351,6 +351,211 @@ def create_tables(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_risk_scenarios_date ON risk_scenarios(scenario_date)"
     )
 
+    # 13) 投资信号追踪表
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS investment_signal_tracker (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_key TEXT NOT NULL,
+            signal_type TEXT NOT NULL,        -- stock / theme / macro / commodity / fx
+            subject_name TEXT NOT NULL,
+            ts_code TEXT,
+            direction TEXT,                   -- 看多 / 看空 / 中性
+            signal_strength REAL,
+            confidence REAL,
+            evidence_count INTEGER DEFAULT 0,
+            news_count INTEGER DEFAULT 0,
+            stock_news_count INTEGER DEFAULT 0,
+            chatroom_count INTEGER DEFAULT 0,
+            signal_status TEXT,               -- 活跃 / 观察 / 待证伪
+            latest_signal_date TEXT,
+            evidence_json TEXT,
+            source_summary_json TEXT,
+            created_at TEXT,
+            update_time TEXT,
+            UNIQUE(signal_key),
+            FOREIGN KEY (ts_code) REFERENCES stock_codes(ts_code)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_tracker_subject ON investment_signal_tracker(subject_name)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_tracker_type_dir ON investment_signal_tracker(signal_type, direction)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_tracker_strength ON investment_signal_tracker(signal_strength DESC)"
+    )
+
+    # 14) 投资信号每日/每轮快照
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS investment_signal_daily_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_at TEXT NOT NULL,
+            snapshot_date TEXT NOT NULL,
+            signal_key TEXT NOT NULL,
+            signal_type TEXT NOT NULL,
+            subject_name TEXT NOT NULL,
+            ts_code TEXT,
+            direction TEXT,
+            signal_strength REAL,
+            confidence REAL,
+            evidence_count INTEGER DEFAULT 0,
+            news_count INTEGER DEFAULT 0,
+            stock_news_count INTEGER DEFAULT 0,
+            chatroom_count INTEGER DEFAULT 0,
+            signal_status TEXT,
+            latest_signal_date TEXT,
+            evidence_json TEXT,
+            source_summary_json TEXT,
+            created_at TEXT,
+            UNIQUE(snapshot_at, signal_key),
+            FOREIGN KEY (ts_code) REFERENCES stock_codes(ts_code)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_snapshots_signal_time ON investment_signal_daily_snapshots(signal_key, snapshot_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_snapshots_date ON investment_signal_daily_snapshots(snapshot_date)"
+    )
+
+    # 15) 投资信号演化事件
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS investment_signal_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_key TEXT NOT NULL,
+            event_time TEXT NOT NULL,
+            event_date TEXT NOT NULL,
+            event_type TEXT NOT NULL,         -- new_signal / strengthen / weaken / flip / falsify / revive / expire
+            old_direction TEXT,
+            new_direction TEXT,
+            old_strength REAL,
+            new_strength REAL,
+            delta_strength REAL,
+            old_confidence REAL,
+            new_confidence REAL,
+            delta_confidence REAL,
+            event_level TEXT,                 -- 轻微 / 中等 / 显著 / 关键
+            driver_type TEXT,                 -- news / stock_news / chatroom / price / mixed
+            driver_source TEXT,
+            driver_ref_id TEXT,
+            driver_title TEXT,
+            status_after_event TEXT,
+            event_summary TEXT,
+            evidence_json TEXT,
+            snapshot_before_json TEXT,
+            snapshot_after_json TEXT,
+            created_at TEXT,
+            UNIQUE(signal_key, event_time, event_type)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_events_signal_time ON investment_signal_events(signal_key, event_time DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_events_date ON investment_signal_events(event_date)"
+    )
+
+    # 16) 主题 -> 股票池映射
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS theme_stock_mapping (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            theme_name TEXT NOT NULL,
+            ts_code TEXT NOT NULL,
+            stock_name TEXT,
+            relation_type TEXT,
+            weight REAL DEFAULT 1.0,
+            source TEXT,
+            notes TEXT,
+            created_at TEXT,
+            update_time TEXT,
+            UNIQUE(theme_name, ts_code),
+            FOREIGN KEY (ts_code) REFERENCES stock_codes(ts_code)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_theme_stock_mapping_theme ON theme_stock_mapping(theme_name)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_theme_stock_mapping_code ON theme_stock_mapping(ts_code)"
+    )
+
+    # 17) 股票别名词典（群聊/新闻/LLM 归一使用）
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stock_alias_dictionary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alias TEXT NOT NULL,
+            ts_code TEXT NOT NULL,
+            stock_name TEXT,
+            alias_type TEXT,
+            confidence REAL DEFAULT 1.0,
+            source TEXT,
+            notes TEXT,
+            used_count INTEGER DEFAULT 0,
+            last_used_at TEXT,
+            created_at TEXT,
+            update_time TEXT,
+            UNIQUE(alias),
+            FOREIGN KEY (ts_code) REFERENCES stock_codes(ts_code)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_stock_alias_dict_code ON stock_alias_dictionary(ts_code)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_stock_alias_dict_alias_type ON stock_alias_dictionary(alias_type)"
+    )
+
+    # 18) 信号映射黑名单
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS signal_mapping_blocklist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            term TEXT NOT NULL,
+            target_type TEXT NOT NULL DEFAULT 'stock',
+            match_type TEXT NOT NULL DEFAULT 'exact',   -- exact / contains
+            source TEXT,
+            reason TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT,
+            update_time TEXT,
+            UNIQUE(term, target_type, match_type)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_mapping_blocklist_target ON signal_mapping_blocklist(target_type, enabled)"
+    )
+
+    # 19) 信号质量规则
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS signal_quality_rules (
+            rule_key TEXT PRIMARY KEY,
+            rule_value TEXT,
+            value_type TEXT DEFAULT 'number',          -- number / bool / text
+            category TEXT,
+            description TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT,
+            update_time TEXT
+        )
+        """
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_quality_rules_category ON signal_quality_rules(category, enabled)"
+    )
+
     conn.commit()
 
 

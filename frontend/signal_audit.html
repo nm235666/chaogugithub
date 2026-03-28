@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>信号质量审计</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --primary: #0f766e;
+        --primary-dark: #115e59;
+        --border: #d7dee6;
+        --ok: #166534;
+        --warn: #b45309;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 0% 0%, #dcfce7 0%, transparent 34%),
+          radial-gradient(circle at 100% 100%, #dbeafe 0%, transparent 42%),
+          var(--bg);
+      }
+      .wrap { max-width: 1380px; margin: 24px auto 40px; padding: 0 16px; }
+      .panel { background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 12px 30px rgba(15,23,42,.06); padding: 18px; }
+      .topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+      h1 { margin:0; font-size:28px; }
+      .sub { margin-top:6px; color:var(--muted); font-size:14px; line-height:1.75; }
+      .nav { display:flex; gap:10px; flex-wrap:wrap; }
+      .nav a { color:var(--primary); text-decoration:none; font-size:14px; }
+      .toolbar { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }
+      .chip, button {
+        height:40px; padding:0 14px; border-radius:999px; border:1px solid var(--border);
+        background:#fff; color:#334155; font-size:13px; font-weight:700; cursor:pointer;
+      }
+      .chip.active, button.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+      .meta { margin-top:12px; color:var(--muted); font-size:13px; min-height:18px; }
+      .summary-grid { margin-top:16px; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+      .summary-card { border:1px solid var(--border); border-radius:14px; padding:14px; background:linear-gradient(180deg,#fff 0%,#f8fafc 100%); }
+      .summary-label { color:var(--muted); font-size:12px; }
+      .summary-value { margin-top:6px; font-size:26px; font-weight:700; }
+      .quality-grid { margin-top:12px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+      .quality-card { border:1px solid var(--border); border-radius:14px; padding:14px; background:#fff; }
+      .quality-score { font-size:34px; font-weight:800; }
+      .quality-ok { color: var(--ok); }
+      .quality-warn { color: var(--warn); }
+      .quality-danger { color: var(--danger); }
+      .section { margin-top:18px; border:1px solid var(--border); border-radius:16px; overflow:hidden; background:#fff; }
+      .section-head { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:14px 16px; background:#f8fafc; }
+      .section-title { font-size:17px; font-weight:700; }
+      .section-desc { font-size:12px; color:var(--muted); }
+      table { width:100%; border-collapse:collapse; }
+      th, td { padding:10px 12px; border-top:1px solid var(--border); text-align:left; vertical-align:top; font-size:13px; }
+      th { color:#475569; font-size:12px; background:#fbfdff; }
+      tr:nth-child(even) td { background:#fcfdff; }
+      .empty { padding:18px; color:var(--muted); text-align:center; }
+      .badge { display:inline-flex; align-items:center; padding:5px 9px; border-radius:999px; font-size:12px; font-weight:700; background:#f1f5f9; color:#334155; }
+      .badge-bull { background:#14532d; color:#fff; }
+      .badge-bear { background:#7f1d1d; color:#fff; }
+      .link-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+      .jump-link { color: var(--primary); text-decoration:none; font-size:12px; font-weight:700; }
+      .jump-link:hover { color: var(--primary-dark); text-decoration:underline; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      @media (max-width: 1100px) {
+        .summary-grid, .quality-grid { grid-template-columns:1fr 1fr; }
+      }
+      @media (max-width: 720px) {
+        .summary-grid, .quality-grid { grid-template-columns:1fr; }
+        table, thead, tbody, th, td, tr { display:block; }
+        thead { display:none; }
+        td { padding:8px 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <div class="topbar">
+          <div>
+            <h1>信号质量审计</h1>
+            <div class="sub">专门检查投资信号里的弱信号、误映射、代码名显示、仅主题传导等质量问题，帮助我们优先修“最影响可信度”的部分。</div>
+          </div>
+          <div class="nav">
+            <a href="/index.html">首页</a>
+            <a href="/investment_signals.html">投资信号总览</a>
+            <a href="/signal_quality_config.html">信号质量配置</a>
+            <a href="/database_audit.html">数据库审核</a>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <button type="button" class="chip active" id="chip_7d">近7天累计</button>
+          <button type="button" class="chip" id="chip_1d">最近1天</button>
+          <button type="button" class="primary" id="refresh_btn">立即刷新</button>
+        </div>
+
+        <div class="meta" id="meta">准备加载信号质量审计...</div>
+
+        <div class="summary-grid">
+          <div class="summary-card"><div class="summary-label">信号总数</div><div class="summary-value" id="sum_total">-</div></div>
+          <div class="summary-card"><div class="summary-label">股票信号</div><div class="summary-value" id="sum_stock">-</div></div>
+          <div class="summary-card"><div class="summary-label">活跃信号</div><div class="summary-value" id="sum_active">-</div></div>
+          <div class="summary-card"><div class="summary-label">群聊股票信号</div><div class="summary-value" id="sum_chatroom_stock">-</div></div>
+          <div class="summary-card"><div class="summary-label">仅主题传导股票</div><div class="summary-value" id="sum_theme_only">-</div></div>
+        </div>
+
+        <div class="quality-grid">
+          <div class="quality-card">
+            <div class="summary-label">质量分</div>
+            <div class="quality-score" id="quality_score">-</div>
+          </div>
+          <div class="quality-card">
+            <div class="summary-label">代码名股票</div>
+            <div class="summary-value" id="sum_code_named">-</div>
+          </div>
+          <div class="quality-card">
+            <div class="summary-label">低置信活跃信号</div>
+            <div class="summary-value" id="sum_low_conf">-</div>
+          </div>
+          <div class="quality-card">
+            <div class="summary-label">缺失 ts_code</div>
+            <div class="summary-value" id="sum_missing_ts">-</div>
+          </div>
+        </div>
+
+        <div id="sections"></div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://127.0.0.1:8077'
+        : `http://${window.location.hostname}:8077`;
+
+      const state = { scope: '7d' };
+      const els = {
+        chip7d: document.getElementById('chip_7d'),
+        chip1d: document.getElementById('chip_1d'),
+        refreshBtn: document.getElementById('refresh_btn'),
+        meta: document.getElementById('meta'),
+        sumTotal: document.getElementById('sum_total'),
+        sumStock: document.getElementById('sum_stock'),
+        sumActive: document.getElementById('sum_active'),
+        sumChatroomStock: document.getElementById('sum_chatroom_stock'),
+        sumThemeOnly: document.getElementById('sum_theme_only'),
+        sumCodeNamed: document.getElementById('sum_code_named'),
+        sumLowConf: document.getElementById('sum_low_conf'),
+        sumMissingTs: document.getElementById('sum_missing_ts'),
+        qualityScore: document.getElementById('quality_score'),
+        sections: document.getElementById('sections'),
+      };
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function setScope(scope) {
+        state.scope = scope;
+        els.chip7d.classList.toggle('active', scope === '7d');
+        els.chip1d.classList.toggle('active', scope === '1d');
+      }
+
+      function qualityClass(score) {
+        const n = Number(score || 0);
+        if (n >= 85) return 'quality-ok';
+        if (n >= 65) return 'quality-warn';
+        return 'quality-danger';
+      }
+
+      function dirBadge(dir) {
+        if (dir === '看多') return 'badge badge-bull';
+        if (dir === '看空') return 'badge badge-bear';
+        return 'badge';
+      }
+
+      function buildSignalListHref(item) {
+        const q = new URLSearchParams();
+        q.set('scope', state.scope);
+        if (item.ts_code) {
+          q.set('keyword', item.ts_code);
+          q.set('signal_type', 'stock');
+        } else if (item.display_name || item.subject_name) {
+          q.set('keyword', item.display_name || item.subject_name);
+        }
+        return `/investment_signals.html?${q.toString()}`;
+      }
+
+      function buildTimelineHref(item) {
+        return `/investment_signal_timeline.html?signal_key=${encodeURIComponent(item.signal_key || '')}`;
+      }
+
+      function renderSection(title, desc, items) {
+        if (!items || !items.length) {
+          return `
+            <section class="section">
+              <div class="section-head">
+                <div>
+                  <div class="section-title">${escapeHtml(title)}</div>
+                  <div class="section-desc">${escapeHtml(desc)}</div>
+                </div>
+                <span class="badge">0</span>
+              </div>
+              <div class="empty">当前没有这一类问题</div>
+            </section>
+          `;
+        }
+        return `
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <div class="section-title">${escapeHtml(title)}</div>
+                <div class="section-desc">${escapeHtml(desc)}</div>
+              </div>
+              <span class="badge">${items.length}</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>股票</th>
+                  <th>代码</th>
+                  <th>方向</th>
+                  <th>强度</th>
+                  <th>置信度</th>
+                  <th>主来源</th>
+                  <th>证据摘要</th>
+                  <th>最近时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map((it) => `
+                  <tr>
+                    <td>
+                      <div>${escapeHtml(it.display_name || it.subject_name || '')}</div>
+                      <div class="link-row">
+                        <a class="jump-link" href="${buildSignalListHref(it)}">查看信号详情</a>
+                        <a class="jump-link" href="${buildTimelineHref(it)}">查看时间线</a>
+                      </div>
+                    </td>
+                    <td class="mono">${escapeHtml(it.ts_code || '-')}</td>
+                    <td><span class="${dirBadge(it.direction)}">${escapeHtml(it.direction || '-')}</span></td>
+                    <td>${Number(it.signal_strength || 0).toFixed(2)}</td>
+                    <td>${Number(it.confidence || 0).toFixed(2)}%</td>
+                    <td>${escapeHtml(it.dominant_source || '-')}</td>
+                    <td>${escapeHtml(it.top_evidence || '-')}</td>
+                    <td>${escapeHtml(it.latest_signal_date || '-')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </section>
+        `;
+      }
+
+      function render(data) {
+        const summary = data.summary || {};
+        const stats = data.stats || {};
+        const sections = data.sections || {};
+        els.sumTotal.textContent = summary.signal_total ?? '-';
+        els.sumStock.textContent = summary.stock_total ?? '-';
+        els.sumActive.textContent = summary.active_total ?? '-';
+        els.sumChatroomStock.textContent = summary.chatroom_stock_total ?? '-';
+        els.sumThemeOnly.textContent = summary.theme_only_stock_total ?? '-';
+        els.sumCodeNamed.textContent = summary.code_named_stock_total ?? '-';
+        els.sumLowConf.textContent = summary.low_conf_active_total ?? '-';
+        els.sumMissingTs.textContent = summary.missing_ts_stock_total ?? '-';
+        els.qualityScore.textContent = stats.quality_score ?? '-';
+        els.qualityScore.className = `quality-score ${qualityClass(stats.quality_score)}`;
+        els.meta.textContent = `口径：${stats.scope_label || '-'} | 表：${data.table_name || '-'} | 生成时间(UTC)：${data.generated_at || '-'}`;
+        els.sections.innerHTML = [
+          renderSection('代码名股票', '股票主体直接显示成 600519.SH / 300750.SZ 这类代码名，影响可读性与可信度。', sections.code_named_stocks || []),
+          renderSection('缺失 ts_code 的股票信号', '股票信号却没有标准代码，后续无法稳定关联到详情页、新闻和行情。', sections.missing_ts_stock || []),
+          renderSection('仅主题传导股票', '只有主题映射，没有新闻、个股新闻、群聊直接证据，适合作为辅助，不适合排太靠前。', sections.theme_only_stocks || []),
+          renderSection('低置信活跃信号', '状态已经是活跃，但置信度偏低，可能属于放大过度或规则需要收紧。', sections.low_conf_active || []),
+          renderSection('弱群聊股票信号', '来自群聊，但强度很弱，说明只是零散提及，未形成稳定共识。', sections.weak_chatroom_stocks || []),
+          renderSection('无直接来源股票', '没有新闻、个股新闻、群聊直接证据，通常需要重点人工复核。', sections.no_direct_source_stocks || []),
+        ].join('');
+      }
+
+      async function loadData() {
+        els.meta.textContent = '正在加载信号质量审计...';
+        try {
+          const resp = await fetch(`${API_BASE}/api/signal-audit?scope=${encodeURIComponent(state.scope)}`);
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || '请求失败');
+          render(data);
+        } catch (err) {
+          els.meta.textContent = `加载失败: ${err.message}`;
+          els.sections.innerHTML = `<div class="section"><div class="empty">${escapeHtml(err.message)}</div></div>`;
+        }
+      }
+
+      els.chip7d.addEventListener('click', () => { setScope('7d'); loadData(); });
+      els.chip1d.addEventListener('click', () => { setScope('1d'); loadData(); });
+      els.refreshBtn.addEventListener('click', loadData);
+
+      setScope('7d');
+      loadData();
+    </script>
+  </body>
+</html>

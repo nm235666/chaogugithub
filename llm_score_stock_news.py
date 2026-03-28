@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
+from realtime_streams import publish_app_event
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
@@ -235,6 +236,11 @@ def main() -> int:
 
     base_url, api_key = resolve_provider(args.model, args.base_url, args.api_key)
     prompt_version = "stock_news_score_v1"
+    publish_app_event(
+        event="stock_news_score_update",
+        payload={"status": "running", "ts_code": args.ts_code.strip().upper(), "limit": int(args.limit), "model": args.model},
+        producer="llm_score_stock_news.py",
+    )
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -282,10 +288,30 @@ def main() -> int:
                 print(f"  -> 失败: {last_err}")
             time.sleep(max(args.sleep, 0.0))
         print(f"完成: success={ok}, failed={fail}, total={len(rows)}")
+        publish_app_event(
+            event="stock_news_score_update",
+            payload={
+                "status": "done",
+                "ts_code": args.ts_code.strip().upper(),
+                "success": ok,
+                "failed": fail,
+                "total": len(rows),
+                "model": args.model,
+            },
+            producer="llm_score_stock_news.py",
+        )
     finally:
         conn.close()
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        publish_app_event(
+            event="stock_news_score_update",
+            payload={"status": "error", "error": str(exc)},
+            producer="llm_score_stock_news.py",
+        )
+        raise

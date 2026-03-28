@@ -51,6 +51,9 @@
       .badge-bull { background:#14532d; color:#fff; border-color:#14532d; }
       .badge-bear { background:#7f1d1d; color:#fff; border-color:#7f1d1d; }
       .badge-active { background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
+      .badge-sentiment-bull { background:#14532d; color:#fff; border-color:#14532d; }
+      .badge-sentiment-bear { background:#7f1d1d; color:#fff; border-color:#7f1d1d; }
+      .badge-sentiment-neutral { background:#475569; color:#fff; border-color:#475569; }
       .summary { margin-top:12px; padding:12px 14px; border-radius:14px; background:#f8fafc; border:1px solid #dbe4ea; color:#1f2937; line-height:1.8; }
       .grid { margin-top:12px; display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; }
       .kv { border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:#fff; }
@@ -202,6 +205,7 @@
                 </div>
                 <div class="badges">
                   <span class="${it.final_bias === '看多' ? 'badge badge-bull' : 'badge badge-bear'}">整体${escapeHtml(it.final_bias || '-')}</span>
+                  <span class="badge ${sentimentBadgeClass(it.llm_sentiment_label)}">情绪${escapeHtml(it.llm_sentiment_label || '未评')}</span>
                   <span class="badge badge-active">${escapeHtml(it.model || '-')}</span>
                 </div>
               </div>
@@ -213,6 +217,8 @@
                 <div class="kv"><div class="k">消息数</div><div class="v">${it.message_count ?? 0}</div></div>
                 <div class="kv"><div class="k">发言人数</div><div class="v">${it.sender_count ?? 0}</div></div>
                 <div class="kv"><div class="k">成员数 / 监控状态</div><div class="v">${it.user_count ?? '-'} / ${it.skip_realtime_monitor ? '已停监控' : '监控中'}</div></div>
+                <div class="kv"><div class="k">情绪分 / 置信度</div><div class="v">${it.llm_sentiment_score ?? '-'} / ${it.llm_sentiment_confidence ?? '-'}%</div></div>
+                <div class="kv"><div class="k">情绪原因</div><div class="v">${escapeHtml(it.llm_sentiment_reason || '暂无')}</div></div>
               </div>
 
               <div class="targets">
@@ -229,6 +235,13 @@
             </article>
           `;
         }).join('');
+      }
+
+      function sentimentBadgeClass(label) {
+        const text = String(label || '').trim();
+        if (text === '偏多') return 'badge-sentiment-bull';
+        if (text === '偏空') return 'badge-sentiment-bear';
+        return 'badge-sentiment-neutral';
       }
 
       function updatePager() {

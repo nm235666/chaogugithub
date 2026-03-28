@@ -4,9 +4,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import db_compat as sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from realtime_streams import publish_app_event
 from query_stock_news_eastmoney import (
@@ -16,6 +18,7 @@ from query_stock_news_eastmoney import (
 )
 
 SOURCE = "eastmoney_stock_news"
+LOCAL_DEDUP_LOOKBACK = 14
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,6 +39,52 @@ def parse_args() -> argparse.Namespace:
 
 def now_utc_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _clean_text(value: object) -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[^\w\u4e00-\u9fff]+", "", text)
+    return text
+
+
+def _clean_link(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path, "", ""))
+    except Exception:
+        return raw
+
+
+def _pub_day(value: object) -> str:
+    text = str(value or "").strip()
+    return text[:10] if len(text) >= 10 else text
+
+
+def _candidate_signatures(ts_code: str, item: dict) -> set[str]:
+    title = _clean_text(item.get("title"))
+    summary = _clean_text(item.get("summary"))
+    news_code = str(item.get("news_code") or "").strip()
+    link = _clean_link(item.get("link"))
+    pub_day = _pub_day(item.get("pub_time"))
+
+    signatures: set[str] = set()
+    if news_code:
+        signatures.add(f"code:{ts_code}:{news_code}")
+    if link:
+        signatures.add(f"link:{ts_code}:{link}")
+    if title:
+        signatures.add(f"title:{ts_code}:{title}")
+        if pub_day:
+            signatures.add(f"title_day:{ts_code}:{title}:{pub_day}")
+    if title and summary:
+        signatures.add(f"title_summary:{ts_code}:{title}:{summary[:160]}")
+        if pub_day:
+            signatures.add(f"title_summary_day:{ts_code}:{title}:{summary[:160]}:{pub_day}")
+    return signatures
 
 
 def ensure_table(conn: sqlite3.Connection) -> None:
@@ -94,18 +143,75 @@ def ensure_table(conn: sqlite3.Connection) -> None:
 
 
 def content_hash(ts_code: str, item: dict) -> str:
-    raw = f"{ts_code}||{item.get('news_code','')}||{item.get('title','')}||{item.get('pub_time','')}".encode(
+    raw = "||".join(
+        [
+            ts_code,
+            str(item.get("news_code") or "").strip(),
+            _clean_text(item.get("title")),
+            _clean_text(item.get("summary")),
+            _clean_link(item.get("link")),
+            _pub_day(item.get("pub_time")),
+        ]
+    ).encode(
         "utf-8",
         errors="ignore",
     )
     return hashlib.sha256(raw).hexdigest()
 
 
-def upsert(conn: sqlite3.Connection, ts_code: str, company_name: str, items: list[dict]) -> tuple[int, int]:
+def _load_existing_signatures(conn: sqlite3.Connection, ts_code: str, lookback_days: int = LOCAL_DEDUP_LOOKBACK) -> set[str]:
+    rows = conn.execute(
+        """
+        SELECT news_code, title, summary, link, pub_time
+        FROM stock_news_items
+        WHERE ts_code = ?
+        ORDER BY pub_time DESC, id DESC
+        LIMIT ?
+        """,
+        (ts_code, max(lookback_days * 80, 300)),
+    ).fetchall()
+    signatures: set[str] = set()
+    for row in rows:
+        signatures.update(
+            _candidate_signatures(
+                ts_code,
+                {
+                    "news_code": row[0],
+                    "title": row[1],
+                    "summary": row[2],
+                    "link": row[3],
+                    "pub_time": row[4],
+                },
+            )
+        )
+    return signatures
+
+
+def deduplicate_items(conn: sqlite3.Connection, ts_code: str, items: list[dict]) -> tuple[list[dict], int]:
+    existing_signatures = _load_existing_signatures(conn, ts_code)
+    batch_signatures: set[str] = set()
+    unique_items: list[dict] = []
+    skipped = 0
+
+    for item in items:
+        signatures = _candidate_signatures(ts_code, item)
+        if not signatures:
+            unique_items.append(item)
+            continue
+        if signatures & existing_signatures or signatures & batch_signatures:
+            skipped += 1
+            continue
+        unique_items.append(item)
+        batch_signatures.update(signatures)
+    return unique_items, skipped
+
+
+def upsert(conn: sqlite3.Connection, ts_code: str, company_name: str, items: list[dict]) -> tuple[int, int, int]:
     fetched_at = now_utc_str()
+    deduped_items, dedup_skipped = deduplicate_items(conn, ts_code, items)
     inserted = 0
     skipped = 0
-    for item in items:
+    for item in deduped_items:
         h = content_hash(ts_code, item)
         cur = conn.execute(
             """
@@ -135,7 +241,7 @@ def upsert(conn: sqlite3.Connection, ts_code: str, company_name: str, items: lis
         else:
             skipped += 1
     conn.commit()
-    return inserted, skipped
+    return inserted, skipped + dedup_skipped, dedup_skipped
 
 
 def main() -> int:
@@ -193,7 +299,7 @@ def main() -> int:
     conn = sqlite3.connect(db_path)
     try:
         ensure_table(conn)
-        inserted, skipped = upsert(conn, ts_code, company_name, items)
+        inserted, skipped, dedup_skipped = upsert(conn, ts_code, company_name, items)
         table_rows = conn.execute(
             "SELECT COUNT(*) FROM stock_news_items WHERE ts_code = ?",
             (ts_code,),
@@ -203,7 +309,7 @@ def main() -> int:
 
     print(
         f"完成: source={SOURCE}, inserted={inserted}, skipped={skipped}, "
-        f"stock_rows={table_rows}, page={args.page}, page_size={args.page_size}"
+        f"dedup_skipped={dedup_skipped}, stock_rows={table_rows}, page={args.page}, page_size={args.page_size}"
     )
     publish_app_event(
         event="stock_news_update",
@@ -212,6 +318,7 @@ def main() -> int:
             "company_name": company_name,
             "inserted": int(inserted),
             "skipped": int(skipped),
+            "dedup_skipped": int(dedup_skipped),
             "stock_rows": int(table_rows),
             "page_size": int(args.page_size),
         },

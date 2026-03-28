@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>投资信号总览</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --primary: #0f766e;
+        --primary-dark: #115e59;
+        --border: #d7dee6;
+        --shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 0% 0%, #dcfce7 0%, transparent 34%),
+          radial-gradient(circle at 100% 100%, #dbeafe 0%, transparent 42%),
+          var(--bg);
+      }
+      .wrap { max-width: 1380px; margin: 24px auto 40px; padding: 0 16px; }
+      .panel { background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); padding: 18px; }
+      .topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+      h1 { margin:0; font-size:28px; }
+      .sub { margin-top:6px; color:var(--muted); font-size:14px; line-height:1.75; }
+      .nav { display:flex; gap:10px; flex-wrap:wrap; }
+      .nav a { color:var(--primary); text-decoration:none; font-size:14px; }
+      .summary-grid { margin-top:16px; display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:12px; }
+      .summary-card { border:1px solid var(--border); border-radius:14px; padding:14px; background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%); }
+      .summary-label { color:var(--muted); font-size:12px; }
+      .summary-value { margin-top:6px; font-size:26px; font-weight:700; }
+      .controls { margin-top:18px; display:grid; grid-template-columns:1.4fr 120px 120px 120px 110px 110px; gap:10px; }
+      .quick-filters { margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; }
+      .quick-chip {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-width:96px;
+        height:38px;
+        padding:0 14px;
+        border-radius:999px;
+        border:1px solid var(--border);
+        background:#fff;
+        color:#334155;
+        cursor:pointer;
+        font-size:13px;
+        font-weight:700;
+      }
+      .quick-chip.active {
+        background:var(--primary);
+        color:#fff;
+        border-color:var(--primary);
+      }
+      input, select, button { height:42px; border-radius:12px; border:1px solid var(--border); padding:0 12px; font-size:14px; background:#fff; }
+      button { cursor:pointer; border:none; color:#fff; background:var(--primary); }
+      button:hover { background:var(--primary-dark); }
+      .meta { margin:12px 0; color:var(--muted); font-size:13px; min-height:18px; }
+      .list-shell { border:1px solid var(--border); border-radius:16px; overflow:hidden; background:#fff; }
+      .list-head, .list-row {
+        display:grid;
+        grid-template-columns: 1.5fr 88px 90px 90px 90px 90px 90px 120px 120px;
+        gap:12px;
+        align-items:start;
+        padding:14px 16px;
+      }
+      .list-head { background:#f1f5f9; color:#475569; font-size:12px; font-weight:700; }
+      .list-row { border-top:1px solid var(--border); }
+      .list-row:nth-child(even) { background:#fcfdff; }
+      .cell-name { display:flex; flex-direction:column; gap:8px; }
+      .title { font-size:17px; font-weight:700; line-height:1.45; }
+      .badges { display:flex; gap:6px; flex-wrap:wrap; }
+      .badge { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700; border:1px solid #d6dde7; background:#f8fafc; color:#334155; }
+      .badge-bull { background:#14532d; color:#fff; border-color:#14532d; }
+      .badge-bear { background:#7f1d1d; color:#fff; border-color:#7f1d1d; }
+      .badge-neutral { background:#475569; color:#fff; border-color:#475569; }
+      .badge-active { background:#0f766e; color:#fff; border-color:#0f766e; }
+      .badge-watch { background:#b45309; color:#fff; border-color:#b45309; }
+      .badge-falsify { background:#6366f1; color:#fff; border-color:#6366f1; }
+      .badge-type { background:#ecfeff; color:#155e75; border-color:#a5f3fc; }
+      .cell { font-size:14px; line-height:1.7; color:#0f172a; word-break:break-word; }
+      .cell-num { font-weight:700; }
+      .cell-muted { color:var(--muted); }
+      details { margin-top:10px; }
+      summary { cursor:pointer; color:#0f766e; font-size:13px; }
+      .evidence-list { display:grid; gap:8px; margin-top:10px; }
+      .evidence-item { border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; background:#f8fafc; }
+      .evidence-head { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:12px; color:#475569; }
+      .evidence-title { margin-top:6px; font-size:13px; color:#334155; line-height:1.65; }
+      .pager { margin-top:14px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .pager button { width:90px; }
+      .empty { border:1px dashed var(--border); border-radius:14px; padding:26px; text-align:center; color:var(--muted); }
+      @media (max-width: 1200px) {
+        .summary-grid { grid-template-columns:1fr 1fr; }
+        .controls { grid-template-columns:1fr 1fr; }
+        .list-head { display:none; }
+        .list-row { grid-template-columns:1fr; gap:10px; }
+      }
+      @media (max-width: 640px) {
+        .summary-grid { grid-template-columns:1fr; }
+        .controls { grid-template-columns:1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <div class="topbar">
+          <div>
+            <h1>投资信号总览</h1>
+            <div class="sub">把国际新闻、个股新闻、群聊候选池汇总成同一张信号表。默认看近 7 天累计，也可以切到最近 1 天，兼顾共识与临盘变化。</div>
+          </div>
+          <div class="nav">
+            <a href="/index.html">首页</a>
+            <a href="/news.html">国际新闻</a>
+            <a href="/stock_news.html">股票相关新闻</a>
+            <a href="/chatroom_candidate_pool.html">股票候选池</a>
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-card"><div class="summary-label">信号总数</div><div class="summary-value" id="sum_total">-</div></div>
+          <div class="summary-card"><div class="summary-label">看多信号</div><div class="summary-value" id="sum_bull">-</div></div>
+          <div class="summary-card"><div class="summary-label">看空信号</div><div class="summary-value" id="sum_bear">-</div></div>
+          <div class="summary-card"><div class="summary-label">活跃信号</div><div class="summary-value" id="sum_active">-</div></div>
+          <div class="summary-card"><div class="summary-label">股票型信号</div><div class="summary-value" id="sum_stock">-</div></div>
+        </div>
+
+        <div class="controls">
+          <input id="keyword" placeholder="搜索标的 / 代码 / 证据文本" />
+          <select id="signal_type"><option value="">全部类型</option></select>
+          <select id="direction"><option value="">全部方向</option></select>
+          <select id="signal_status"><option value="">全部状态</option></select>
+          <select id="page_size">
+            <option value="20">20/页</option>
+            <option value="50">50/页</option>
+            <option value="100">100/页</option>
+          </select>
+          <button id="search_btn">查询</button>
+        </div>
+
+        <div class="quick-filters">
+          <button type="button" class="quick-chip active" id="chip_scope_7d">近7天累计</button>
+          <button type="button" class="quick-chip" id="chip_scope_1d">最近1天</button>
+          <button type="button" class="quick-chip active" id="chip_all">全部信号</button>
+          <button type="button" class="quick-chip" id="chip_stock">股票信号</button>
+          <button type="button" class="quick-chip" id="chip_non_stock">主题宏观</button>
+        </div>
+
+        <div class="meta" id="meta">准备就绪</div>
+        <div class="list-shell">
+          <div class="list-head">
+            <div>信号主体</div>
+            <div>类型</div>
+            <div>方向</div>
+            <div>状态</div>
+            <div>强度</div>
+            <div>置信度</div>
+            <div>证据数</div>
+            <div>来源拆分</div>
+            <div>最近信号时间</div>
+          </div>
+          <div class="list" id="list"></div>
+        </div>
+
+        <div class="pager">
+          <button id="prev_btn">上一页</button>
+          <div id="page_info">第 1 / 1 页</div>
+          <button id="next_btn">下一页</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://127.0.0.1:8077'
+        : `http://${window.location.hostname}:8077`;
+
+      const state = { keyword: '', signal_type: '', signal_group: '', source_filter: '', scope: '7d', direction: '', signal_status: '', page: 1, page_size: 20, total_pages: 1, total: 0 };
+      const els = {
+        keyword: document.getElementById('keyword'),
+        signal_type: document.getElementById('signal_type'),
+        direction: document.getElementById('direction'),
+        signal_status: document.getElementById('signal_status'),
+        page_size: document.getElementById('page_size'),
+        search_btn: document.getElementById('search_btn'),
+        meta: document.getElementById('meta'),
+        list: document.getElementById('list'),
+        prev_btn: document.getElementById('prev_btn'),
+        next_btn: document.getElementById('next_btn'),
+        page_info: document.getElementById('page_info'),
+        sum_total: document.getElementById('sum_total'),
+        sum_bull: document.getElementById('sum_bull'),
+        sum_bear: document.getElementById('sum_bear'),
+        sum_active: document.getElementById('sum_active'),
+        sum_stock: document.getElementById('sum_stock'),
+        chip_scope_7d: document.getElementById('chip_scope_7d'),
+        chip_scope_1d: document.getElementById('chip_scope_1d'),
+        chip_all: document.getElementById('chip_all'),
+        chip_stock: document.getElementById('chip_stock'),
+        chip_non_stock: document.getElementById('chip_non_stock'),
+      };
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function fillSelect(selectEl, items, placeholder, currentValue) {
+        selectEl.innerHTML = [`<option value="">${placeholder}</option>`]
+          .concat((items || []).map((item) => {
+            const selected = item === currentValue ? ' selected' : '';
+            return `<option value="${escapeHtml(item)}"${selected}>${escapeHtml(displaySignalType(item))}</option>`;
+          }))
+          .join('');
+      }
+
+      function displaySignalType(value) {
+        const map = {
+          stock: '股票',
+          theme: '主题',
+          macro: '宏观',
+          commodity: '商品',
+          fx: '外汇',
+        };
+        return map[String(value || '').trim()] || String(value || '-');
+      }
+
+      function setQuickChip(groupKey) {
+        const chipMap = {
+          all: els.chip_all,
+          stock: els.chip_stock,
+          non_stock: els.chip_non_stock,
+          chatroom_stock: document.getElementById('chip_chatroom_stock'),
+        };
+        Object.entries(chipMap).forEach(([key, el]) => {
+          if (!el) return;
+          el.classList.toggle('active', key === groupKey);
+        });
+      }
+
+      function setScopeChip(scopeKey) {
+        els.chip_scope_7d.classList.toggle('active', scopeKey === '7d');
+        els.chip_scope_1d.classList.toggle('active', scopeKey === '1d');
+      }
+
+      function parseJsonList(raw) {
+        if (!raw) return [];
+        try {
+          const obj = JSON.parse(raw);
+          return Array.isArray(obj) ? obj : [];
+        } catch (_) {
+          return [];
+        }
+      }
+
+      function parseJsonObj(raw) {
+        if (!raw) return {};
+        try {
+          const obj = JSON.parse(raw);
+          return obj && typeof obj === 'object' ? obj : {};
+        } catch (_) {
+          return {};
+        }
+      }
+
+      function updateSummary(summary) {
+        els.sum_total.textContent = summary.signal_total ?? '-';
+        els.sum_bull.textContent = summary.bullish_total ?? '-';
+        els.sum_bear.textContent = summary.bearish_total ?? '-';
+        els.sum_active.textContent = summary.active_total ?? '-';
+        els.sum_stock.textContent = summary.stock_total ?? '-';
+      }
+
+      function badgeDirection(direction) {
+        if (direction === '看多') return 'badge badge-bull';
+        if (direction === '看空') return 'badge badge-bear';
+        return 'badge badge-neutral';
+      }
+
+      function badgeStatus(status) {
+        if (status === '活跃') return 'badge badge-active';
+        if (status === '观察') return 'badge badge-watch';
+        return 'badge badge-falsify';
+      }
+
+      function renderList(items) {
+        if (!items.length) {
+          els.list.innerHTML = '<div class="empty">暂无投资信号数据，请先运行信号聚合脚本。</div>';
+          return;
+        }
+        els.list.innerHTML = items.map((it) => {
+          const evidences = parseJsonList(it.evidence_json);
+          const sourceSummary = parseJsonObj(it.source_summary_json);
+          return `
+            <article class="list-row">
+              <div class="cell cell-name">
+                <div class="title">${escapeHtml(it.subject_name || '')}</div>
+                <div class="badges">
+                  ${it.ts_code ? `<span class="badge badge-type">${escapeHtml(it.ts_code)}</span>` : ''}
+                </div>
+                <details>
+                  <summary>查看证据样例</summary>
+                  <div class="evidence-list">
+                    ${evidences.map((ev) => `
+                      <div class="evidence-item">
+                        <div class="evidence-head">
+                          <span>${escapeHtml(ev.source || '-')}</span>
+                          <span>${escapeHtml(ev.direction || '-')}</span>
+                          <span>${escapeHtml(ev.date || '-')}</span>
+                        </div>
+                        <div class="evidence-title">${escapeHtml(ev.title || ev.group || '')}</div>
+                      </div>
+                    `).join('') || '<div class="evidence-item">暂无证据</div>'}
+                  </div>
+                </details>
+                <div style="margin-top:8px;">
+                  <a href="/investment_signal_timeline.html?signal_key=${encodeURIComponent(it.signal_key || '')}" style="color:#0f766e;text-decoration:none;font-size:13px;">查看完整时间线</a>
+                </div>
+              </div>
+              <div class="cell"><span class="badge badge-type">${escapeHtml(displaySignalType(it.signal_type || '-'))}</span></div>
+              <div class="cell"><span class="${badgeDirection(it.direction)}">${escapeHtml(it.direction || '-')}</span></div>
+              <div class="cell"><span class="${badgeStatus(it.signal_status)}">${escapeHtml(it.signal_status || '-')}</span></div>
+              <div class="cell cell-num">${it.signal_strength ?? 0}</div>
+              <div class="cell cell-num">${it.confidence ?? 0}%</div>
+              <div class="cell cell-num">${it.evidence_count ?? 0}</div>
+              <div class="cell cell-muted">国际 ${sourceSummary.intl_news || 0}<br>国内 ${sourceSummary.domestic_news || 0}<br>个股 ${sourceSummary.stock_news || 0}<br>群聊 ${sourceSummary.chatroom || 0}</div>
+              <div class="cell cell-muted">${escapeHtml(it.latest_signal_date || '-')}</div>
+            </article>
+          `;
+        }).join('');
+      }
+
+      function updatePager() {
+        els.page_info.textContent = `第 ${state.page} / ${Math.max(state.total_pages, 1)} 页`;
+        els.prev_btn.disabled = state.page <= 1;
+        els.next_btn.disabled = state.page >= state.total_pages;
+      }
+
+      async function fetchData() {
+        const query = new URLSearchParams({
+          keyword: state.keyword,
+          signal_type: state.signal_type,
+          signal_group: state.signal_group,
+          source_filter: state.source_filter,
+          scope: state.scope,
+          direction: state.direction,
+          signal_status: state.signal_status,
+          page: String(state.page),
+          page_size: String(state.page_size),
+        });
+        els.meta.textContent = '正在加载投资信号...';
+        try {
+          const resp = await fetch(`${API_BASE}/api/investment-signals?${query.toString()}`);
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || '请求失败');
+          state.total = data.total || 0;
+          state.total_pages = data.total_pages || 0;
+          fillSelect(els.signal_type, data.filters?.signal_types || [], '全部类型', state.signal_type);
+          fillSelect(els.direction, data.filters?.directions || [], '全部方向', state.direction);
+          fillSelect(els.signal_status, data.filters?.signal_statuses || [], '全部状态', state.signal_status);
+          updateSummary(data.summary || {});
+          renderList(data.items || []);
+          updatePager();
+          els.meta.textContent = `共 ${state.total} 条信号，当前第 ${state.page} 页，口径：${data.scope === '1d' ? '最近1天' : '近7天累计'}`;
+        } catch (err) {
+          els.meta.textContent = `查询失败: ${err.message}`;
+          els.list.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+          state.total_pages = 0;
+          updatePager();
+        }
+      }
+
+      function syncState() {
+        state.keyword = els.keyword.value.trim();
+        state.signal_type = els.signal_type.value;
+        state.signal_group = '';
+        state.source_filter = '';
+        state.direction = els.direction.value;
+        state.signal_status = els.signal_status.value;
+        state.page_size = Number(els.page_size.value) || 20;
+      }
+
+      els.chip_all.addEventListener('click', () => {
+        els.signal_type.value = '';
+        state.signal_type = '';
+        state.signal_group = '';
+        state.source_filter = '';
+        state.page = 1;
+        setQuickChip('all');
+        fetchData();
+      });
+
+      els.chip_scope_7d.addEventListener('click', () => {
+        state.scope = '7d';
+        state.page = 1;
+        setScopeChip('7d');
+        fetchData();
+      });
+
+      els.chip_scope_1d.addEventListener('click', () => {
+        state.scope = '1d';
+        state.page = 1;
+        setScopeChip('1d');
+        fetchData();
+      });
+
+      els.chip_stock.addEventListener('click', () => {
+        els.signal_type.value = 'stock';
+        state.signal_type = 'stock';
+        state.signal_group = 'stock';
+        state.source_filter = '';
+        state.page = 1;
+        setQuickChip('stock');
+        fetchData();
+      });
+
+      els.chip_non_stock.addEventListener('click', () => {
+        els.signal_type.value = '';
+        state.signal_type = '';
+        state.signal_group = 'non_stock';
+        state.source_filter = '';
+        state.page = 1;
+        setQuickChip('non_stock');
+        fetchData();
+      });
+
+      const chipChatroomStock = document.createElement('button');
+      chipChatroomStock.type = 'button';
+      chipChatroomStock.className = 'quick-chip';
+      chipChatroomStock.id = 'chip_chatroom_stock';
+      chipChatroomStock.textContent = '群聊股票';
+      document.querySelector('.quick-filters').appendChild(chipChatroomStock);
+      els.chip_chatroom_stock = chipChatroomStock;
+      chipChatroomStock.addEventListener('click', () => {
+        els.signal_type.value = 'stock';
+        state.signal_type = 'stock';
+        state.signal_group = 'chatroom_stock';
+        state.source_filter = 'chatroom';
+        state.page = 1;
+        setQuickChip('chatroom_stock');
+        fetchData();
+      });
+
+      els.search_btn.addEventListener('click', () => {
+        syncState();
+        state.page = 1;
+        if (state.signal_type === 'stock') {
+          if (state.source_filter === 'chatroom') {
+            state.signal_group = 'chatroom_stock';
+            setQuickChip('chatroom_stock');
+          } else {
+            state.signal_group = 'stock';
+            setQuickChip('stock');
+          }
+        } else if (state.signal_group === 'non_stock' || state.signal_type === 'theme' || state.signal_type === 'macro' || state.signal_type === 'commodity' || state.signal_type === 'fx') {
+          setQuickChip('non_stock');
+        } else {
+          state.signal_group = '';
+          state.source_filter = '';
+          setQuickChip('all');
+        }
+        fetchData();
+      });
+      els.prev_btn.addEventListener('click', () => {
+        if (state.page > 1) {
+          state.page -= 1;
+          fetchData();
+        }
+      });
+      els.next_btn.addEventListener('click', () => {
+        if (state.page < state.total_pages) {
+          state.page += 1;
+          fetchData();
+        }
+      });
+      els.page_size.addEventListener('change', () => {
+        syncState();
+        state.page = 1;
+        fetchData();
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      const initKeyword = params.get('keyword') || '';
+      const initSignalType = params.get('signal_type') || '';
+      const initScope = params.get('scope') || '7d';
+      if (initKeyword) {
+        els.keyword.value = initKeyword;
+        state.keyword = initKeyword;
+      }
+      if (initSignalType) {
+        els.signal_type.value = initSignalType;
+        state.signal_type = initSignalType;
+      }
+      state.scope = initScope === '1d' ? '1d' : '7d';
+      setScopeChip(state.scope);
+      if (state.signal_type === 'stock') {
+        state.signal_group = 'stock';
+        setQuickChip('stock');
+      } else {
+        setQuickChip('all');
+      }
+      fetchData();
+    </script>
+  </body>
+</html>
