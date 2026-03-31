@@ -84,7 +84,7 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { fetchSourceMonitor } from '../../services/api/dashboard'
 import { formatDateTime } from '../../shared/utils/format'
 
-const { data: monitor } = useQuery({ queryKey: ['source-monitor'], queryFn: fetchSourceMonitor, refetchInterval: 30_000 })
+const { data: monitor } = useQuery({ queryKey: ['source-monitor'], queryFn: fetchSourceMonitor, refetchInterval: 60_000 })
 
 async function copyLog(text: string) {
   try {

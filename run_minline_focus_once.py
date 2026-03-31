@@ -53,7 +53,7 @@ def load_targets(conn, args: argparse.Namespace) -> list[str]:
         SELECT candidate_name
         FROM chatroom_stock_candidate_pool
         WHERE candidate_type IN ('股票', '标的')
-        ORDER BY bull_room_count DESC NULLS LAST, mention_count DESC NULLS LAST, candidate_name
+        ORDER BY bullish_room_count DESC NULLS LAST, mention_count DESC NULLS LAST, candidate_name
         LIMIT ?
         """,
         (args.limit_candidates,),

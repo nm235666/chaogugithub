@@ -20,7 +20,9 @@
             <option value="">全部状态</option>
             <option v-for="item in stateOptions" :key="item" :value="item">{{ item }}</option>
           </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">刷新</button>
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
+            {{ isFetching ? '查询中...' : '刷新' }}
+          </button>
         </div>
       </PageSection>
 
@@ -59,11 +61,14 @@
         <PageSection title="主题总览" subtitle="主题强度、来源和状态机一屏看完。">
           <template #action>
             <div class="flex flex-wrap gap-2">
-              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white" @click="goSignalTimeline">信号时间线</button>
-              <button class="rounded-2xl bg-blue-700 px-4 py-2 text-white" @click="goStateTimeline">状态时间线</button>
-              <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-white" @click="downloadImage">下载链路图</button>
+              <button type="button" class="rounded-2xl bg-stone-800 px-4 py-2 text-white" @click="goSignalTimeline">信号时间线</button>
+              <button type="button" class="rounded-2xl bg-blue-700 px-4 py-2 text-white" @click="goStateTimeline">状态时间线</button>
+              <button type="button" class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-white" @click="downloadImage">下载链路图</button>
             </div>
           </template>
+          <div v-if="downloadStatus" class="mb-3 rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-3 py-2 text-sm text-[var(--muted)]">
+            {{ downloadStatus }}
+          </div>
           <div ref="detailExportRef" class="space-y-4">
             <div class="flex flex-wrap gap-2">
               <StatusBadge :value="selectedItem.direction" :label="selectedItem.direction || '-'" />
@@ -142,10 +147,15 @@ import { downloadElementAsImage } from '../../shared/utils/export'
 
 const router = useRouter()
 
-const filters = reactive({ keyword: '', theme_group: '', direction: '', heat_level: '', state: '', page: 1, page_size: 20 })
+const filters = reactive({ keyword: '', theme_group: '', direction: '', heat_level: '', state: '', page_size: 20 })
+const queryFilters = reactive({ keyword: '', theme_group: '', direction: '', heat_level: '', state: '', page: 1, page_size: 20 })
 const selectedItem = ref<Record<string, any> | null>(null)
 const detailExportRef = ref<HTMLElement | null>(null)
-const { data: result } = useQuery({ queryKey: ['theme-hotspots', filters], queryFn: () => fetchThemeHotspots(filters) })
+const downloadStatus = ref('')
+const { data: result, isFetching } = useQuery({
+  queryKey: computed(() => ['theme-hotspots', { ...queryFilters }]),
+  queryFn: () => fetchThemeHotspots({ ...queryFilters }),
+})
 
 const summary = computed(() => result.value?.summary || {})
 const groupOptions = computed(() => result.value?.filters?.theme_groups || [])
@@ -164,6 +174,7 @@ function themeDescription(item: Record<string, any>) {
 
 function openDetail(item: Record<string, any>) {
   selectedItem.value = item
+  downloadStatus.value = ''
 }
 
 function goSignalTimeline() {
@@ -186,8 +197,28 @@ function goStock(stock: Record<string, any>) {
 }
 
 async function downloadImage() {
-  if (!detailExportRef.value || !selectedItem.value) return
-  await nextTick()
-  await downloadElementAsImage(detailExportRef.value, `${selectedItem.value.theme_name || 'theme'}_主题链路图.png`)
+  if (!detailExportRef.value || !selectedItem.value) {
+    downloadStatus.value = '下载失败：当前没有可导出的主题内容。'
+    return
+  }
+  try {
+    downloadStatus.value = '正在生成链路图，请稍候...'
+    await nextTick()
+    await downloadElementAsImage(detailExportRef.value, `${selectedItem.value.theme_name || 'theme'}_主题链路图.png`)
+    downloadStatus.value = '链路图下载成功。'
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '未知错误')
+    downloadStatus.value = `下载失败：${message}`
+  }
+}
+
+function applyFilters() {
+  queryFilters.keyword = (filters.keyword || '').trim()
+  queryFilters.theme_group = filters.theme_group
+  queryFilters.direction = filters.direction
+  queryFilters.heat_level = filters.heat_level
+  queryFilters.state = filters.state
+  queryFilters.page_size = Number(filters.page_size) || 20
+  queryFilters.page = 1
 }
 </script>

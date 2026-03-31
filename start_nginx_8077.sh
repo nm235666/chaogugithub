@@ -16,6 +16,6 @@ if [[ -f "${PID_FILE}" ]]; then
   fi
 fi
 
-nohup nginx -p "${RUNTIME_DIR}" -c "${CONF_FILE}" -g "daemon off;" >/tmp/nginx_8077.log 2>&1 &
-sleep 1
+nginx -p "${RUNTIME_DIR}" -c "${CONF_FILE}" >/tmp/nginx_8077.log 2>&1
+sleep 0.5
 echo "Nginx gateway started on :8077 (log: /tmp/nginx_8077.log)"

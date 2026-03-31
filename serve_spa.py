@@ -44,8 +44,8 @@ class SpaHandler(SimpleHTTPRequestHandler):
         }
         if raw_path.startswith("/assets/") or suffix in static_suffixes:
             return str(root / "__not_found__")
-        # SPA fallback for route paths and legacy *.html deep links.
-        if suffix in {"", ".html"} or "/" in raw_path.strip("/"):
+        # SPA fallback for route paths.
+        if suffix == "" or "/" in raw_path.strip("/"):
             return str(root / "index.html")
         return str(root / "__not_found__")
 

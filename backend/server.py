@@ -104,6 +104,12 @@ STOCK_SCORE_CACHE: dict[str, object] = {
 }
 REDIS_CACHE_TTL_SOURCE_MONITOR = 30
 REDIS_CACHE_TTL_DASHBOARD = 30
+REDIS_CACHE_TTL_PRICES = 180
+REDIS_CACHE_TTL_STOCKS = 30
+REDIS_CACHE_TTL_SIGNALS = 30
+REDIS_CACHE_TTL_THEMES = 30
+PRICES_DEFAULT_LOOKBACK_DAYS = 30
+PRICES_MAX_PAGE_SIZE = 100
 AUDIT_REPORT_PATH = ROOT_DIR / "docs" / "database_audit_report.md"
 PROTECTED_POST_PATHS = {
     "/api/signal-quality/rules/save",
@@ -130,6 +136,8 @@ DEFAULT_ALLOWED_ADMIN_ORIGINS = {
     "http://localhost:5173",
     "http://127.0.0.1:4173",
     "http://localhost:4173",
+    "http://tianbo.asia:6273",
+    "https://tianbo.asia:6273",
 }
 TRUSTED_FRONTEND_PORTS = {"8077", "8080", "5173", "4173"}
 
@@ -245,6 +253,10 @@ def query_stocks(keyword: str, status: str, market: str, area: str, page: int, p
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     offset = (page - 1) * page_size
+    cache_key = f"api:stocks:v1:kw={keyword}:status={status}:market={market}:area={area}:page={page}:size={page_size}"
+    cached = cache_get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
 
     where_clauses = []
     params: list[object] = []
@@ -281,13 +293,15 @@ def query_stocks(keyword: str, status: str, market: str, area: str, page: int, p
     finally:
         conn.close()
 
-    return {
+    payload = {
         "page": page,
         "page_size": page_size,
         "total": total,
         "total_pages": (total + page_size - 1) // page_size,
         "items": data,
     }
+    cache_set_json(cache_key, payload, REDIS_CACHE_TTL_STOCKS)
+    return payload
 
 
 def query_stock_filters():
@@ -1245,62 +1259,96 @@ def query_prices(
     start_date = start_date.strip()
     end_date = end_date.strip()
     page = max(page, 1)
-    page_size = min(max(page_size, 1), 200)
+    page_size = min(max(page_size, 1), PRICES_MAX_PAGE_SIZE)
     offset = (page - 1) * page_size
+
+    applied_default_lookback = False
 
     where_clauses = []
     params: list[object] = []
 
-    if ts_code:
-        where_clauses.append("p.ts_code = ?")
-        params.append(ts_code)
-    if start_date:
-        where_clauses.append("p.trade_date >= ?")
-        params.append(start_date)
-    if end_date:
-        where_clauses.append("p.trade_date <= ?")
-        params.append(end_date)
-
-    where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-
-    count_sql = f"SELECT COUNT(*) FROM stock_daily_prices p{where_sql}"
-    data_sql = f"""
-    SELECT
-        p.ts_code,
-        s.name,
-        p.trade_date,
-        p.open,
-        p.high,
-        p.low,
-        p.close,
-        p.pre_close,
-        p.change,
-        p.pct_chg,
-        p.vol,
-        p.amount
-    FROM stock_daily_prices p
-    LEFT JOIN stock_codes s ON s.ts_code = p.ts_code
-    {where_sql}
-    ORDER BY p.trade_date DESC, p.ts_code ASC
-    LIMIT ? OFFSET ?
-    """
-
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
+        if not ts_code and not start_date and not end_date:
+            latest_trade_date = conn.execute("SELECT MAX(trade_date) FROM stock_daily_prices").fetchone()[0]
+            if latest_trade_date:
+                end_date = str(latest_trade_date)
+                try:
+                    latest_dt = datetime.strptime(end_date, "%Y%m%d")
+                    start_date = (latest_dt - timedelta(days=PRICES_DEFAULT_LOOKBACK_DAYS)).strftime("%Y%m%d")
+                except Exception:
+                    start_date = (datetime.utcnow() - timedelta(days=PRICES_DEFAULT_LOOKBACK_DAYS)).strftime("%Y%m%d")
+            else:
+                start_date = (datetime.utcnow() - timedelta(days=PRICES_DEFAULT_LOOKBACK_DAYS)).strftime("%Y%m%d")
+                end_date = datetime.utcnow().strftime("%Y%m%d")
+            applied_default_lookback = True
+
+        if ts_code:
+            where_clauses.append("p.ts_code = ?")
+            params.append(ts_code)
+        if start_date:
+            where_clauses.append("p.trade_date >= ?")
+            params.append(start_date)
+        if end_date:
+            where_clauses.append("p.trade_date <= ?")
+            params.append(end_date)
+
+        where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        cache_key = (
+            f"api:prices:v2:ts={ts_code or '*'}:start={start_date or '*'}:"
+            f"end={end_date or '*'}:page={page}:size={page_size}"
+        )
+        cached = cache_get_json(cache_key)
+        if isinstance(cached, dict):
+            cached.setdefault("cache", {})["hit"] = True
+            return cached
+
+        count_sql = f"SELECT COUNT(*) FROM stock_daily_prices p{where_sql}"
+        data_sql = f"""
+        SELECT
+            p.ts_code,
+            s.name,
+            p.trade_date,
+            p.open,
+            p.high,
+            p.low,
+            p.close,
+            p.pre_close,
+            p.change,
+            p.pct_chg,
+            p.vol,
+            p.amount
+        FROM stock_daily_prices p
+        LEFT JOIN stock_codes s ON s.ts_code = p.ts_code
+        {where_sql}
+        ORDER BY p.trade_date DESC, p.ts_code ASC
+        LIMIT ? OFFSET ?
+        """
+
         total = conn.execute(count_sql, params).fetchone()[0]
         rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
         data = [dict(r) for r in rows]
+        payload = {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size,
+            "items": data,
+            "start_date": start_date,
+            "end_date": end_date,
+            "default_lookback_applied": applied_default_lookback,
+            "message": (
+                f"未传查询条件，默认返回最近{PRICES_DEFAULT_LOOKBACK_DAYS}天日线数据。"
+                if applied_default_lookback
+                else ""
+            ),
+            "cache": {"hit": False, "ttl_seconds": REDIS_CACHE_TTL_PRICES},
+        }
+        cache_set_json(cache_key, payload, REDIS_CACHE_TTL_PRICES)
+        return payload
     finally:
         conn.close()
-
-    return {
-        "page": page,
-        "page_size": page_size,
-        "total": total,
-        "total_pages": (total + page_size - 1) // page_size,
-        "items": data,
-    }
 
 
 def query_minline(
@@ -2415,6 +2463,14 @@ def query_investment_signals(
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     offset = (page - 1) * page_size
+    cache_key = (
+        "api:investment-signals:v1:"
+        f"kw={keyword}:stype={signal_type}:sg={signal_group}:scope={scope}:src={source_filter}:"
+        f"dir={direction}:status={signal_status}:page={page}:size={page_size}"
+    )
+    cached = cache_get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -2516,7 +2572,7 @@ def query_investment_signals(
     finally:
         conn.close()
 
-    return {
+    payload = {
         "page": page,
         "page_size": page_size,
         "total": total,
@@ -2526,10 +2582,13 @@ def query_investment_signals(
         "filters": filters,
         "scope": normalized_scope,
     }
+    cache_set_json(cache_key, payload, REDIS_CACHE_TTL_SIGNALS)
+    return payload
 
 
 def query_investment_signal_timeline(signal_key: str, page: int, page_size: int):
     signal_key = (signal_key or "").strip()
+    requested_signal_key = signal_key
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     offset = (page - 1) * page_size
@@ -2563,12 +2622,73 @@ def query_investment_signal_timeline(signal_key: str, page: int, page_size: int)
             (signal_key,),
         ).fetchone()
         total = 0
-        events: list[dict] = []
+        chosen_signal_key = signal_key
         if events_exists:
             total = conn.execute(
                 "SELECT COUNT(*) FROM investment_signal_events WHERE signal_key = ?",
                 (signal_key,),
             ).fetchone()[0]
+
+        # 主题/宏观/商品/汇率的 signal_key 可能存在口径差异，自动做一次同主体回退
+        if (not signal_row) and total <= 0 and ":" in signal_key:
+            prefix, subject_name = signal_key.split(":", 1)
+            subject_name = subject_name.strip()
+            if subject_name:
+                candidate_prefixes = [prefix, "theme", "macro", "commodity", "fx"]
+                seen = set()
+                candidate_keys: list[str] = []
+                for pfx in candidate_prefixes:
+                    pfx = str(pfx or "").strip()
+                    if not pfx:
+                        continue
+                    key = f"{pfx}:{subject_name}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidate_keys.append(key)
+
+                best_score = -1
+                best_key = signal_key
+                best_row = None
+                best_total = 0
+                for key in candidate_keys:
+                    row = conn.execute(
+                        """
+                        SELECT id, signal_key, signal_type, subject_name, ts_code, direction, signal_strength, confidence,
+                               evidence_count, news_count, stock_news_count, chatroom_count, signal_status, latest_signal_date,
+                               evidence_json, source_summary_json, created_at, update_time
+                        FROM investment_signal_tracker
+                        WHERE signal_key = ?
+                        LIMIT 1
+                        """,
+                        (key,),
+                    ).fetchone()
+                    event_count = 0
+                    if events_exists:
+                        event_count = conn.execute(
+                            "SELECT COUNT(*) FROM investment_signal_events WHERE signal_key = ?",
+                            (key,),
+                        ).fetchone()[0]
+                    score = event_count * 10 + (1 if row else 0)
+                    if score > best_score:
+                        best_score = score
+                        best_key = key
+                        best_row = row
+                        best_total = event_count
+
+                if best_score > 0:
+                    chosen_signal_key = best_key
+                    signal_key = best_key
+                    signal_row = best_row
+                    total = best_total
+
+        events: list[dict] = []
+        if events_exists:
+            if total <= 0:
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM investment_signal_events WHERE signal_key = ?",
+                    (signal_key,),
+                ).fetchone()[0]
             rows = conn.execute(
                 """
                 SELECT id, signal_key, event_time, event_date, event_type, old_direction, new_direction,
@@ -2651,6 +2771,8 @@ def query_investment_signal_timeline(signal_key: str, page: int, page_size: int)
         "events": events,
         "snapshots": snapshots,
         "logic_view": signal_logic,
+        "requested_signal_key": requested_signal_key,
+        "resolved_signal_key": signal_key,
         "page": page,
         "page_size": page_size,
         "total": total,
@@ -2688,6 +2810,14 @@ def query_theme_hotspots(keyword: str, theme_group: str, direction: str, heat_le
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     offset = (page - 1) * page_size
+    cache_key = (
+        "api:theme-hotspots:v1:"
+        f"kw={keyword}:group={theme_group}:dir={direction}:heat={heat_level}:state={state_filter}:"
+        f"page={page}:size={page_size}"
+    )
+    cached = cache_get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -2762,7 +2892,7 @@ def query_theme_hotspots(keyword: str, theme_group: str, direction: str, heat_le
         }
     finally:
         conn.close()
-    return {
+    payload = {
         "page": page,
         "page_size": page_size,
         "total": total,
@@ -2771,6 +2901,8 @@ def query_theme_hotspots(keyword: str, theme_group: str, direction: str, heat_le
         "summary": summary,
         "filters": filters,
     }
+    cache_set_json(cache_key, payload, REDIS_CACHE_TTL_THEMES)
+    return payload
 
 
 def query_signal_state_timeline(signal_scope: str, signal_key: str, page: int, page_size: int):
@@ -4355,6 +4487,7 @@ def query_stock_detail(ts_code: str, keyword: str, lookback: int = 60):
         governance_summary = _build_governance_summary(conn, resolved_ts_code)
         risk_summary = _build_risk_summary(conn, resolved_ts_code)
         stock_news_summary = _build_stock_news_summary(conn, resolved_ts_code)
+        price_rollups = _build_price_rollups_summary(conn, resolved_ts_code)
 
         candidate_pool_item = conn.execute(
             """
@@ -4428,6 +4561,7 @@ def query_stock_detail(ts_code: str, keyword: str, lookback: int = 60):
             "governance_summary": governance_summary,
             "risk_summary": risk_summary,
             "stock_news_summary": stock_news_summary,
+            "price_rollups": price_rollups,
             "candidate_pool_item": dict(candidate_pool_item) if candidate_pool_item else None,
             "chatroom_mentions": chatroom_mentions,
         }
@@ -4704,6 +4838,46 @@ def _build_valuation_summary(conn: sqlite3.Connection, ts_code: str):
             "dv_ttm_pct": _percentile_rank(dv_values, _safe_float(latest.get("dv_ttm"))),
         },
     }
+
+
+def _build_price_rollups_summary(conn: sqlite3.Connection, ts_code: str):
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                ts_code, window_days, start_date, end_date, rows_count,
+                close_first, close_last, close_change_pct, high_max, low_min, vol_avg, amount_avg, update_time
+            FROM stock_daily_price_rollups
+            WHERE ts_code = ?
+            ORDER BY window_days ASC, end_date DESC
+            """,
+            (ts_code,),
+        ).fetchall()
+    except Exception:
+        return {"items": [], "by_window": {}}
+
+    latest_by_window: dict[str, dict] = {}
+    for row in rows:
+        d = dict(row)
+        key = str(d.get("window_days") or "")
+        if not key or key in latest_by_window:
+            continue
+        latest_by_window[key] = {
+            "window_days": d.get("window_days"),
+            "start_date": d.get("start_date"),
+            "end_date": d.get("end_date"),
+            "rows_count": d.get("rows_count"),
+            "close_first": _round_or_none(d.get("close_first"), 3),
+            "close_last": _round_or_none(d.get("close_last"), 3),
+            "close_change_pct": _round_or_none(d.get("close_change_pct"), 2),
+            "high_max": _round_or_none(d.get("high_max"), 3),
+            "low_min": _round_or_none(d.get("low_min"), 3),
+            "vol_avg": _round_or_none(d.get("vol_avg"), 2),
+            "amount_avg": _round_or_none(d.get("amount_avg"), 2),
+            "update_time": d.get("update_time"),
+        }
+    ordered_items = [latest_by_window[k] for k in sorted(latest_by_window.keys(), key=lambda x: int(x))]
+    return {"items": ordered_items, "by_window": latest_by_window}
 
 
 def _build_capital_flow_summary(conn: sqlite3.Connection, ts_code: str):
@@ -6160,8 +6334,8 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         configured_token = (BACKEND_ADMIN_TOKEN or "").strip()
         if not configured_token:
-            self._send_json({"error": "受保护接口尚未启用：请先设置 BACKEND_ADMIN_TOKEN"}, status=503)
-            return True
+            # Dev/LAN default: if admin token is not configured, protected routes are open.
+            return False
 
         token = self._extract_admin_token()
         if not token or not secrets.compare_digest(token, configured_token):

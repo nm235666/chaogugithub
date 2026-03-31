@@ -3,26 +3,28 @@
     <div class="space-y-4">
       <PageSection title="查询与采集" subtitle="按股票、来源、日期、重要度和评分状态筛选，也可以直接触发采集或补评分。">
         <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-2">
-          <input v-model="filters.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="ts_code，如 000001.SZ" />
-          <input v-model="filters.company_name" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="公司名" />
-          <input v-model="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="新闻关键词" />
-          <select v-model="filters.source" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <input v-model="draftFilters.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="ts_code，如 000001.SZ" />
+          <input v-model="draftFilters.company_name" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="公司名" />
+          <input v-model="draftFilters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="新闻关键词" />
+          <select v-model="draftFilters.source" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部来源</option>
             <option v-for="item in sourceOptions" :key="item" :value="item">{{ sourceLabel(item) }}</option>
           </select>
-          <input v-model="filters.date_from" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="开始日期 YYYY-MM-DD" />
-          <input v-model="filters.date_to" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="结束日期 YYYY-MM-DD" />
-          <select v-model="filters.scored" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <input v-model="draftFilters.date_from" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="开始日期 YYYY-MM-DD" />
+          <input v-model="draftFilters.date_to" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="结束日期 YYYY-MM-DD" />
+          <select v-model="draftFilters.scored" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部评分状态</option>
             <option value="unscored">只看未评分</option>
             <option value="scored">只看已评分</option>
           </select>
-          <select v-model.number="filters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model.number="draftFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option :value="20">20 / 页</option>
             <option :value="50">50 / 页</option>
           </select>
           <div class="xl:col-span-2 flex gap-2">
-            <button class="flex-1 rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">查询</button>
+            <button class="flex-1 rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="applyFilters">
+              {{ isFetching ? '查询中...' : '查询' }}
+            </button>
             <button class="flex-1 rounded-2xl bg-blue-700 px-4 py-3 font-semibold text-white" :disabled="isFetchPending" @click="runFetch">
               {{ isFetchPending ? '采集中...' : '立即采集' }}
             </button>
@@ -91,10 +93,10 @@
           </InfoCard>
         </div>
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-          <div>第 {{ filters.page }} / {{ result?.total_pages || 1 }} 页</div>
+          <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="filters.page -= 1">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (result?.total_pages || 1)" @click="filters.page += 1">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="queryFilters.page -= 1">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="queryFilters.page += 1">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -118,7 +120,7 @@ import { importanceOptions, parseImpactTags, sourceLabel } from '../../shared/ut
 const router = useRouter()
 const queryClient = useQueryClient()
 
-const filters = reactive({
+const queryFilters = reactive({
   ts_code: '',
   company_name: '',
   keyword: '',
@@ -130,9 +132,10 @@ const filters = reactive({
   page: 1,
   page_size: 20,
 })
+const draftFilters = reactive({ ...queryFilters })
 
 const selectedFinanceLevels = ref(
-  String(filters.finance_levels || '')
+  String(draftFilters.finance_levels || '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean),
@@ -142,13 +145,12 @@ const rowScoringId = ref(0)
 const importanceLevels = importanceOptions()
 const isFetchPending = computed(() => fetchMutation.isPending.value)
 const isScorePending = computed(() => scoreMutation.isPending.value)
-const currentScoreTarget = computed(() => filters.ts_code.trim().toUpperCase() || String(result.value?.items?.[0]?.ts_code || '').trim().toUpperCase())
+const currentScoreTarget = computed(() => draftFilters.ts_code.trim().toUpperCase() || String(result.value?.items?.[0]?.ts_code || '').trim().toUpperCase())
 
 watch(
   selectedFinanceLevels,
   (levels) => {
-    filters.finance_levels = levels.join(',')
-    filters.page = 1
+    draftFilters.finance_levels = levels.join(',')
   },
   { deep: true, immediate: true },
 )
@@ -156,10 +158,10 @@ watch(
 const { data: sourceData } = useQuery({ queryKey: ['stock-news-sources'], queryFn: fetchStockNewsSources })
 const sourceOptions = computed(() => sourceData.value?.items || [])
 
-const { data: result, refetch } = useQuery({ queryKey: ['stock-news', filters], queryFn: () => fetchStockNews(filters) })
+const { data: result, refetch, isFetching } = useQuery({ queryKey: ['stock-news', queryFilters], queryFn: () => fetchStockNews(queryFilters) })
 
 const fetchMutation = useMutation({
-  mutationFn: () => triggerStockNewsFetch({ ...filters, score: 1 }),
+  mutationFn: () => triggerStockNewsFetch({ ...draftFilters, score: 1 }),
   onSuccess: async (payload) => {
     actionMessage.value = `采集完成${payload.used_model ? ` · 实际模型 ${payload.used_model}` : ''}`
     await queryClient.invalidateQueries({ queryKey: ['stock-news'] })
@@ -170,7 +172,7 @@ const fetchMutation = useMutation({
 })
 
 const scoreMutation = useMutation({
-  mutationFn: () => triggerStockNewsScore({ ts_code: currentScoreTarget.value, limit: Math.max(filters.page_size, 20), force: filters.scored === 'scored' ? 1 : 0 }),
+  mutationFn: () => triggerStockNewsScore({ ts_code: currentScoreTarget.value, limit: Math.max(Number(draftFilters.page_size || 20), 20), force: draftFilters.scored === 'scored' ? 1 : 0 }),
   onSuccess: async (payload) => {
     actionMessage.value = `补评分完成${payload.used_model ? ` · 实际模型 ${payload.used_model}` : ''}`
     await refetch()
@@ -198,6 +200,10 @@ function runFetch() {
 
 function runScoreCurrent() {
   scoreMutation.mutate()
+}
+
+function applyFilters() {
+  Object.assign(queryFilters, { ...draftFilters, page: 1 })
 }
 
 async function rescoreRow(item: Record<string, any>) {

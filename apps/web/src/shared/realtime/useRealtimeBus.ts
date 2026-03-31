@@ -18,6 +18,7 @@ export function useRealtimeBus() {
   const realtime = useRealtimeStore()
   let socket: WebSocket | null = null
   let retryTimer = 0
+  const invalidateTimers = new Map<string, number>()
 
   const wsCandidates = (() => {
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -27,6 +28,17 @@ export function useRealtimeBus() {
       `${scheme}://${window.location.host}/ws/realtime`,
     ])]
   })()
+
+  const invalidateLater = (key: readonly unknown[], delayMs = 5000) => {
+    const cacheKey = JSON.stringify(key)
+    const existing = invalidateTimers.get(cacheKey)
+    if (existing) return
+    const timer = window.setTimeout(() => {
+      invalidateTimers.delete(cacheKey)
+      queryClient.invalidateQueries({ queryKey: key })
+    }, delayMs)
+    invalidateTimers.set(cacheKey, timer)
+  }
 
   const connect = (index = 0) => {
     const target = wsCandidates[index % wsCandidates.length]
@@ -45,11 +57,11 @@ export function useRealtimeBus() {
         const payloadAt = msg?.payload?.created_at || msg?.ts || ''
         realtime.pushEvent(eventName, payloadAt)
         EVENT_QUERY_KEYS.forEach(([evt, key]) => {
-          if (evt === eventName) queryClient.invalidateQueries({ queryKey: key })
+          if (evt === eventName) invalidateLater(key)
         })
         if (msg?.channel === 'news' || msg?.channel === 'app') {
-          queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-          queryClient.invalidateQueries({ queryKey: ['source-monitor'] })
+          invalidateLater(['dashboard'])
+          invalidateLater(['source-monitor'])
         }
       } catch {
         // ignore malformed ws payloads
@@ -60,6 +72,8 @@ export function useRealtimeBus() {
   onMounted(() => connect())
   onUnmounted(() => {
     window.clearTimeout(retryTimer)
+    invalidateTimers.forEach((timer) => window.clearTimeout(timer))
+    invalidateTimers.clear()
     socket?.close()
   })
 }

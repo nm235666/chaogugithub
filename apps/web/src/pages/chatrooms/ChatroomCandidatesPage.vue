@@ -9,12 +9,12 @@
             <option value="股票">股票</option>
             <option value="主题">主题</option>
           </select>
-          <select v-model="filters.bias" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model="filters.dominant_bias" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部方向</option>
             <option value="看多">看多</option>
             <option value="看空">看空</option>
           </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">刷新</button>
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="reload">刷新</button>
         </div>
         <div class="mt-4 space-y-2">
           <InfoCard v-for="item in result?.items || []" :key="item.candidate_name + String(item.latest_analysis_date)" :title="item.candidate_name || '-'" :meta="`${item.candidate_type || '-'} · 净分 ${item.net_score ?? 0} · 提及 ${item.mention_count ?? 0}`">
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -37,6 +37,14 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { fetchCandidatePool } from '../../services/api/chatrooms'
 
-const filters = reactive({ keyword: '', candidate_type: '', bias: '', page: 1, page_size: 30 })
-const { data: result } = useQuery({ queryKey: ['candidate-pool', filters], queryFn: () => fetchCandidatePool(filters) })
+const filters = reactive({ keyword: '', candidate_type: '', dominant_bias: '', page: 1, page_size: 30 })
+const { data: result, refetch } = useQuery({
+  queryKey: computed(() => ['candidate-pool', { ...filters }]),
+  queryFn: () => fetchCandidatePool({ ...filters }),
+})
+
+function reload() {
+  filters.page = 1
+  refetch()
+}
 </script>

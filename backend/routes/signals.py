@@ -135,7 +135,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json(payload)
         return True
 
-    if parsed.path == "/api/macro/indicators":
+    if parsed.path in {"/api/macro/indicators", "/api/macro-indicators"}:
         try:
             payload = {"items": deps["query_macro_indicators"](limit=1000)}
         except Exception as exc:  # pragma: no cover
@@ -144,7 +144,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json(payload)
         return True
 
-    if parsed.path == "/api/macro":
+    if parsed.path in {"/api/macro", "/api/macro-series"}:
         params = parse_qs(parsed.query)
         indicator_code = params.get("indicator_code", [""])[0]
         freq = params.get("freq", [""])[0]

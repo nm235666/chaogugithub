@@ -164,7 +164,8 @@ def classify_error(err_msg: str) -> tuple[str, bool]:
         "connection reset",
         "connection aborted",
         "temporarily unavailable",
-        "http error 429",
+        "http error 429",  # 限流
+        "http error 456",  # 新浪限流
         "http error 500",
         "http error 502",
         "http error 503",

@@ -9,7 +9,7 @@ export const router = createRouter({
     { path: '/stocks/scores', component: () => import('../pages/stocks/StockScoresPage.vue') },
     { path: '/stocks/detail/:tsCode?', component: () => import('../pages/stocks/StockDetailPage.vue'), props: true },
     { path: '/stocks/prices', component: () => import('../pages/stocks/PricesPage.vue') },
-    { path: '/stocks/minline', component: () => import('../pages/stocks/MinlinePage.vue') },
+    { path: '/stocks/minline', redirect: '/stocks/prices' },
     { path: '/macro', component: () => import('../pages/macro/MacroPage.vue') },
     { path: '/intelligence/global-news', component: () => import('../pages/intelligence/GlobalNewsPage.vue') },
     { path: '/intelligence/cn-news', component: () => import('../pages/intelligence/CnNewsPage.vue') },

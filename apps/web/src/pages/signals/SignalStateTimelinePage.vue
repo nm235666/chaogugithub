@@ -68,7 +68,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -99,6 +100,28 @@ const filters = reactive({
   page: 1,
   page_size: 20,
 })
+const route = useRoute()
+
+watch(
+  () => route.query,
+  (query) => {
+    const scope = String(query.signal_scope || '').trim()
+    const key = String(query.signal_key || '').trim()
+    if (scope) filters.signal_scope = scope
+    if (key) {
+      filters.signal_key = key
+      filters.page = 1
+      return
+    }
+    const legacyName = String(query.entity_name || '').trim()
+    if (legacyName) {
+      filters.signal_scope = filters.signal_scope || 'theme'
+      filters.signal_key = `theme:${legacyName}`
+      filters.page = 1
+    }
+  },
+  { immediate: true, deep: true },
+)
 
 const { data: result } = useQuery({
   queryKey: ['signal-state-timeline', filters],

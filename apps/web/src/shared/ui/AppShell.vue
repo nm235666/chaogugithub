@@ -20,7 +20,7 @@
                 :key="item.to"
                 :to="item.to"
                 class="block rounded-[22px] border px-3 py-3 text-sm transition"
-                :class="route.path === item.to ? 'border-white/14 bg-white/18 text-white shadow-lg ring-1 ring-white/18 backdrop-blur-sm' : 'border-white/8 bg-white/[0.05] text-white/84 hover:border-white/14 hover:bg-white/10 hover:text-white'"
+                :class="isNavActive(item.to) ? 'border-white/14 bg-white/18 text-white shadow-lg ring-1 ring-white/18 backdrop-blur-sm' : 'border-white/8 bg-white/[0.05] text-white/84 hover:border-white/14 hover:bg-white/10 hover:text-white'"
               >
                 <div class="font-semibold">{{ item.label }}</div>
                 <div class="mt-1 text-xs text-white/55">{{ item.desc }}</div>
@@ -70,14 +70,11 @@ import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useUiStore } from '../../stores/ui'
 import { useRealtimeStore } from '../../stores/realtime'
-import { useRealtimeBus } from '../realtime/useRealtimeBus'
 
 const props = defineProps<{
   title: string
   subtitle?: string
 }>()
-
-useRealtimeBus()
 
 const ui = useUiStore()
 const realtime = useRealtimeStore()
@@ -106,8 +103,7 @@ const navGroups = [
       { to: '/stocks/list', label: '股票列表', desc: '代码、简称、市场、地区快速检索' },
       { to: '/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序' },
       { to: '/stocks/detail/000001.SZ', label: '股票详情', desc: '统一聚合价格、新闻、群聊与分析' },
-      { to: '/stocks/prices', label: '日线价格', desc: '历史日线查询与收盘趋势' },
-      { to: '/stocks/minline', label: '分钟线', desc: '分钟 K 线、均价与成交量' },
+      { to: '/stocks/prices', label: '价格中心', desc: '日线 + 分钟线统一查询与图表' },
     ],
   },
   {
@@ -138,4 +134,15 @@ const navGroups = [
     ],
   },
 ]
+
+function isNavActive(to: string): boolean {
+  const targetPath = String(to || '').split('?')[0] || ''
+  if (!targetPath) return false
+  if (route.path === targetPath) return true
+  // 股票详情是动态路径，导航固定指向示例代码，激活态按前缀判断
+  if (targetPath.startsWith('/stocks/detail/')) {
+    return route.path.startsWith('/stocks/detail')
+  }
+  return false
+}
 </script>

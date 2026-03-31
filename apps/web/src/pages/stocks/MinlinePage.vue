@@ -3,19 +3,24 @@
     <div class="space-y-4">
       <PageSection title="分钟线查询" subtitle="查询某只股票某个交易日的分钟数据。">
         <div class="grid gap-3 xl:grid-cols-[180px_180px_140px_120px] md:grid-cols-2">
-          <input v-model="filters.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="股票代码，如 600114.SH" />
-          <input v-model="filters.trade_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="交易日 YYYYMMDD，可空" />
-          <select v-model.number="filters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <input v-model="draftFilters.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="股票代码，如 600114.SH" />
+          <input v-model="draftFilters.trade_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="交易日 YYYYMMDD，可空" />
+          <select v-model.number="draftFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option :value="500">500 点</option>
             <option :value="300">300 点</option>
             <option :value="240">240 点</option>
           </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">绘制</button>
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="runQuery">
+            {{ isFetching ? '查询中...' : '绘制' }}
+          </button>
         </div>
       </PageSection>
 
       <PageSection title="分钟 K 线图" subtitle="使用分钟价格构造 K 线，并叠加均价与成交量。">
-        <MinuteKlineChart :items="result?.items || []" :height="620" empty-text="暂无分钟线数据" />
+        <MinuteKlineChart v-if="hasSearched" :items="result?.items || []" :height="620" empty-text="暂无分钟线数据" />
+        <div v-else class="rounded-[20px] border border-dashed border-[var(--line)] bg-[rgba(255,255,255,0.62)] px-4 py-12 text-center text-sm text-[var(--muted)]">
+          请输入股票代码后点击“绘制”再加载分钟图。
+        </div>
       </PageSection>
 
       <PageSection :title="`分钟数据 (${result?.total || 0})`" subtitle="最近一批分钟数据明细。">
@@ -32,21 +37,24 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { defineAsyncComponent, reactive, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
-import MinuteKlineChart from '../../shared/charts/MinuteKlineChart.vue'
 import { fetchStockMinline } from '../../services/api/stocks'
 import { formatDate, formatNumber } from '../../shared/utils/format'
 
-const filters = reactive({
+const MinuteKlineChart = defineAsyncComponent(() => import('../../shared/charts/MinuteKlineChart.vue'))
+
+const queryFilters = reactive({
   ts_code: '600114.SH',
   trade_date: '',
   page: 1,
   page_size: 500,
 })
+const draftFilters = reactive({ ...queryFilters })
+const hasSearched = ref(false)
 
 const columns = [
   { key: 'trade_date', label: '交易日' },
@@ -57,8 +65,14 @@ const columns = [
   { key: 'total_volume', label: '累计成交量' },
 ]
 
-const { data: result } = useQuery({
-  queryKey: ['stock-minline', filters],
-  queryFn: () => fetchStockMinline(filters),
+const { data: result, isFetching } = useQuery({
+  queryKey: ['stock-minline', queryFilters],
+  queryFn: () => fetchStockMinline(queryFilters),
+  enabled: hasSearched,
 })
+
+function runQuery() {
+  Object.assign(queryFilters, { ...draftFilters, page: 1 })
+  hasSearched.value = true
+}
 </script>

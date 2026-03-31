@@ -259,7 +259,8 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
                 " python3 fast_backfill_stock_financials.py --recent-periods 4 --pause 0.02;"
                 " python3 backfill_missing_stock_financials.py --recent-periods 4 --pause 0.05;"
                 " python3 update_daily_stock_events.py;"
-                " python3 backfill_stock_scores_daily.py --truncate-date"
+                " python3 backfill_stock_scores_daily.py --truncate-date;"
+                " python3 build_stock_daily_price_rollups.py --window-days 30,90,365"
             ),
         ),
     ),
@@ -386,8 +387,8 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="research_reports_refresh",
         name="标准投研报告刷新",
         category="reports",
-        schedule_expr="46 * * * *",
-        description="自动生成市场/主题/高分股票标准报告",
+        schedule_expr="30 7,15 * * *",
+        description="每日盘后与夜间补算：自动生成市场/主题/高分股票标准报告",
         commands=((PYTHON_BIN, str(ROOT_DIR / "generate_standard_research_report.py"), "--report-type", "market", "--subject-key", "market_overview", "--report-date", "__CN_DATE__", "--model", "auto_market_snapshot_v1"),),
     ),
     JobDefinition(

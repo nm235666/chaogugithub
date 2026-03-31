@@ -2,18 +2,20 @@
   <div class="space-y-4">
     <PageSection :title="pageTitle" :subtitle="pageSubtitle">
       <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-3">
-        <select v-if="showSource" v-model="localFilters.source" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+        <select v-if="showSource" v-model="draftFilters.source" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
           <option value="">全部来源</option>
           <option v-for="item in sourceOptions" :key="item" :value="item">{{ sourceLabel(item) }}</option>
         </select>
-        <input v-model="localFilters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="关键词" />
-        <input v-model="localFilters.date_from" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="开始日期，如 2026-03-20" />
-        <input v-model="localFilters.date_to" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="结束日期，如 2026-03-28" />
-        <select v-model.number="localFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+        <input v-model="draftFilters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="关键词" />
+        <input v-model="draftFilters.date_from" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="开始日期，如 2026-03-20" />
+        <input v-model="draftFilters.date_to" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="结束日期，如 2026-03-28" />
+        <select v-model.number="draftFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
           <option :value="20">20 / 页</option>
           <option :value="50">50 / 页</option>
         </select>
-        <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="localFilters.page = 1">刷新</button>
+        <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="applyFilters">
+          {{ isFetching ? '查询中...' : '查询' }}
+        </button>
       </div>
       <div class="mt-4 flex flex-wrap gap-2">
         <button
@@ -92,10 +94,10 @@
         </InfoCard>
       </div>
       <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-        <div>第 {{ localFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
+          <div>第 {{ localFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
         <div class="flex gap-2">
-          <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="localFilters.page <= 1" @click="localFilters.page -= 1">上一页</button>
-          <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="localFilters.page >= (result?.total_pages || 1)" @click="localFilters.page += 1">下一页</button>
+          <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="localFilters.page <= 1" @click="changePage(-1)">上一页</button>
+          <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="localFilters.page >= (result?.total_pages || 1)" @click="changePage(1)">下一页</button>
         </div>
       </div>
     </PageSection>
@@ -123,9 +125,9 @@ const props = defineProps<{
   loadSources?: boolean
 }>()
 
-const emit = defineEmits<{ 'update:filters': [value: Record<string, any>] }>()
 const router = useRouter()
-const localFilters = reactive({ ...props.filters })
+const localFilters = props.filters as Record<string, any>
+const draftFilters = reactive({ ...localFilters })
 const selectedFinanceLevels = ref(
   String(localFilters.finance_levels || '')
     .split(',')
@@ -136,13 +138,18 @@ const selectedFinanceLevels = ref(
 watch(
   selectedFinanceLevels,
   (levels) => {
-    localFilters.finance_levels = levels.join(',')
-    localFilters.page = 1
+    draftFilters.finance_levels = levels.join(',')
   },
   { deep: true, immediate: true },
 )
 
-watch(localFilters, () => emit('update:filters', localFilters), { deep: true })
+watch(
+  () => ({ ...localFilters }),
+  (next) => {
+    Object.assign(draftFilters, next || {})
+  },
+  { deep: true },
+)
 
 const { data: sourceData } = useQuery({
   queryKey: ['news-sources'],
@@ -150,7 +157,7 @@ const { data: sourceData } = useQuery({
   enabled: !!props.loadSources,
 })
 
-const { data: result } = useQuery({ queryKey: props.queryKey, queryFn: props.queryFn })
+const { data: result, isFetching } = useQuery({ queryKey: props.queryKey, queryFn: props.queryFn })
 const sourceOptions = computed(() => sourceData.value?.items || [])
 const importanceLevels = importanceOptions()
 
@@ -160,6 +167,14 @@ function toggleLevel(level: string) {
   } else {
     selectedFinanceLevels.value = [...selectedFinanceLevels.value, level]
   }
+}
+
+function applyFilters() {
+  Object.assign(localFilters, { ...draftFilters, page: 1 })
+}
+
+function changePage(delta: number) {
+  localFilters.page = Math.max(1, Number(localFilters.page || 1) + delta)
 }
 
 function impactTags(item: Record<string, any>) {

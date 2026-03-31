@@ -23,7 +23,9 @@
             <option :value="50">50 / 页</option>
             <option :value="100">100 / 页</option>
           </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">应用筛选</button>
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
+            {{ isFetching ? '查询中...' : '应用筛选' }}
+          </button>
         </div>
       </PageSection>
 
@@ -40,10 +42,10 @@
           </template>
         </DataTable>
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-          <div>第 {{ filters.page }} / {{ stocks?.total_pages || 1 }} 页</div>
+          <div>第 {{ queryFilters.page }} / {{ stocks?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="filters.page -= 1">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (stocks?.total_pages || 1)" @click="filters.page += 1">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="goPrevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (stocks?.total_pages || 1)" @click="goNextPage">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -52,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { RouterLink } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
@@ -63,6 +65,13 @@ import { fetchStockFilters, fetchStocks } from '../../services/api/stocks'
 import { listStatusLabel } from '../../shared/utils/format'
 
 const filters = reactive({
+  keyword: '',
+  status: '',
+  market: '',
+  area: '',
+  page_size: 20,
+})
+const queryFilters = reactive({
   keyword: '',
   status: '',
   market: '',
@@ -83,8 +92,28 @@ const columns = [
 ]
 
 const { data: stockFilters } = useQuery({ queryKey: ['stock-filters'], queryFn: fetchStockFilters })
-const { data: stocks } = useQuery({
-  queryKey: ['stocks', filters],
-  queryFn: () => fetchStocks(filters),
+const { data: stocks, isFetching } = useQuery({
+  queryKey: computed(() => ['stocks', { ...queryFilters }]),
+  queryFn: () => fetchStocks({ ...queryFilters }),
 })
+
+function applyFilters() {
+  queryFilters.keyword = (filters.keyword || '').trim()
+  queryFilters.status = filters.status
+  queryFilters.market = filters.market
+  queryFilters.area = filters.area
+  queryFilters.page_size = Number(filters.page_size) || 20
+  queryFilters.page = 1
+}
+
+function goPrevPage() {
+  if (queryFilters.page <= 1) return
+  queryFilters.page -= 1
+}
+
+function goNextPage() {
+  const totalPages = Number(stocks.value?.total_pages || 1)
+  if (queryFilters.page >= totalPages) return
+  queryFilters.page += 1
+}
 </script>

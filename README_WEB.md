@@ -4,7 +4,6 @@
 
 - `backend/server.py`：后端 API（PostgreSQL + Redis 缓存 + REST）
 - `apps/web/`：新版前端（Vue 3 + TS + Vite，默认入口）
-- `frontend/`：旧版静态前端（已冻结为只读存档）
 - `stock_codes.db`：原 SQLite 数据库（迁移源/兼容保留）
 - `migrate_sqlite_to_postgres.py`：SQLite 全量迁移到 PostgreSQL
 - `init_postgres_schema.py`：仅初始化 PostgreSQL 表结构
@@ -41,7 +40,7 @@ cd /home/zanbo/zanbotest
 - 只有迁移脚本 `migrate_sqlite_to_postgres.py` / `init_postgres_schema.py` 仍会直接读取 SQLite 源结构
 - 任务触发、立即抓取、评分、日报生成、配置保存等受保护接口现在要求 `BACKEND_ADMIN_TOKEN`
 - 新版前端会自动从 `localStorage['zanbo_admin_token']` / `sessionStorage['zanbo_admin_token']` / `VITE_ADMIN_API_TOKEN` 读取令牌
-- 旧版 `frontend/` 目录已冻结只读，详见 `frontend/README_READONLY.md`
+- 旧版 `frontend/` 已退役删除，系统仅保留 `apps/web/` 新前端
 
 ## SQLite 退役
 

@@ -4,8 +4,13 @@
 
 <script setup lang="ts">
 import { useResizeObserver } from '@vueuse/core'
-import * as echarts from 'echarts'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, GraphicComponent, TooltipComponent } from 'echarts/components'
+import { init, use, graphic, type EChartsType } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+
+use([LineChart, GridComponent, TooltipComponent, GraphicComponent, CanvasRenderer])
 
 export interface TrendChartSeries {
   name: string
@@ -25,12 +30,12 @@ const props = withDefaults(defineProps<{
 })
 
 const chartEl = ref<HTMLElement | null>(null)
-let chart: echarts.EChartsType | null = null
+let chart: EChartsType | null = null
 
 function ensureChart() {
   if (!chartEl.value) return null
   if (!chart) {
-    chart = echarts.init(chartEl.value)
+    chart = init(chartEl.value)
   }
   return chart
 }
@@ -108,7 +113,7 @@ function render() {
         },
         itemStyle: { color },
         areaStyle: item.area ? {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          color: new graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: `${color}55` },
             { offset: 1, color: `${color}08` },
           ]),

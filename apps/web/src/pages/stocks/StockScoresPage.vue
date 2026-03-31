@@ -13,7 +13,9 @@
             <option v-for="item in scoreFilters?.markets || []" :key="item" :value="item">{{ item }}</option>
           </select>
           <input v-model="filters.score_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="评分日期 YYYYMMDD，可空" />
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">应用筛选</button>
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
+            {{ isFetching ? '查询中...' : '应用筛选' }}
+          </button>
         </div>
       </PageSection>
 
@@ -34,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { RouterLink } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
@@ -44,7 +46,8 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { fetchStockScoreFilters, fetchStockScores } from '../../services/api/stocks'
 import { formatNumber } from '../../shared/utils/format'
 
-const filters = reactive({ keyword: '', industry: '', market: '', score_date: '', page: 1, page_size: 20 })
+const filters = reactive({ keyword: '', industry: '', market: '', score_date: '', page_size: 20 })
+const queryFilters = reactive({ keyword: '', industry: '', market: '', score_date: '', page: 1, page_size: 20 })
 const columns = [
   { key: 'name', label: '股票' },
   { key: 'industry', label: '行业' },
@@ -57,5 +60,17 @@ const columns = [
 ]
 
 const { data: scoreFilters } = useQuery({ queryKey: ['stock-score-filters'], queryFn: fetchStockScoreFilters })
-const { data: scores } = useQuery({ queryKey: ['stock-scores', filters], queryFn: () => fetchStockScores(filters) })
+const { data: scores, isFetching } = useQuery({
+  queryKey: computed(() => ['stock-scores', { ...queryFilters }]),
+  queryFn: () => fetchStockScores({ ...queryFilters }),
+})
+
+function applyFilters() {
+  queryFilters.keyword = (filters.keyword || '').trim()
+  queryFilters.industry = filters.industry
+  queryFilters.market = filters.market
+  queryFilters.score_date = (filters.score_date || '').trim()
+  queryFilters.page_size = Number(filters.page_size) || 20
+  queryFilters.page = 1
+}
 </script>

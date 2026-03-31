@@ -4,39 +4,41 @@
       <PageSection title="筛选条件" subtitle="按分类、风控、监控状态和拉取状态快速定位群聊。">
         <div class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
           <input
-            v-model="filters.keyword"
+            v-model="draftFilters.keyword"
             class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3"
             placeholder="群聊名称 / 标签 / 摘要关键词"
           />
-          <select v-model="filters.skip_realtime_monitor" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model="draftFilters.skip_realtime_monitor" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部监控状态</option>
             <option value="0">监控中</option>
             <option value="1">已暂停监控</option>
           </select>
-          <select v-model="filters.fetch_status" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model="draftFilters.fetch_status" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部拉取状态</option>
             <option value="ok">拉取正常</option>
             <option value="failed">最近失败</option>
             <option value="unknown">暂无状态</option>
           </select>
-          <select v-model="filters.primary_category" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model="draftFilters.primary_category" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部主分类</option>
             <option v-for="item in filterOptions.primary_categories" :key="item" :value="item">{{ item }}</option>
           </select>
-          <select v-model="filters.activity_level" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model="draftFilters.activity_level" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部活跃度</option>
             <option v-for="item in filterOptions.activity_levels" :key="item" :value="item">{{ item }}</option>
           </select>
-          <select v-model="filters.risk_level" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model="draftFilters.risk_level" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部风险等级</option>
             <option v-for="item in filterOptions.risk_levels" :key="item" :value="item">{{ item }}</option>
           </select>
-          <select v-model.number="filters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <select v-model.number="draftFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option :value="20">20 / 页</option>
             <option :value="50">50 / 页</option>
             <option :value="100">100 / 页</option>
           </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="handleRefresh">刷新数据</button>
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="handleRefresh">
+            {{ isFetching ? '查询中...' : '查询' }}
+          </button>
         </div>
       </PageSection>
 
@@ -114,13 +116,13 @@
         </DataTable>
 
         <div class="mt-4 flex items-center justify-between text-sm text-[var(--muted)]">
-          <div>第 {{ filters.page }} / {{ result?.total_pages || 1 }} 页</div>
+          <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="filters.page -= 1">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="queryFilters.page -= 1">上一页</button>
             <button
               class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40"
-              :disabled="filters.page >= (result?.total_pages || 1)"
-              @click="filters.page += 1"
+              :disabled="queryFilters.page >= (result?.total_pages || 1)"
+              @click="queryFilters.page += 1"
             >
               下一页
             </button>
@@ -132,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -145,7 +147,7 @@ import { formatDate, formatDateTime, formatNumber } from '../../shared/utils/for
 const queryClient = useQueryClient()
 const fetchingRoomId = ref('')
 
-const filters = reactive({
+const queryFilters = reactive({
   keyword: '',
   primary_category: '',
   activity_level: '',
@@ -155,6 +157,7 @@ const filters = reactive({
   page: 1,
   page_size: 20,
 })
+const draftFilters = reactive({ ...queryFilters })
 
 const columns = [
   { key: 'display_name', label: '群聊名称' },
@@ -173,9 +176,10 @@ const columns = [
 const {
   data: result,
   refetch,
+  isFetching,
 } = useQuery({
-  queryKey: ['chatrooms', filters],
-  queryFn: () => fetchChatrooms(filters),
+  queryKey: ['chatrooms', queryFilters],
+  queryFn: () => fetchChatrooms(queryFilters),
 })
 
 const runFetchMutation = useMutation({
@@ -187,13 +191,6 @@ const runFetchMutation = useMutation({
     fetchingRoomId.value = ''
   },
 })
-
-watch(
-  () => [filters.keyword, filters.primary_category, filters.activity_level, filters.risk_level, filters.skip_realtime_monitor, filters.fetch_status, filters.page_size],
-  () => {
-    filters.page = 1
-  },
-)
 
 const summary = computed(() => result.value?.summary || {})
 const filterOptions = computed(
@@ -267,6 +264,7 @@ function fetchLabel(value: unknown) {
 }
 
 function handleRefresh() {
+  Object.assign(queryFilters, { ...draftFilters, page: 1 })
   refetch()
 }
 

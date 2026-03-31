@@ -1,0 +1,79 @@
+{
+  "default_request_model": "GPT-5.4",
+  "fallback_models": [
+    "GPT-5.4",
+    "kimi-k2.5",
+    "deepseek-chat"
+  ],
+  "providers": {
+    "gpt-5.4": [
+      {
+        "model": "GPT-5.4",
+        "base_url": "http://38.175.200.219:8317/v1",
+        "api_key": "sk-FHXaxDVKoAXagmSH2",
+        "default_temperature": 0.2
+      },
+      {
+        "model": "GPT-5.4",
+        "base_url": "https://ai.td.ee/v1",
+        "api_key": "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343",
+        "default_temperature": 0.2
+      },
+      {
+      "model": "GPT-5.4",
+      "base_url": "http://192.168.5.43:8087/v1",
+      "api_key": "sk-1cefe212ace017b3ba7f4983ee29d60e297ef042f369c868249ad7c4f790583c",
+      "default_temperature": 0.2
+      },
+      {
+      "model": "GPT-5.4",
+      "base_url": "https://free.9e.nz/v1",
+      "api_key": "sk-9a579252126cbe7b97b574002f07d413e5a219d3c4f5df8b5599e84dd65b64c2",
+      "default_temperature": 0.2
+      },
+      {
+      "model": "GPT-5.4",
+      "base_url": "https://ai.ijunze.cn/v1",
+      "api_key": "sk-g3bumJwpN8og2caMQmRBQa3qjYmUK6vRFe7Uyaz4KoKr62ev",
+      "default_temperature": 0.2
+      },
+      {
+      "model": "GPT-5.4",
+      "base_url": "https://ai.zzhdsgsss.xyz/v1",
+      "api_key": "sk-ovLSrR0fpHX7H5NBlt5WvAyZhOgcivunXKn1niM30C0bI9kP",
+      "default_temperature": 0.2
+      },
+      {
+      "model": "GPT-5.4",
+      "base_url": "https://ai.acmi.run/v1",
+      "api_key": "sk-df7ae81d0492d07ade8f3ffbf1cce9c61958020757965f172fc29b855bad6720",
+      "default_temperature": 0.2
+      },
+      {
+      "model": "GPT-5.4",
+      "base_url": "https://jiuuij.de5.net/v1",
+      "api_key": "sk-aSNr05h7EMdf1L15rc38gwf4hGR38BefI6xjII7QW6JEuxPB",
+      "default_temperature": 0.2
+      }
+    ],
+    "kimi-k2.5": [
+      {
+        "model": "kimi-k2.5",
+        "base_url": "https://api.moonshot.cn/v1",
+        "api_key": "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72",
+        "default_temperature": 1.0
+      }
+      
+    ],
+    "deepseek-chat": [
+      {
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "sk-374806b2f1744b1aa84a6b27758b0bb6",
+        "default_temperature": 0.2
+      }
+    ]
+  }
+}
+
+

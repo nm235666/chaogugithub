@@ -1,3 +1,4 @@
+情绪分 -
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -45,7 +46,7 @@ add_or_replace "run_stock_news_expand_once.sh" "25 * * * * /bin/bash ${BASE_DIR}
 add_or_replace "run_theme_hotspot_engine_once.sh" "32 * * * * /bin/bash ${BASE_DIR}/run_theme_hotspot_engine_once.sh"
 add_or_replace "run_signal_state_machine_once.sh" "38 * * * * /bin/bash ${BASE_DIR}/run_signal_state_machine_once.sh"
 add_or_replace "run_market_expectations_once.sh" "42 * * * * /bin/bash ${BASE_DIR}/run_market_expectations_once.sh"
-add_or_replace "run_research_reports_once.sh" "46 * * * * /bin/bash ${BASE_DIR}/run_research_reports_once.sh"
+add_or_replace "run_research_reports_once.sh" "30 7,15 * * * /bin/bash ${BASE_DIR}/run_research_reports_once.sh"
 add_or_replace "run_minline_intraday_focus_once.sh" "*/10 1-3,5-7 * * 1-5 /bin/bash ${BASE_DIR}/run_minline_intraday_focus_once.sh"
 add_or_replace "run_news_dedupe_once.sh" "20 16 * * * /bin/bash ${BASE_DIR}/run_news_dedupe_once.sh"
 add_or_replace "run_db_health_check_once.sh" "40 16 * * * /bin/bash ${BASE_DIR}/run_db_health_check_once.sh"

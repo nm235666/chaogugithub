@@ -2,7 +2,7 @@
   <AppShell title="投资信号总览" subtitle="股票与主题信号统一收敛，支持来源深筛、状态机筛选和时间线跳转。">
     <div class="space-y-4">
       <PageSection title="信号筛选" subtitle="支持 1d / 7d 口径、来源、状态机和群聊股票等深筛。">
-        <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-2">
+        <div class="grid gap-3 xl:grid-cols-7 md:grid-cols-2">
           <select v-model="filters.scope" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="7d">7 天口径</option>
             <option value="1d">1 天口径</option>
@@ -27,6 +27,9 @@
             <option v-for="item in statusOptions" :key="item" :value="item">{{ item }}</option>
           </select>
           <input v-model="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="股票 / 主题关键词" />
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
+            {{ isFetching ? '查询中...' : '应用筛选' }}
+          </button>
         </div>
       </PageSection>
 
@@ -90,6 +93,15 @@ const filters = reactive({
   source_filter: '',
   signal_status: '',
   keyword: '',
+  page_size: 30,
+})
+const queryFilters = reactive({
+  scope: '7d',
+  signal_group: '',
+  direction: '',
+  source_filter: '',
+  signal_status: '',
+  keyword: '',
   page: 1,
   page_size: 30,
 })
@@ -104,7 +116,10 @@ const columns = [
   { key: 'source_mix', label: '来源结构' },
   { key: 'actions', label: '跳转' },
 ]
-const { data: result } = useQuery({ queryKey: ['investment-signals', filters], queryFn: () => fetchInvestmentSignals(filters) })
+const { data: result, isFetching } = useQuery({
+  queryKey: computed(() => ['investment-signals', { ...queryFilters }]),
+  queryFn: () => fetchInvestmentSignals({ ...queryFilters }),
+})
 const summary = computed(() => result.value?.summary || {})
 const directionOptions = computed(() => result.value?.filters?.directions || [])
 const statusOptions = computed(() => result.value?.filters?.signal_statuses || [])
@@ -126,5 +141,16 @@ function goStateTimeline(row: Record<string, any>) {
   const scope = row.signal_type === 'theme' ? 'theme' : 'stock'
   const signalKey = scope === 'theme' && !String(row.signal_key || '').startsWith('theme:') ? `theme:${row.subject_name}` : row.signal_key
   router.push({ path: '/signals/state-timeline', query: { signal_scope: scope, signal_key: signalKey } })
+}
+
+function applyFilters() {
+  queryFilters.scope = filters.scope
+  queryFilters.signal_group = filters.signal_group
+  queryFilters.direction = filters.direction
+  queryFilters.source_filter = filters.source_filter
+  queryFilters.signal_status = filters.signal_status
+  queryFilters.keyword = (filters.keyword || '').trim()
+  queryFilters.page_size = Number(filters.page_size) || 30
+  queryFilters.page = 1
 }
 </script>

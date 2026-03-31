@@ -3,15 +3,17 @@
     <div class="space-y-4">
       <PageSection title="查询与生成" subtitle="按日期、来源关键字和实际模型筛选，也可以主动生成今日总结。">
         <div class="grid gap-3 xl:grid-cols-[180px_1fr_180px_120px] md:grid-cols-2">
-          <input v-model="filters.summary_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="日期 YYYY-MM-DD（可选）" />
-          <input v-model="filters.source_filter" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="来源过滤关键字（可选）" />
-          <select v-model="filters.model" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <input v-model="draftFilters.summary_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="日期 YYYY-MM-DD（可选）" />
+          <input v-model="draftFilters.source_filter" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="来源过滤关键字（可选）" />
+          <select v-model="draftFilters.model" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部模型</option>
             <option value="GPT-5.4">GPT-5.4</option>
             <option value="kimi-k2.5">kimi-k2.5</option>
             <option value="deepseek-chat">deepseek-chat</option>
           </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">查询</button>
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="applyFilters">
+            {{ isFetching ? '查询中...' : '查询' }}
+          </button>
         </div>
         <div class="mt-3 flex flex-wrap gap-3">
           <button class="rounded-2xl bg-blue-700 px-4 py-3 font-semibold text-white" :disabled="isGenerating" @click="generateTodaySummary">
@@ -40,10 +42,10 @@
             </InfoCard>
           </div>
           <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-            <div>第 {{ filters.page }} / {{ result?.total_pages || 1 }} 页</div>
+            <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
             <div class="flex gap-2">
-              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="filters.page -= 1">上一页</button>
-              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (result?.total_pages || 1)" @click="filters.page += 1">下一页</button>
+              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="queryFilters.page -= 1">上一页</button>
+              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="queryFilters.page += 1">下一页</button>
             </div>
           </div>
         </PageSection>
@@ -76,13 +78,14 @@ import { fetchDailySummaries, fetchDailySummaryTask, triggerDailySummaryGenerate
 import { formatDateTime } from '../../shared/utils/format'
 import { downloadElementAsImage, downloadTextFile } from '../../shared/utils/export'
 
-const filters = reactive({
+const queryFilters = reactive({
   summary_date: '',
   source_filter: '',
   model: '',
   page: 1,
   page_size: 10,
 })
+const draftFilters = reactive({ ...queryFilters })
 
 const selectedItem = ref<Record<string, any> | null>(null)
 const actionMessage = ref('准备就绪')
@@ -90,9 +93,9 @@ const attempts = ref<Array<Record<string, any>>>([])
 const detailExportRef = ref<HTMLElement | null>(null)
 let pollTimer = 0
 
-const { data: result, refetch } = useQuery({
-  queryKey: ['daily-summaries', filters],
-  queryFn: () => fetchDailySummaries(filters),
+const { data: result, refetch, isFetching } = useQuery({
+  queryKey: ['daily-summaries', queryFilters],
+  queryFn: () => fetchDailySummaries(queryFilters),
 })
 
 watch(
@@ -166,5 +169,9 @@ async function downloadImage() {
 function generateTodaySummary() {
   actionMessage.value = '正在创建日报总结任务...'
   generateMutation.mutate()
+}
+
+function applyFilters() {
+  Object.assign(queryFilters, { ...draftFilters, page: 1 })
 }
 </script>

@@ -73,7 +73,10 @@
 
       <div class="grid gap-4 2xl:grid-cols-[1.08fr_0.92fr]">
         <PageSection title="近端价格走势" subtitle="最近一段收盘价的结构，用来快速判断趋势背景和区间位置。">
-          <TrendAreaChart :labels="dailyChart.labels" :series="dailyChart.series" :height="320" empty-text="暂无日线数据" />
+          <TrendAreaChart v-if="chartsReady" :labels="dailyChart.labels" :series="dailyChart.series" :height="320" empty-text="暂无日线数据" />
+          <div v-else class="h-[320px] rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-4 text-sm text-[var(--muted)]">
+            图表加载中...
+          </div>
           <div class="mt-4 flex flex-wrap gap-2 text-xs">
             <span class="metric-chip">最新收盘 <strong>{{ formatNumber(priceSummary.latest_close, 3) }}</strong></span>
             <span class="metric-chip">最新涨跌幅 <strong>{{ formatSignedPercent(priceSummary.latest_pct_chg, 2) }}</strong></span>
@@ -81,10 +84,16 @@
             <span class="metric-chip">区间高点 <strong>{{ formatNumber(priceSummary.high_lookback, 3) }}</strong></span>
             <span class="metric-chip">区间低点 <strong>{{ formatNumber(priceSummary.low_lookback, 3) }}</strong></span>
           </div>
+          <div class="mt-3 flex flex-wrap gap-2 text-xs">
+            <span v-for="item in rollupChips" :key="item.label" class="metric-chip">{{ item.label }} <strong>{{ item.value }}</strong></span>
+          </div>
         </PageSection>
 
         <PageSection title="最新分钟走势" subtitle="最近一批分钟线，帮助判断盘中价格和均价是否同向。">
-          <TrendAreaChart :labels="minuteChart.labels" :series="minuteChart.series" :height="320" empty-text="暂无分钟线数据" />
+          <TrendAreaChart v-if="chartsReady" :labels="minuteChart.labels" :series="minuteChart.series" :height="320" empty-text="暂无分钟线数据" />
+          <div v-else class="h-[320px] rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-4 text-sm text-[var(--muted)]">
+            图表加载中...
+          </div>
           <div class="mt-4 flex flex-wrap gap-2 text-xs">
             <span class="metric-chip">最新分钟价 <strong>{{ formatNumber(latestMinute.price, 3) }}</strong></span>
             <span class="metric-chip">最新均价 <strong>{{ formatNumber(latestMinute.avg_price, 3) }}</strong></span>
@@ -95,17 +104,70 @@
         </PageSection>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-3">
-        <PageSection title="评分结构" subtitle="把总分、行业内评分和趋势/新闻等核心分项放在一块看。">
-          <MetricGrid :items="scoreItems" empty-text="暂无评分数据" />
-        </PageSection>
-        <PageSection title="基本面与估值" subtitle="先看财报质量，再看当前估值和历史分位。">
-          <MetricGrid :items="fundamentalItems" empty-text="暂无财务或估值数据" />
-        </PageSection>
-        <PageSection title="资金流与风险" subtitle="把个股资金、治理、风险情景合在一个面板里。">
-          <MetricGrid :items="flowRiskItems" empty-text="暂无资金流或风险数据" />
-        </PageSection>
-      </div>
+      <PageSection title="公司深度面板" subtitle="按模块切换查看，避免评分、财务、治理、风险信息堆在一起。">
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="item in detailTabs"
+            :key="item.key"
+            class="rounded-full border px-3 py-2 text-sm font-semibold transition"
+            :class="activeDetailTab === item.key ? 'border-[var(--brand)] bg-[rgba(15,97,122,0.08)] text-[var(--brand)]' : 'border-[var(--line)] bg-white text-[var(--muted)]'"
+            @click="activeDetailTab = item.key"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <MetricGrid v-if="activeDetailTab === 'score'" :items="scoreItems" empty-text="暂无评分数据" />
+          <MetricGrid v-else-if="activeDetailTab === 'fundamental'" :items="fundamentalItems" empty-text="暂无财务或估值数据" />
+          <MetricGrid v-else-if="activeDetailTab === 'flowRisk'" :items="flowRiskItems" empty-text="暂无资金流或风险数据" />
+
+          <div v-else-if="activeDetailTab === 'events'" class="space-y-2">
+            <InfoCard
+              v-for="item in eventItems"
+              :key="`${item.event_type}-${item.event_date}-${item.title}`"
+              :title="item.title || item.event_type || '-'"
+              :meta="joinParts([item.event_type, formatDate(item.event_date || item.ann_date)])"
+              :description="summarizeDetail(item.detail)"
+            />
+          </div>
+
+          <div v-else-if="activeDetailTab === 'governance'">
+            <MetricGrid :items="governanceItems" columns-class="xl:grid-cols-2 md:grid-cols-2" empty-text="暂无治理数据" />
+            <div v-if="topHolderChips.length || boardMemberChips.length" class="mt-4 space-y-3">
+              <div v-if="topHolderChips.length">
+                <div class="mb-2 text-sm font-semibold text-[var(--ink)]">前五大股东</div>
+                <div class="flex flex-wrap gap-2 text-xs">
+                  <span v-for="item in topHolderChips" :key="item" class="metric-chip">{{ item }}</span>
+                </div>
+              </div>
+              <div v-if="boardMemberChips.length">
+                <div class="mb-2 text-sm font-semibold text-[var(--ink)]">董事会成员</div>
+                <div class="flex flex-wrap gap-2 text-xs">
+                  <span v-for="item in boardMemberChips" :key="item" class="metric-chip">{{ item }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="space-y-2">
+            <InfoCard
+              v-for="item in riskItems"
+              :key="`${item.scenario_name}-${item.horizon}`"
+              :title="item.scenario_name || '-'"
+              :meta="joinParts([riskSummary.scenario_date || '', item.horizon || ''])"
+              :description="summarizeAssumptions(item.assumptions)"
+            >
+              <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                <span class="metric-chip">PnL <strong>{{ formatNumber(item.pnl_impact, 2) }}</strong></span>
+                <span class="metric-chip">回撤 <strong>{{ formatNumber(item.max_drawdown, 2) }}</strong></span>
+                <span class="metric-chip">VaR95 <strong>{{ formatNumber(item.var_95, 2) }}</strong></span>
+                <span class="metric-chip">CVaR95 <strong>{{ formatNumber(item.cvar_95, 2) }}</strong></span>
+              </div>
+            </InfoCard>
+          </div>
+        </div>
+      </PageSection>
 
       <div class="grid gap-4 xl:grid-cols-2">
         <PageSection title="相关个股新闻" subtitle="最近几条个股新闻、重要度和事件影响项。">
@@ -158,57 +220,6 @@
         </PageSection>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-3">
-        <PageSection title="公司事件" subtitle="最近公告、事件或动作，帮助解释价格与情绪变化。">
-          <div class="space-y-2">
-            <InfoCard
-              v-for="item in eventItems"
-              :key="`${item.event_type}-${item.event_date}-${item.title}`"
-              :title="item.title || item.event_type || '-'"
-              :meta="joinParts([item.event_type, formatDate(item.event_date || item.ann_date)])"
-              :description="summarizeDetail(item.detail)"
-            />
-          </div>
-        </PageSection>
-
-        <PageSection title="治理画像" subtitle="股东结构、董事会与管理层变化，帮助看控制权和治理稳健度。">
-          <MetricGrid :items="governanceItems" columns-class="xl:grid-cols-2 md:grid-cols-2" empty-text="暂无治理数据" />
-          <div v-if="topHolderChips.length || boardMemberChips.length" class="mt-4 space-y-3">
-            <div v-if="topHolderChips.length">
-              <div class="mb-2 text-sm font-semibold text-[var(--ink)]">前五大股东</div>
-              <div class="flex flex-wrap gap-2 text-xs">
-                <span v-for="item in topHolderChips" :key="item" class="metric-chip">{{ item }}</span>
-              </div>
-            </div>
-            <div v-if="boardMemberChips.length">
-              <div class="mb-2 text-sm font-semibold text-[var(--ink)]">董事会成员</div>
-              <div class="flex flex-wrap gap-2 text-xs">
-                <span v-for="item in boardMemberChips" :key="item" class="metric-chip">{{ item }}</span>
-              </div>
-            </div>
-          </div>
-        </PageSection>
-
-        <PageSection title="风险情景" subtitle="关注压力情景下的收益、回撤和尾部风险，而不是只看单点上涨空间。">
-          <div class="space-y-2">
-            <InfoCard
-              v-for="item in riskItems"
-              :key="`${item.scenario_name}-${item.horizon}`"
-              :title="item.scenario_name || '-'"
-              :meta="joinParts([riskSummary.scenario_date || '', item.horizon || ''])"
-              :description="summarizeAssumptions(item.assumptions)"
-            >
-              <div class="mt-3 flex flex-wrap gap-2 text-xs">
-                <span class="metric-chip">PnL <strong>{{ formatNumber(item.pnl_impact, 2) }}</strong></span>
-                <span class="metric-chip">回撤 <strong>{{ formatNumber(item.max_drawdown, 2) }}</strong></span>
-                <span class="metric-chip">VaR95 <strong>{{ formatNumber(item.var_95, 2) }}</strong></span>
-                <span class="metric-chip">CVaR95 <strong>{{ formatNumber(item.cvar_95, 2) }}</strong></span>
-              </div>
-            </InfoCard>
-          </div>
-        </PageSection>
-      </div>
-
       <div class="grid gap-4 xl:grid-cols-2">
         <PageSection title="LLM 走势分析" subtitle="直接在本页看趋势判断，不用再切到单独分析页。">
           <MarkdownBlock :content="trendResult || '尚未发起走势分析。'" />
@@ -222,7 +233,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
@@ -230,7 +241,6 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
-import TrendAreaChart from '../../shared/charts/TrendAreaChart.vue'
 import MetricGrid from '../../shared/ui/MetricGrid.vue'
 import {
   fetchMultiRoleTask,
@@ -240,6 +250,8 @@ import {
   triggerTrendAnalysis,
 } from '../../services/api/stocks'
 import { formatDate, formatDateTime, formatNumber, formatPercent, listStatusLabel } from '../../shared/utils/format'
+
+const TrendAreaChart = defineAsyncComponent(() => import('../../shared/charts/TrendAreaChart.vue'))
 
 type DetailRow = Record<string, any>
 
@@ -288,7 +300,9 @@ const router = useRouter()
 const activeKeyword = computed(() => String(route.query.keyword || '').trim())
 const activeTsCode = computed(() => {
   const routeTsCode = String(route.params.tsCode || '').trim().toUpperCase()
+  const queryTsCode = String(route.query.ts_code || '').trim().toUpperCase()
   if (routeTsCode) return routeTsCode
+  if (queryTsCode && looksLikeTsCode(queryTsCode)) return queryTsCode
   return activeKeyword.value ? '' : '000001.SZ'
 })
 
@@ -297,12 +311,26 @@ const tsCodeInput = ref('000001.SZ')
 const trendResult = ref('')
 const multiRoleResult = ref('')
 const actionMessage = ref('准备就绪')
+const chartsReady = ref(false)
+const detailTabs = [
+  { key: 'score', label: '评分结构' },
+  { key: 'fundamental', label: '基本面与估值' },
+  { key: 'flowRisk', label: '资金流与风险' },
+  { key: 'events', label: '公司事件' },
+  { key: 'governance', label: '治理画像' },
+  { key: 'risk', label: '风险情景' },
+] as const
+const activeDetailTab = ref<(typeof detailTabs)[number]['key']>('score')
 let multiRoleTimer = 0
 
 watch(
   [activeTsCode, activeKeyword],
   ([tsCode, keyword]) => {
     tsCodeInput.value = keyword || tsCode || '000001.SZ'
+    chartsReady.value = false
+    window.setTimeout(() => {
+      chartsReady.value = true
+    }, 80)
   },
   { immediate: true },
 )
@@ -326,6 +354,7 @@ const valuationSummary = computed<DetailRow>(() => (detailData.value.valuation_s
 const capitalFlowSummary = computed<DetailRow>(() => (detailData.value.capital_flow_summary ?? {}) as DetailRow)
 const governanceSummary = computed<DetailRow>(() => (detailData.value.governance_summary ?? {}) as DetailRow)
 const riskSummary = computed<DetailRow>(() => (detailData.value.risk_summary ?? {}) as DetailRow)
+const priceRollups = computed<DetailRow>(() => (detailData.value.price_rollups ?? {}) as DetailRow)
 const latestMinute = computed<DetailRow>(() => (detailData.value.latest_minline ?? {}) as DetailRow)
 const candidatePoolItem = computed<DetailRow | null>(() => (detailData.value.candidate_pool_item ?? null) as DetailRow | null)
 const chatroomMentions = computed<DetailRow[]>(() => (detailData.value.chatroom_mentions ?? []) as DetailRow[])
@@ -371,6 +400,17 @@ const overviewItems = computed(() => [
   { label: '最新分钟价', value: formatNumber(latestMinute.value.price, 3), hint: latestMinuteLabel.value },
   { label: '个股新闻', value: String(stockNewsItems.value.length || 0), hint: stockNewsItems.value[0]?.pub_time ? `最近一条 ${formatDateTime(stockNewsItems.value[0].pub_time)}` : '暂无新闻' },
 ])
+
+const rollupChips = computed(() => {
+  const items = (priceRollups.value.items ?? []) as DetailRow[]
+  if (!items.length) return []
+  return items
+    .filter((x) => [30, 90, 365].includes(Number(x.window_days)))
+    .map((x) => ({
+      label: `${Number(x.window_days)}天收益`,
+      value: formatSignedPercent(x.close_change_pct, 2),
+    }))
+})
 
 const scoreItems = computed(() => [
   { label: '总分', value: formatNumber(score.value.total_score, 2), hint: score.value.score_grade || '-' },

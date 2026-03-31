@@ -9,20 +9,23 @@ import urllib.request
 from dataclasses import dataclass
 
 from llm_provider_config import (
-    DEFAULT_FALLBACK_MODELS,
-    DEFAULT_REQUEST_MODEL,
-    PROVIDER_CONFIGS,
+    get_default_fallback_models,
+    get_default_request_model,
+    get_provider_config,
     get_provider_candidates,
 )
 
 
-DEFAULT_LLM_MODEL = DEFAULT_REQUEST_MODEL
-DEFAULT_LLM_BASE_URL = PROVIDER_CONFIGS["deepseek-chat"].base_url
-DEFAULT_LLM_API_KEY = PROVIDER_CONFIGS["deepseek-chat"].api_key
-GPT54_BASE_URL = PROVIDER_CONFIGS["gpt-5.4"].base_url
-GPT54_API_KEY = PROVIDER_CONFIGS["gpt-5.4"].api_key
-KIMI_BASE_URL = PROVIDER_CONFIGS["kimi-k2.5"].base_url
-KIMI_API_KEY = PROVIDER_CONFIGS["kimi-k2.5"].api_key
+DEFAULT_LLM_MODEL = get_default_request_model()
+_deepseek_cfg = get_provider_config("deepseek-chat")
+_gpt_cfg = get_provider_config("gpt-5.4")
+_kimi_cfg = get_provider_config("kimi-k2.5")
+DEFAULT_LLM_BASE_URL = _deepseek_cfg.base_url if _deepseek_cfg else ""
+DEFAULT_LLM_API_KEY = _deepseek_cfg.api_key if _deepseek_cfg else ""
+GPT54_BASE_URL = _gpt_cfg.base_url if _gpt_cfg else ""
+GPT54_API_KEY = _gpt_cfg.api_key if _gpt_cfg else ""
+KIMI_BASE_URL = _kimi_cfg.base_url if _kimi_cfg else ""
+KIMI_API_KEY = _kimi_cfg.api_key if _kimi_cfg else ""
 
 TRANSIENT_HTTP_CODES = {408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524}
 
@@ -90,8 +93,9 @@ def resolve_provider(model: str, base_url: str = "", api_key: str = "") -> tuple
     if base_url.strip() or api_key.strip():
         return ensure_provider_ready(model, base_url or DEFAULT_LLM_BASE_URL, api_key or DEFAULT_LLM_API_KEY)
     if m == "auto":
-        m = DEFAULT_FALLBACK_MODELS[0].lower()
-    config = PROVIDER_CONFIGS.get(m)
+        fallbacks = get_default_fallback_models()
+        m = (fallbacks[0] if fallbacks else "GPT-5.4").lower()
+    config = get_provider_config(m)
     if config:
         return ensure_provider_ready(model, config.base_url, config.api_key)
     return ensure_provider_ready(model, base_url or DEFAULT_LLM_BASE_URL, api_key or DEFAULT_LLM_API_KEY)
@@ -100,7 +104,8 @@ def resolve_provider(model: str, base_url: str = "", api_key: str = "") -> tuple
 def build_route(model: str, base_url: str = "", api_key: str = "", temperature: float = 0.2) -> LLMRoute:
     normalized_model = normalize_model_name(model)
     if normalized_model.lower() == "auto":
-        normalized_model = DEFAULT_FALLBACK_MODELS[0]
+        fallbacks = get_default_fallback_models()
+        normalized_model = fallbacks[0] if fallbacks else "GPT-5.4"
     resolved_base_url, resolved_api_key = resolve_provider(normalized_model, base_url, api_key)
     return LLMRoute(
         model=normalized_model,
@@ -113,7 +118,8 @@ def build_route(model: str, base_url: str = "", api_key: str = "", temperature: 
 def build_routes(model: str, base_url: str = "", api_key: str = "", temperature: float = 0.2) -> list[LLMRoute]:
     normalized_model = normalize_model_name(model)
     if normalized_model.lower() == "auto":
-        normalized_model = DEFAULT_FALLBACK_MODELS[0]
+        fallbacks = get_default_fallback_models()
+        normalized_model = fallbacks[0] if fallbacks else "GPT-5.4"
     if base_url.strip() or api_key.strip():
         return [build_route(normalized_model, base_url=base_url, api_key=api_key, temperature=temperature)]
 
@@ -300,17 +306,20 @@ def _extract_text_from_response(raw_text: str) -> str:
 def build_model_candidates(model: str) -> list[str]:
     raw = (model or "").strip()
     normalized = normalize_model_name(raw)
+    default_fallbacks = list(get_default_fallback_models())
+    if not default_fallbacks:
+        default_fallbacks = ["GPT-5.4", "kimi-k2.5", "deepseek-chat"]
     if normalized.lower() == "auto":
-        return list(DEFAULT_FALLBACK_MODELS)
+        return default_fallbacks
     parts = [normalize_model_name(x) for x in re.split(r"[|,]", raw) if x.strip()]
     if not parts:
-        return list(DEFAULT_FALLBACK_MODELS)
+        return default_fallbacks
     deduped: list[str] = []
     seen: set[str] = set()
     for item in parts:
         key = item.lower()
         if key == "auto":
-            for fallback_model in DEFAULT_FALLBACK_MODELS:
+            for fallback_model in default_fallbacks:
                 fallback_key = fallback_model.lower()
                 if fallback_key not in seen:
                     deduped.append(fallback_model)
@@ -319,7 +328,7 @@ def build_model_candidates(model: str) -> list[str]:
         if key not in seen:
             deduped.append(item)
             seen.add(key)
-    return deduped or list(DEFAULT_FALLBACK_MODELS)
+    return deduped or default_fallbacks
 
 
 def chat_completion_with_fallback(
