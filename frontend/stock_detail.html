@@ -397,7 +397,7 @@
               <div class="section-head">
                 <div>
                   <h2>LLM 走势分析</h2>
-                  <p>默认使用 GPT-5.4，基于当前详情页股票直接发起。</p>
+                  <p>模型自动路由，默认 GPT-5.4 优先，失败自动降级，基于当前详情页股票直接发起。</p>
                 </div>
               </div>
               <div class="analysis-box" id="trend_analysis_box">尚未发起走势分析。</div>
@@ -476,6 +476,7 @@
     </div>
 
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/admin_auth.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -755,9 +756,8 @@
             company_name: pageState.name || '',
             page_size: '20',
             score: '1',
-            model: 'GPT-5.4',
           });
-          const res = await fetch(`${API_BASE}/api/stock-news/fetch?${q.toString()}`);
+          const res = await zanboAdminFetch(`${API_BASE}/api/stock-news/fetch?${q.toString()}`);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '采集失败');
           els.meta.textContent = `相关新闻采集完成：${pageState.name || pageState.ts_code}`;
@@ -781,7 +781,6 @@
           const q = new URLSearchParams({
             ts_code: pageState.ts_code,
             lookback: String(els.lookback.value || '60'),
-            model: 'GPT-5.4',
           });
           const res = await fetch(`${API_BASE}/api/llm/trend?${q.toString()}`);
           const data = await res.json();
@@ -837,10 +836,9 @@
           const q = new URLSearchParams({
             ts_code: pageState.ts_code,
             lookback: String(Math.max(Number(els.lookback.value || '60'), 120)),
-            model: 'GPT-5.4',
             roles: '宏观经济分析师,股票分析师,国际资本分析师,汇率分析师',
           });
-          const res = await fetch(`${API_BASE}/api/llm/multi-role/start?${q.toString()}`);
+          const res = await zanboAdminFetch(`${API_BASE}/api/llm/multi-role/start?${q.toString()}`);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '多角色分析启动失败');
           pageState.multiRoleJobId = data.job_id || '';

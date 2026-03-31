@@ -9,11 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import db_compat as sqlite3
-from llm_gateway import chat_completion_text, normalize_model_name, resolve_provider
+from llm_gateway import chat_completion_with_fallback, normalize_model_name
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "stock_codes.db"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
 
 THEME_LIKE_KEYWORDS = [
     "黄金", "原油", "能源", "军工", "航运", "AI", "算力", "科技", "机器人", "芯片",
@@ -28,9 +26,7 @@ def parse_args() -> argparse.Namespace:
         default=str(DEFAULT_DB_PATH),
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
-    parser.add_argument("--model", default="GPT-5.4", help="模型名")
-    parser.add_argument("--base-url", default=GPT54_BASE_URL, help="LLM Base URL")
-    parser.add_argument("--api-key", default=GPT54_API_KEY, help="LLM API Key")
+    parser.add_argument("--model", default="auto", help="模型名；默认 auto 自动路由并降级")
     parser.add_argument("--limit", type=int, default=20, help="每轮最多识别多少个未归一候选")
     parser.add_argument("--min-confidence", type=float, default=0.86, help="低于该置信度不入库")
     parser.add_argument("--retry", type=int, default=2, help="单条失败重试次数")
@@ -119,11 +115,9 @@ def build_prompt(alias_name: str, reasons: list[dict]) -> str:
     )
 
 
-def call_llm(base_url: str, api_key: str, model: str, prompt: str) -> str:
-    return chat_completion_text(
+def call_llm(model: str, prompt: str):
+    return chat_completion_with_fallback(
         model=model,
-        base_url=base_url,
-        api_key=api_key,
         temperature=0.1,
         timeout_s=120,
         max_retries=3,
@@ -177,7 +171,6 @@ def upsert_alias(conn: sqlite3.Connection, *, alias: str, ts_code: str, stock_na
 
 def main() -> int:
     args = parse_args()
-    base_url, api_key = resolve_provider(args.model, args.base_url, args.api_key)
     conn = sqlite3.connect(args.db_path)
     conn.row_factory = sqlite3.Row
     resolved = 0
@@ -202,8 +195,8 @@ def main() -> int:
             while True:
                 attempt += 1
                 try:
-                    raw = call_llm(base_url, api_key, args.model, prompt)
-                    parsed = parse_llm_output(raw)
+                    raw = call_llm(args.model, prompt)
+                    parsed = parse_llm_output(raw.text)
                     if (
                         parsed["decision"] == "match"
                         and re.fullmatch(r"\d{6}\.(SZ|SH|BJ)", parsed["ts_code"])
@@ -219,7 +212,7 @@ def main() -> int:
                             notes=parsed["reason"],
                         )
                         resolved += 1
-                        print(f"{alias_name}: match -> {parsed['stock_name']} {parsed['ts_code']} conf={parsed['confidence']:.2f}")
+                        print(f"{alias_name}: match -> {parsed['stock_name']} {parsed['ts_code']} conf={parsed['confidence']:.2f} actual_model={raw.used_model}")
                     else:
                         skipped += 1
                         print(f"{alias_name}: skip")

@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
         default=str(Path(__file__).resolve().parent / "stock_codes.db"),
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
-    parser.add_argument("--model", default="GPT-5.4", help="模型名，如 GPT-5.4 / kimi-k2.5 / deepseek-chat")
+    parser.add_argument("--model", default="auto", help="模型名，如 auto / kimi-k2.5 / GPT-5.4 / deepseek-chat")
     parser.add_argument("--batch-size", type=int, default=100, help="每轮最多评分条数")
     parser.add_argument("--max-rounds", type=int, default=0, help="最大轮数，0 表示不限")
     parser.add_argument("--source", default="", help="仅处理指定来源")

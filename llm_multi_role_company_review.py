@@ -7,7 +7,7 @@ import db_compat as sqlite3
 import sys
 from pathlib import Path
 
-from llm_gateway import chat_completion_text, resolve_provider
+from llm_gateway import chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
 
 DEFAULT_ROLES = [
     "宏观经济分析师",
@@ -78,8 +78,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default="GPT-5.4",
-        help="模型名（如 deepseek-chat / deepseek-reasoner / GPT-5.4）",
+        default="auto",
+        help="模型名；默认 auto 自动路由并降级",
     )
     parser.add_argument("--temperature", type=float, default=0.2, help="采样温度")
     return parser.parse_args()
@@ -160,11 +160,9 @@ def load_role_profiles(roles_config_path: str) -> dict:
     return profiles
 
 
-def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    return chat_completion_text(
+def call_llm(model: str, temperature: float, prompt: str):
+    return chat_completion_with_fallback(
         model=model,
-        base_url=base_url,
-        api_key=api_key,
         temperature=temperature,
         timeout_s=180,
         max_retries=3,
@@ -214,6 +212,8 @@ def build_prompt(context: dict, roles: list[str], role_profiles: dict) -> str:
 
 def main() -> int:
     args = parse_args()
+    args.model = normalize_model_name(args.model)
+    args.temperature = normalize_temperature_for_model(args.model, args.temperature)
     roles = [r.strip() for r in args.roles.split(",") if r.strip()]
     if not roles:
         roles = DEFAULT_ROLES
@@ -228,22 +228,16 @@ def main() -> int:
     ts_code = context["company_profile"]["ts_code"]
     name = context["company_profile"]["name"]
 
-    base_url, api_key = resolve_provider(args.model)
     prompt = build_prompt(context, roles, role_profiles)
 
     print(f"公司: {name} ({ts_code})")
-    print(f"模型: {args.model}")
+    print(f"请求模型: {args.model}")
     print(f"角色: {', '.join(roles)}")
     print("多角色分析中...\n")
 
-    result = call_llm(
-        base_url=base_url,
-        api_key=api_key,
-        model=args.model,
-        temperature=args.temperature,
-        prompt=prompt,
-    )
-    print(result)
+    result = call_llm(model=args.model, temperature=args.temperature, prompt=prompt)
+    print(f"实际模型: {result.used_model}\n")
+    print(result.text)
     return 0
 
 

@@ -8,11 +8,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
+from llm_gateway import chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
 from realtime_streams import publish_app_event
-
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
 DEFAULT_IMPORTANCE = ("极高", "高", "中")
 
 
@@ -37,9 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-prompt-chars", type=int, default=18000, help="新闻JSON在prompt中的最大字符预算")
     parser.add_argument("--title-max-len", type=int, default=120, help="单条新闻标题最大长度")
     parser.add_argument("--summary-max-len", type=int, default=160, help="单条新闻摘要最大长度")
-    parser.add_argument("--model", default="GPT-5.4", help="模型名，如 deepseek-chat / GPT-5.4")
-    parser.add_argument("--base-url", default=DEEPSEEK_BASE_URL, help="LLM Base URL")
-    parser.add_argument("--api-key", default=DEEPSEEK_API_KEY, help="LLM API Key")
+    parser.add_argument("--model", default="auto", help="模型名；默认 auto 自动路由并降级")
     parser.add_argument("--temperature", type=float, default=0.2, help="采样温度")
     parser.add_argument("--request-timeout", type=int, default=180, help="单次请求超时秒数")
     parser.add_argument("--max-retries", type=int, default=4, help="请求失败最大重试次数")
@@ -236,22 +231,18 @@ def clean_news_for_prompt(
 
 
 def call_llm(
-    base_url: str,
-    api_key: str,
     model: str,
     temperature: float,
     prompt: str,
     request_timeout: int,
     max_retries: int,
     retry_backoff: float,
-) -> str:
+):
     last_error = None
     for attempt in range(max_retries + 1):
         try:
-            return chat_completion_text(
+            return chat_completion_with_fallback(
                 model=model,
-                base_url=base_url,
-                api_key=api_key,
                 temperature=temperature,
                 timeout_s=max(request_timeout, 30),
                 max_retries=1,
@@ -325,6 +316,13 @@ def save_summary(
     return int(row[0]) if row else 0
 
 
+def emit_result_marker(payload: dict) -> None:
+    try:
+        print(f"__LLM_RESULT__={json.dumps(payload, ensure_ascii=False)}")
+    except Exception:
+        pass
+
+
 def main() -> int:
     args = parse_args()
     args.model = normalize_model_name(args.model)
@@ -339,7 +337,6 @@ def main() -> int:
     exclude_sources = [x.strip() for x in args.exclude_sources.split(",") if x.strip()]
     exclude_prefixes = [x.strip() for x in args.exclude_source_prefixes.split(",") if x.strip()]
 
-    base_url, api_key = resolve_provider(args.model, args.base_url, args.api_key)
     prompt_version = "daily_news_summary_v1"
     publish_app_event(
         event="news_daily_summary_update",
@@ -387,15 +384,14 @@ def main() -> int:
 
         fallback_sizes = build_fallback_sizes(total=len(compact_rows), min_news=args.min_news)
         summary = None
+        summary_result = None
         used_rows = compact_rows
         last_exc = None
         for n in fallback_sizes:
             used_rows = compact_rows[:n]
             prompt = build_prompt(date_ymd=date_ymd, cleaned_rows=used_rows)
             try:
-                summary = call_llm(
-                    base_url=base_url,
-                    api_key=api_key,
+                summary_result = call_llm(
                     model=args.model,
                     temperature=args.temperature,
                     prompt=prompt,
@@ -403,6 +399,7 @@ def main() -> int:
                     max_retries=args.max_retries,
                     retry_backoff=args.retry_backoff,
                 )
+                summary = summary_result.text
                 break
             except Exception as exc:  # pragma: no cover
                 last_exc = exc
@@ -418,11 +415,24 @@ def main() -> int:
             importance_filter=",".join(importance),
             source_filter=args.source or "",
             news_count=len(used_rows),
-            model=args.model,
+            model=summary_result.used_model if summary_result else args.model,
             prompt_version=prompt_version,
             summary_markdown=summary,
         )
         print(f"已生成并入库 summary_id={sid}, date={date_ymd}, news_count={len(used_rows)}")
+        emit_result_marker(
+            {
+                "summary_id": sid,
+                "summary_date": date_ymd,
+                "news_count": len(used_rows),
+                "requested_model": args.model,
+                "used_model": summary_result.used_model if summary_result else args.model,
+                "attempts": [
+                    {"model": item.model, "base_url": item.base_url, "error": item.error}
+                    for item in (summary_result.attempts if summary_result else [])
+                ],
+            }
+        )
         publish_app_event(
             event="news_daily_summary_update",
             payload={
@@ -430,7 +440,7 @@ def main() -> int:
                 "summary_date": date_ymd,
                 "summary_id": sid,
                 "news_count": len(used_rows),
-                "model": args.model,
+                "model": summary_result.used_model if summary_result else args.model,
             },
             producer="llm_summarize_daily_important_news.py",
         )

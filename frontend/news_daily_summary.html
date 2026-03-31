@@ -268,9 +268,7 @@
           </select>
           <button id="search_btn">查询</button>
           <select id="gen_model">
-            <option value="GPT-5.4">生成模型: GPT-5.4</option>
-            <option value="kimi-k2.5">生成模型: kimi-k2.5</option>
-            <option value="deepseek-chat">生成模型: deepseek-chat</option>
+            <option value="auto">生成模型: 自动路由（默认 GPT-5.4）</option>
           </select>
           <button id="gen_btn">生成今日总结</button>
         </div>
@@ -303,6 +301,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="/admin_auth.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -676,7 +675,7 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '任务查询失败');
 
-          const model = data.model || state.current_job_model || '';
+          const model = data.used_model || data.model || state.current_job_model || '';
           const progress = Number(data.progress || 0);
           const message = data.message || '处理中';
           els.meta.textContent = `生成中 ${progress}% · ${message} · 模型 ${model}`;
@@ -749,18 +748,18 @@
       }
 
       async function generateTodaySummary() {
-        const genModel = els.gen_model.value || 'GPT-5.4';
+        const genModel = els.gen_model.value || 'auto';
         els.gen_btn.disabled = true;
-        els.meta.textContent = `正在创建生成任务（模型 ${genModel}）...`;
+        els.meta.textContent = `正在创建生成任务（自动路由，默认 GPT-5.4）...`;
         try {
-          const q = new URLSearchParams({ model: genModel });
-          const res = await fetch(`${API_BASE}/api/news/daily-summaries/generate?${q.toString()}`);
+          const q = new URLSearchParams();
+          const res = await zanboAdminFetch(`${API_BASE}/api/news/daily-summaries/generate?${q.toString()}`);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '生成失败');
           state.current_job_id = data.job_id || '';
           state.current_job_model = genModel;
           if (!state.current_job_id) throw new Error('后端未返回 job_id');
-          els.meta.textContent = `任务已创建，正在后台生成（模型 ${genModel}）...`;
+          els.meta.textContent = `任务已创建，正在后台生成（自动路由，默认 GPT-5.4）...`;
           await pollDailySummaryJob(state.current_job_id);
         } catch (err) {
           stopJobPolling();

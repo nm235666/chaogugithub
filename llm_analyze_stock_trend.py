@@ -8,10 +8,7 @@ import db_compat as sqlite3
 import statistics
 from pathlib import Path
 
-from llm_gateway import chat_completion_text
-
-DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
-DEFAULT_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
+from llm_gateway import chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,9 +20,7 @@ def parse_args() -> argparse.Namespace:
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
     parser.add_argument("--lookback", type=int, default=120, help="分析回看交易日数量")
-    parser.add_argument("--model", default="GPT-5.4", help="模型名（按你的服务支持填写）")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="大模型 baseURL")
-    parser.add_argument("--api-key", default=DEFAULT_API_KEY, help="大模型 API Key")
+    parser.add_argument("--model", default="auto", help="模型名；默认 auto 自动路由并降级")
     parser.add_argument("--temperature", type=float, default=0.2, help="采样温度")
     return parser.parse_args()
 
@@ -125,14 +120,7 @@ def build_features(rows: list[dict]) -> dict:
     }
 
 
-def call_llm(
-    base_url: str,
-    api_key: str,
-    model: str,
-    temperature: float,
-    ts_code: str,
-    features: dict,
-) -> str:
+def call_llm(model: str, temperature: float, ts_code: str, features: dict):
     system_prompt = (
         "你是专业的A股量化研究助手。"
         "请基于给定特征做趋势分析，输出要客观，明确不确定性。"
@@ -149,10 +137,8 @@ def call_llm(
         "6) 免责声明（非投资建议）\n\n"
         f"输入特征JSON：\n{json.dumps(features, ensure_ascii=False)}"
     )
-    return chat_completion_text(
+    return chat_completion_with_fallback(
         model=model,
-        base_url=base_url,
-        api_key=api_key,
         temperature=temperature,
         timeout_s=120,
         max_retries=3,
@@ -165,6 +151,8 @@ def call_llm(
 
 def main() -> int:
     args = parse_args()
+    args.model = normalize_model_name(args.model)
+    args.temperature = normalize_temperature_for_model(args.model, args.temperature)
     ts_code = args.ts_code.strip().upper()
     rows = query_prices(args.db_path, ts_code, args.lookback)
     if not rows:
@@ -175,15 +163,9 @@ def main() -> int:
     print(f"区间: {features['date_range']['start']} ~ {features['date_range']['end']}")
     print("调用大模型分析中...\n")
 
-    result = call_llm(
-        base_url=args.base_url,
-        api_key=args.api_key,
-        model=args.model,
-        temperature=args.temperature,
-        ts_code=ts_code,
-        features=features,
-    )
-    print(result)
+    result = call_llm(model=args.model, temperature=args.temperature, ts_code=ts_code, features=features)
+    print(f"实际模型: {result.used_model}\n")
+    print(result.text)
     return 0
 
 

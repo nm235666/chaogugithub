@@ -7,6 +7,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from runtime_secrets import TUSHARE_TOKEN, resolve_tushare_token
 
 LOCAL_DEPS = Path(__file__).resolve().parent / ".deps"
 if LOCAL_DEPS.exists():
@@ -15,7 +16,7 @@ if LOCAL_DEPS.exists():
 import pandas as pd
 import tushare as ts
 
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 
 # 先给一个“可扩展”的默认宏观接口清单
 # 备注: 不同接口参数不同，脚本按“尽量抓 + 失败跳过”策略执行
@@ -60,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         default=str(Path(__file__).resolve().parent / "stock_codes.db"),
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
-    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare token")
+    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token（默认从 TUSHARE_TOKEN 读取）")
     parser.add_argument(
         "--apis",
         default=",".join([x["api"] for x in DEFAULT_API_SPECS]),
@@ -190,7 +191,7 @@ def main() -> int:
         return 2
 
     spec_map = {x["api"]: x for x in DEFAULT_API_SPECS}
-    pro = ts.pro_api(args.token)
+    pro = ts.pro_api(resolve_tushare_token(args.token))
 
     conn = sqlite3.connect(db_path)
     try:

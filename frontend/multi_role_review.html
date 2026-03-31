@@ -457,10 +457,7 @@
           </div>
           <input id="lookback" value="120" placeholder="回看天数" />
           <select id="model">
-            <option value="GPT-5.4">GPT-5.4</option>
-            <option value="kimi-k2.5">kimi-k2.5</option>
-            <option value="deepseek-chat">deepseek-chat</option>
-            <option value="deepseek-reasoner">deepseek-reasoner</option>
+            <option value="auto">自动路由（默认 GPT-5.4）</option>
           </select>
           <input id="roles" value="宏观经济分析师,股票分析师,国际资本分析师,汇率分析师" placeholder="角色，逗号分隔" />
           <button id="run_btn">分析</button>
@@ -517,6 +514,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="/admin_auth.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -1085,7 +1083,7 @@
 
           if (data.status === 'done') {
             renderAnalysis(data.analysis || '', data.role_sections || [], data.logic_view || null);
-            els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，模型 ${data.model}`;
+            els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，实际模型 ${data.used_model || data.model || '-'}`;
             return;
           }
 
@@ -1110,7 +1108,7 @@
         }
         if (data.status === 'done') {
           renderAnalysis(data.analysis || '', data.role_sections || [], data.logic_view || null);
-          els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，模型 ${data.model}`;
+          els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，实际模型 ${data.used_model || data.model || '-'}`;
           currentJobId = '';
         } else if (data.status === 'error') {
           els.meta.textContent = `请求失败: ${data.error || data.message || '分析失败'}`;
@@ -1121,7 +1119,6 @@
       async function run() {
         const rawStockInput = els.ts_code.value.trim();
         const lookback = Number(els.lookback.value.trim() || '120');
-        const model = els.model.value;
         const roles = els.roles.value.trim();
         if (!rawStockInput) {
           els.meta.textContent = '请输入股票代码或简称';
@@ -1143,20 +1140,19 @@
           const q = new URLSearchParams({
             ts_code: tsCode,
             lookback: String(lookback),
-            model,
             roles,
           });
-          const res = await fetch(`${API_BASE}/api/llm/multi-role/start?${q.toString()}`);
+          const res = await zanboAdminFetch(`${API_BASE}/api/llm/multi-role/start?${q.toString()}`);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '请求失败');
           currentJobId = data.job_id || '';
           const matchHint = stock.matched_name && stock.matched_name !== data.name ? `（简称匹配：${stock.matched_name}）` : '';
-          els.meta.textContent = `任务已创建：${data.ts_code} ${data.name || ''}${matchHint}，模型 ${data.model}`;
+          els.meta.textContent = `任务已创建：${data.ts_code} ${data.name || ''}${matchHint}，模型自动路由中（默认 GPT-5.4）`;
           renderAnalysis('', [], null);
           els.context.textContent = fmtContext(data.context, data.roles);
           renderDataDimensions(data.context);
           els.analysis.innerHTML = '<p>上下文已准备完成，正在等待大模型输出分析结论...</p>';
-          await pollMultiRoleJob(currentJobId, `任务进行中：${data.ts_code} ${data.name || ''}，模型 ${data.model}`);
+          await pollMultiRoleJob(currentJobId, `任务进行中：${data.ts_code} ${data.name || ''}，模型自动路由中（默认 GPT-5.4）`);
         } catch (err) {
           els.meta.textContent = `请求失败: ${err.message}`;
           renderAnalysis('', [], null);

@@ -19,6 +19,7 @@ from realtime_streams import publish_app_event
 
 JOB_DEFINITION_TABLE = "job_definitions"
 JOB_RUN_TABLE = "job_runs"
+JOB_ALERT_TABLE = "job_alerts"
 LOCK_PREFIX = "job:lock:"
 
 
@@ -32,7 +33,7 @@ def cn_today() -> str:
 
 def resolve_recent_trade_dates() -> list[str]:
     proc = subprocess.run(
-        [sys.executable, str(ROOT_DIR / "market_calendar.py"), "--token", "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb", "--count", "2"],
+        [sys.executable, str(ROOT_DIR / "market_calendar.py"), "--count", "2"],
         capture_output=True,
         text=True,
         cwd=str(ROOT_DIR),
@@ -68,7 +69,7 @@ def ensure_tables(conn: sqlite3.Connection) -> None:
     if not _exists(JOB_DEFINITION_TABLE):
         conn.execute(
             f"""
-            CREATE TABLE {JOB_DEFINITION_TABLE} (
+            CREATE TABLE IF NOT EXISTS {JOB_DEFINITION_TABLE} (
                 job_key TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 category TEXT,
@@ -85,7 +86,7 @@ def ensure_tables(conn: sqlite3.Connection) -> None:
     if not _exists(JOB_RUN_TABLE):
         conn.execute(
             f"""
-            CREATE TABLE {JOB_RUN_TABLE} (
+            CREATE TABLE IF NOT EXISTS {JOB_RUN_TABLE} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_key TEXT NOT NULL,
                 trigger_mode TEXT,
@@ -106,8 +107,31 @@ def ensure_tables(conn: sqlite3.Connection) -> None:
             )
             """
         )
+    if not _exists(JOB_ALERT_TABLE):
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {JOB_ALERT_TABLE} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_key TEXT NOT NULL,
+                run_id INTEGER,
+                severity TEXT NOT NULL DEFAULT 'error',
+                message TEXT NOT NULL,
+                detail_text TEXT,
+                acknowledged INTEGER NOT NULL DEFAULT 0,
+                acknowledged_at TEXT,
+                created_at TEXT NOT NULL,
+                update_time TEXT NOT NULL
+            )
+            """
+        )
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{JOB_RUN_TABLE}_job_time ON {JOB_RUN_TABLE}(job_key, created_at DESC)")
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{JOB_RUN_TABLE}_status ON {JOB_RUN_TABLE}(status, created_at DESC)")
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{JOB_ALERT_TABLE}_job_time ON {JOB_ALERT_TABLE}(job_key, created_at DESC)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{JOB_ALERT_TABLE}_ack ON {JOB_ALERT_TABLE}(acknowledged, created_at DESC)"
+    )
     conn.commit()
 
 
@@ -214,7 +238,50 @@ def update_job_run(conn: sqlite3.Connection, run_id: int, *, status: str, exit_c
     conn.commit()
 
 
-def run_job(job_key: str, trigger_mode: str = "manual") -> dict:
+def insert_job_alert(
+    conn: sqlite3.Connection,
+    *,
+    job_key: str,
+    run_id: int,
+    severity: str,
+    message: str,
+    detail_text: str = "",
+) -> int:
+    now = utc_now()
+    conn.execute(
+        f"""
+        INSERT INTO {JOB_ALERT_TABLE} (
+            job_key, run_id, severity, message, detail_text, acknowledged,
+            acknowledged_at, created_at, update_time
+        ) VALUES (?, ?, ?, ?, ?, 0, '', ?, ?)
+        """,
+        (job_key, run_id, severity, message, detail_text, now, now),
+    )
+    conn.commit()
+    row = conn.execute(f"SELECT MAX(id) FROM {JOB_ALERT_TABLE}").fetchone()
+    return int(row[0] or 0)
+
+
+def dry_run_job(job_key: str, trigger_mode: str = "dry-run") -> dict:
+    conn = sqlite3.connect(str(ROOT_DIR / "stock_codes.db"))
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_tables(conn)
+        sync_job_definitions(conn)
+        job = find_job(job_key)
+        expanded_commands = [expand_command(cmd) for cmd in job.commands]
+        return {
+            "ok": True,
+            "job_key": job.job_key,
+            "name": job.name,
+            "trigger_mode": trigger_mode,
+            "commands": expanded_commands,
+        }
+    finally:
+        conn.close()
+
+
+def run_job(job_key: str, trigger_mode: str = "manual", max_retries_per_command: int = 1) -> dict:
     conn = sqlite3.connect(str(ROOT_DIR / "stock_codes.db"))
     conn.row_factory = sqlite3.Row
     ensure_tables(conn)
@@ -238,19 +305,28 @@ def run_job(job_key: str, trigger_mode: str = "manual") -> dict:
     error_text = ""
     try:
         for cmd in expanded_commands:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(ROOT_DIR),
-                capture_output=True,
-                text=True,
-                timeout=7200,
-                check=False,
-            )
-            stdout_parts.append(f"$ {' '.join(cmd)}\n{proc.stdout}")
-            stderr_parts.append(f"$ {' '.join(cmd)}\n{proc.stderr}")
-            if proc.returncode != 0:
-                exit_code = proc.returncode
-                error_text = f"command failed: {' '.join(cmd)}"
+            cmd_text = " ".join(cmd)
+            attempt = 0
+            while True:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=str(ROOT_DIR),
+                    capture_output=True,
+                    text=True,
+                    timeout=7200,
+                    check=False,
+                )
+                stdout_parts.append(f"$ {cmd_text}\n[attempt={attempt}]\n{proc.stdout}")
+                stderr_parts.append(f"$ {cmd_text}\n[attempt={attempt}]\n{proc.stderr}")
+                if proc.returncode == 0:
+                    break
+                if attempt >= max(max_retries_per_command, 0):
+                    exit_code = proc.returncode
+                    error_text = f"command failed after retry: {cmd_text}"
+                    break
+                attempt += 1
+                time.sleep(min(10, 2 * attempt))
+            if exit_code != 0:
                 break
         status = "success" if exit_code == 0 else "error"
         update_job_run(
@@ -262,8 +338,30 @@ def run_job(job_key: str, trigger_mode: str = "manual") -> dict:
             stderr_text="\n\n".join(stderr_parts)[-20000:],
             error_text=error_text,
         )
+        alert_id = 0
+        if status != "success":
+            alert_id = insert_job_alert(
+                conn,
+                job_key=job.job_key,
+                run_id=run_id,
+                severity="error",
+                message=f"任务失败: {job.job_key}",
+                detail_text=error_text or "\n\n".join(stderr_parts)[-8000:],
+            )
+            publish_app_event(
+                event="job_alert",
+                payload={"job_key": job.job_key, "run_id": run_id, "alert_id": alert_id, "status": status},
+                producer="job_orchestrator.py",
+            )
         publish_app_event(event="job_run_update", payload={"job_key": job.job_key, "run_id": run_id, "status": status, "exit_code": exit_code}, producer="job_orchestrator.py")
-        return {"ok": exit_code == 0, "run_id": run_id, "job_key": job.job_key, "status": status, "exit_code": exit_code}
+        return {
+            "ok": exit_code == 0,
+            "run_id": run_id,
+            "job_key": job.job_key,
+            "status": status,
+            "exit_code": exit_code,
+            "alert_id": alert_id,
+        }
     finally:
         release_lock(lock_info)
         conn.close()
@@ -319,6 +417,36 @@ def query_job_runs(job_key: str = "", status: str = "", limit: int = 50) -> dict
         conn.close()
 
 
+def query_job_alerts(job_key: str = "", unresolved_only: bool = True, limit: int = 50) -> dict:
+    conn = sqlite3.connect(str(ROOT_DIR / "stock_codes.db"))
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_tables(conn)
+        where = []
+        params: list[object] = []
+        if job_key.strip():
+            where.append("job_key = ?")
+            params.append(job_key.strip())
+        if unresolved_only:
+            where.append("COALESCE(acknowledged, 0) = 0")
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        rows = conn.execute(
+            f"""
+            SELECT id, job_key, run_id, severity, message, detail_text,
+                   acknowledged, acknowledged_at, created_at, update_time
+            FROM {JOB_ALERT_TABLE}
+            {where_sql}
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (*params, max(limit, 1)),
+        ).fetchall()
+        items = [dict(r) for r in rows]
+        return {"items": items, "total": len(items)}
+    finally:
+        conn.close()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="统一任务编排器")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -327,10 +455,16 @@ def parse_args() -> argparse.Namespace:
     run_p.add_argument("job_key", help="任务标识")
     run_p.add_argument("--trigger-mode", default="manual", help="manual / cron / api")
     sub.add_parser("list", help="列出任务定义")
+    dry_p = sub.add_parser("dry-run", help="展开任务命令但不执行")
+    dry_p.add_argument("job_key", help="任务标识")
     runs_p = sub.add_parser("runs", help="列出任务运行记录")
     runs_p.add_argument("--job-key", default="", help="按 job_key 过滤")
     runs_p.add_argument("--status", default="", help="按状态过滤")
     runs_p.add_argument("--limit", type=int, default=20, help="返回条数")
+    alerts_p = sub.add_parser("alerts", help="列出任务告警")
+    alerts_p.add_argument("--job-key", default="", help="按 job_key 过滤")
+    alerts_p.add_argument("--all", action="store_true", help="包含已确认告警")
+    alerts_p.add_argument("--limit", type=int, default=20, help="返回条数")
     return parser.parse_args()
 
 
@@ -352,8 +486,19 @@ def main() -> int:
     if args.cmd == "list":
         print(json.dumps(query_job_definitions(), ensure_ascii=False))
         return 0
+    if args.cmd == "dry-run":
+        print(json.dumps(dry_run_job(args.job_key), ensure_ascii=False))
+        return 0
     if args.cmd == "runs":
         print(json.dumps(query_job_runs(job_key=args.job_key, status=args.status, limit=args.limit), ensure_ascii=False))
+        return 0
+    if args.cmd == "alerts":
+        print(
+            json.dumps(
+                query_job_alerts(job_key=args.job_key, unresolved_only=not args.all, limit=args.limit),
+                ensure_ascii=False,
+            )
+        )
         return 0
     return 1
 

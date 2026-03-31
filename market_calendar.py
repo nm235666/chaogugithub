@@ -11,9 +11,10 @@ if LOCAL_DEPS.exists():
     sys.path.insert(0, str(LOCAL_DEPS))
 
 import tushare as ts
+from runtime_secrets import TUSHARE_TOKEN, resolve_tushare_token
 
 
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 
 
 def beijing_today() -> str:
@@ -28,7 +29,7 @@ def recent_open_trade_dates(token: str, count: int = 1, end_date: str = "") -> l
     # 留足窗口，覆盖春节/国庆等长假
     start_dt = end_dt - timedelta(days=max(40, count * 20))
 
-    pro = ts.pro_api(token or DEFAULT_TOKEN)
+    pro = ts.pro_api(resolve_tushare_token(token or DEFAULT_TOKEN))
     cal = pro.trade_cal(
         exchange="SSE",
         start_date=start_dt.strftime("%Y%m%d"),
@@ -54,7 +55,7 @@ def resolve_trade_date(trade_date: str, token: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="按交易日历返回最近交易日")
-    parser.add_argument("--token", default=DEFAULT_TOKEN)
+    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token（默认从 TUSHARE_TOKEN 读取）")
     parser.add_argument("--count", type=int, default=1, help="返回最近几个交易日")
     parser.add_argument("--end-date", default="", help="截止日期 YYYYMMDD，默认北京时间今天")
     args = parser.parse_args()

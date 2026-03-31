@@ -10,10 +10,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import db_compat as sqlite3
+from runtime_secrets import TUSHARE_TOKEN
 
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 
 
 def utc_now() -> str:

@@ -318,6 +318,7 @@
       </div>
     </div>
 
+    <script src="/admin_auth.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -553,7 +554,7 @@
         buttonEl.textContent = '拉取中...';
         els.meta.textContent = `正在立即拉取 ${buttonEl.dataset.roomName || roomId} ...`;
         try {
-          const res = await fetch(`${API_BASE}/api/chatrooms/fetch?${q.toString()}`);
+          const res = await zanboAdminFetch(`${API_BASE}/api/chatrooms/fetch?${q.toString()}`);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '立即拉取失败');
           els.meta.textContent = `拉取完成: ${buttonEl.dataset.roomName || roomId}`;

@@ -155,25 +155,25 @@
 
 | 页面 | 主要用途 |
 | --- | --- |
-| `index.html` | 首页导航与系统入口。 |
-| `stock_codes.html` | 股票代码查询。 |
-| `prices.html` 或相关价格页 | 日线价格查询。 |
-| `minline.html` 或分钟线页 | 分钟线 K 线展示。 |
-| `stock_detail.html` | 单只股票详情页。 |
-| `stock_news.html` | 个股新闻查询。 |
-| `news.html` | 国际财经资讯。 |
-| `cn_news.html` | 国内财经资讯。 |
-| `news_daily_summary.html` | 新闻日报总结。 |
-| `llm_stock_trend.html` | LLM 股票走势分析。 |
-| `multi_role_company_review.html` | LLM 多角色公司分析。 |
-| `macro_data.html` | 宏观数据展示。 |
-| `chatrooms.html` | 群聊总览。 |
-| `wechat_chatlog.html` | 群聊聊天记录查询。 |
-| `chatroom_investment.html` | 群聊投资倾向总览。 |
-| `chatroom_candidate_pool.html` | 股票候选池（近 7 天累计）。 |
-| `investment_signals.html` | 投资信号总览，支持 `7d/1d` 切换。 |
-| `investment_signal_timeline.html` | 信号时间线。 |
-| `db_health.html` / 审核页 | 数据源与数据库质量监控。 |
+| `/dashboard` | 首页总控台与系统入口。 |
+| `/stocks/list` | 股票列表查询。 |
+| `/stocks/detail/:tsCode?` | 单只股票详情页。 |
+| `/stocks/prices` | 日线价格查询。 |
+| `/stocks/minline` | 分钟线 K 线展示。 |
+| `/intelligence/stock-news` | 个股新闻查询。 |
+| `/intelligence/global-news` | 国际财经资讯。 |
+| `/intelligence/cn-news` | 国内财经资讯。 |
+| `/intelligence/daily-summaries` | 新闻日报总结。 |
+| `/research/trend` | LLM 股票走势分析。 |
+| `/research/multi-role` | LLM 多角色公司分析。 |
+| `/macro` | 宏观数据展示。 |
+| `/chatrooms/overview` | 群聊总览。 |
+| `/chatrooms/chatlog` | 群聊聊天记录查询。 |
+| `/chatrooms/investment` | 群聊投资倾向总览。 |
+| `/chatrooms/candidates` | 股票候选池（近 7 天累计）。 |
+| `/signals/overview` | 投资信号总览。 |
+| `/signals/timeline` | 信号时间线。 |
+| `/system/database-audit` | 数据库质量监控与审计。 |
 
 ## 4. 现在系统的数据流转方式
 
@@ -280,28 +280,28 @@
 
 ### 6.1 如果看“今天/最近一周哪些股票值得盯”
 
-- `chatroom_candidate_pool.html`
-- `investment_signals.html`
+- `/chatrooms/candidates`
+- `/signals/overview`
 
 ### 6.2 如果看“某只股票发生了什么”
 
-- `stock_detail.html`
-- `stock_news.html`
-- `llm_stock_trend.html`
-- `multi_role_company_review.html`
+- `/stocks/detail/:tsCode?`
+- `/intelligence/stock-news`
+- `/research/trend`
+- `/research/multi-role`
 
 ### 6.3 如果看“市场发生了什么”
 
-- `news.html`
-- `cn_news.html`
-- `news_daily_summary.html`
-- `macro_data.html`
+- `/intelligence/global-news`
+- `/intelligence/cn-news`
+- `/intelligence/daily-summaries`
+- `/macro`
 
 ### 6.4 如果看“群里最近在讨论什么”
 
-- `chatrooms.html`
-- `wechat_chatlog.html`
-- `chatroom_investment.html`
+- `/chatrooms/overview`
+- `/chatrooms/chatlog`
+- `/chatrooms/investment`
 
 ## 7. 当前系统的几个关键特征
 

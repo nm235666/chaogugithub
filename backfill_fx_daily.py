@@ -25,6 +25,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from runtime_secrets import TUSHARE_TOKEN, resolve_tushare_token
 
 LOCAL_DEPS = Path(__file__).resolve().parent / ".deps"
 if LOCAL_DEPS.exists():
@@ -32,7 +33,7 @@ if LOCAL_DEPS.exists():
 
 import tushare as ts
 
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 DEFAULT_PAIRS = [
     "USDCNH.FXCM",
     "USDJPY.FXCM",
@@ -49,7 +50,7 @@ def parse_args() -> argparse.Namespace:
         default=str(Path(__file__).resolve().parent / "stock_codes.db"),
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
-    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token")
+    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token（默认从 TUSHARE_TOKEN 读取）")
     parser.add_argument("--table-name", default="fx_daily", help="目标表名")
     parser.add_argument("--pairs", default=",".join(DEFAULT_PAIRS), help="币对列表，逗号分隔")
     parser.add_argument("--lookback-days", type=int, default=365, help="回溯天数，默认365")
@@ -138,7 +139,7 @@ def main() -> int:
         print(f"错误: 数据库不存在: {db_path}", file=sys.stderr)
         return 1
 
-    pro = ts.pro_api(args.token)
+    pro = ts.pro_api(resolve_tushare_token(args.token))
     conn = sqlite3.connect(db_path)
     try:
         ensure_table(conn, args.table_name)

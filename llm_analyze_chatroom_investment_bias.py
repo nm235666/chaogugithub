@@ -9,10 +9,7 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
-
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
+from llm_gateway import chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "stock_codes.db"
 DEFAULT_TABLE_NAME = "chatroom_investment_analysis"
@@ -24,9 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="按群维度分析聊天记录中的投资标的与整体投资倾向")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH), help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）")
     parser.add_argument("--table-name", default=DEFAULT_TABLE_NAME, help="结果表名")
-    parser.add_argument("--model", default="GPT-5.4", help="模型名，如 GPT-5.4 / kimi-k2.5 / deepseek-chat")
-    parser.add_argument("--base-url", default=DEEPSEEK_BASE_URL, help="LLM Base URL")
-    parser.add_argument("--api-key", default=DEEPSEEK_API_KEY, help="LLM API Key")
+    parser.add_argument("--model", default="auto", help="模型名；默认 auto 自动路由并降级")
     parser.add_argument("--temperature", type=float, default=0.2, help="采样温度")
     parser.add_argument("--days", type=int, default=30, help="分析最近多少天聊天记录")
     parser.add_argument("--limit", type=int, default=20, help="本次最多处理多少个群")
@@ -291,11 +286,9 @@ def build_prompt(payload: dict) -> str:
     )
 
 
-def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    return chat_completion_text(
+def call_llm(model: str, temperature: float, prompt: str):
+    return chat_completion_with_fallback(
         model=model,
-        base_url=base_url,
-        api_key=api_key,
         temperature=temperature,
         timeout_s=180,
         max_retries=3,
@@ -437,7 +430,6 @@ def upsert_analysis(
 def main() -> int:
     args = parse_args()
     model = normalize_model_name(args.model)
-    base_url, api_key = resolve_provider(model, args.base_url, args.api_key)
     temperature = normalize_temperature_for_model(model, args.temperature)
 
     conn = sqlite3.connect(args.db_path)
@@ -485,7 +477,8 @@ def main() -> int:
             last_error = None
             for _ in range(max(args.retry, 0) + 1):
                 try:
-                    raw_output = call_llm(base_url, api_key, model, temperature, prompt)
+                    raw_result = call_llm(model, temperature, prompt)
+                    raw_output = raw_result.text
                     parsed = parse_llm_output(raw_output)
                     break
                 except Exception as exc:
@@ -508,12 +501,12 @@ def main() -> int:
                 room_summary=parsed["room_summary"],
                 targets_json=parsed["targets_json"],
                 final_bias=parsed["final_bias"],
-                model=model,
+                model=raw_result.used_model,
                 raw_output=raw_output,
             )
             print(
                 f"  完成 final_bias={parsed['final_bias']} "
-                f"targets={len(parsed['targets'])}"
+                f"targets={len(parsed['targets'])} actual_model={raw_result.used_model}"
             )
             if args.sleep > 0:
                 time.sleep(args.sleep)

@@ -257,6 +257,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/admin_auth.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -329,7 +330,7 @@
         els.refresh_btn.disabled = true;
         try {
           const [auditResp, healthResp] = await Promise.all([
-            fetch(`${API_BASE}/api/database-audit?refresh=${refresh ? 1 : 0}`),
+            (refresh ? zanboAdminFetch(`${API_BASE}/api/database-audit?refresh=1`) : fetch(`${API_BASE}/api/database-audit?refresh=0`)),
             fetch(`${API_BASE}/api/db-health`),
           ]);
           const data = await auditResp.json();

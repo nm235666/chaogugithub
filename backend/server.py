@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import bisect
 import hashlib
+import ipaddress
 import json
 import math
 import os
 import re
+import secrets
 import statistics
 import subprocess
 import sys
@@ -26,18 +28,20 @@ if str(ROOT_DIR) not in sys.path:
 
 import db_compat as sqlite3
 from db_compat import assert_database_ready, cache_get_json, cache_set_json, db_label, get_redis_client
-from job_orchestrator import query_job_definitions, query_job_runs, run_job
+from job_orchestrator import dry_run_job, query_job_alerts, query_job_definitions, query_job_runs, run_job
 from llm_gateway import (
-    DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_BASE_URL,
     DEFAULT_LLM_MODEL,
-    build_route,
+    chat_completion_with_fallback,
     normalize_model_name,
     normalize_temperature_for_model,
-    post_chat_completions,
-    resolve_provider,
 )
 from realtime_streams import publish_app_event
+from runtime_secrets import BACKEND_ADMIN_TOKEN, BACKEND_ALLOWED_ORIGINS
+from backend.routes import chatrooms as chatroom_routes
+from backend.routes import news as news_routes
+from backend.routes import signals as signal_routes
+from backend.routes import stocks as stock_routes
+from backend.routes import system as system_routes
 
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "8000"))
@@ -101,6 +105,118 @@ STOCK_SCORE_CACHE: dict[str, object] = {
 REDIS_CACHE_TTL_SOURCE_MONITOR = 30
 REDIS_CACHE_TTL_DASHBOARD = 30
 AUDIT_REPORT_PATH = ROOT_DIR / "docs" / "database_audit_report.md"
+PROTECTED_POST_PATHS = {
+    "/api/signal-quality/rules/save",
+    "/api/signal-quality/blocklist/save",
+}
+PROTECTED_GET_PATHS = {
+    "/api/jobs",
+    "/api/job-runs",
+    "/api/job-alerts",
+    "/api/jobs/trigger",
+    "/api/jobs/dry-run",
+    "/api/chatrooms/fetch",
+    "/api/stock-news/fetch",
+    "/api/stock-news/score",
+    "/api/news/daily-summaries/generate",
+    "/api/llm/multi-role/start",
+}
+DEFAULT_ALLOWED_ADMIN_ORIGINS = {
+    "http://127.0.0.1:8077",
+    "http://localhost:8077",
+    "http://127.0.0.1:8080",
+    "http://localhost:8080",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:4173",
+    "http://localhost:4173",
+}
+TRUSTED_FRONTEND_PORTS = {"8077", "8080", "5173", "4173"}
+
+API_ENDPOINTS_CATALOG = {
+    "health": "/api/health",
+    "dashboard": "/api/dashboard",
+    "stock_detail": "/api/stock-detail?ts_code=000001.SZ&lookback=60",
+    "stocks": "/api/stocks?keyword=&status=&market=&area=&page=1&page_size=20",
+    "stocks_filters": "/api/stocks/filters",
+    "stock_scores": "/api/stock-scores?keyword=&market=&area=&industry=&min_score=0&page=1&page_size=20&sort_by=total_score&sort_order=desc",
+    "stock_scores_filters": "/api/stock-scores/filters",
+    "stock_news": "/api/stock-news?ts_code=601100.SH&company_name=&keyword=&source=&finance_levels=极高,高,中&scored=&page=1&page_size=20",
+    "stock_news_sources": "/api/stock-news/sources",
+    "stock_news_score": "/api/stock-news/score?ts_code=601100.SH&limit=20&force=0",
+    "wechat_chatlog": "/api/wechat-chatlog?talker=&sender_name=&keyword=&is_quote=&query_date_start=&query_date_end=&page=1&page_size=20",
+    "chatroom_overview": "/api/chatrooms?keyword=&primary_category=&activity_level=&risk_level=&skip_realtime_monitor=&fetch_status=&page=1&page_size=20",
+    "chatroom_fetch_now": "/api/chatrooms/fetch?room_id=<room_id>&mode=today|yesterday_and_today",
+    "chatroom_investment_analysis": "/api/chatrooms/investment?keyword=&final_bias=&target_keyword=&page=1&page_size=20",
+    "chatroom_candidate_pool": "/api/chatrooms/candidate-pool?keyword=&dominant_bias=&candidate_type=&page=1&page_size=20",
+    "investment_signals": "/api/investment-signals?keyword=&signal_type=&signal_group=all|stock|non_stock&direction=&signal_status=&page=1&page_size=20",
+    "investment_signal_timeline": "/api/investment-signals/timeline?signal_key=<signal_key>&page=1&page_size=20",
+    "stock_news_fetch": "/api/stock-news/fetch?ts_code=601100.SH&company_name=&page_size=20&score=1",
+    "news": "/api/news?source=&exclude_sources=cn_sina_7x24&exclude_source_prefixes=cn_sina_&keyword=&date_from=&date_to=&finance_levels=高,极高&page=1&page_size=20",
+    "news_sources": "/api/news/sources",
+    "news_daily_summaries": "/api/news/daily-summaries?summary_date=2026-03-25&source_filter=cn_sina_&model=GPT-5.4&page=1&page_size=20",
+    "news_daily_summaries_generate": "/api/news/daily-summaries/generate",
+    "news_daily_summaries_task": "/api/news/daily-summaries/task?job_id=<job_id>",
+    "prices": "/api/prices?ts_code=000001.SZ&start_date=20260223&end_date=20260325&page=1&page_size=20",
+    "minline": "/api/minline?ts_code=600114.SH&trade_date=20260325&page=1&page_size=240",
+    "llm_trend": "/api/llm/trend?ts_code=000001.SZ&lookback=120",
+    "llm_multi_role": "/api/llm/multi-role?ts_code=000001.SZ&lookback=120&roles=宏观经济分析师,股票分析师,国际资本分析师,汇率分析师",
+    "llm_multi_role_start": "/api/llm/multi-role/start?ts_code=000001.SZ&lookback=120&roles=宏观经济分析师,股票分析师",
+    "llm_multi_role_task": "/api/llm/multi-role/task?job_id=<job_id>",
+    "macro_indicators": "/api/macro/indicators",
+    "macro_series": "/api/macro?indicator_code=cn_cpi.nt_yoy&freq=M&period_start=202001&period_end=202512&page=1&page_size=200",
+    "source_monitor": "/api/source-monitor",
+    "database_audit": "/api/database-audit?refresh=0|1",
+    "signal_audit": "/api/signal-audit?scope=7d|1d",
+    "signal_quality_config": "/api/signal-quality/config",
+    "signal_quality_rules_save": "/api/signal-quality/rules/save",
+    "signal_quality_blocklist_save": "/api/signal-quality/blocklist/save",
+    "job_alerts": "/api/job-alerts?job_key=&unresolved_only=1&limit=20",
+    "job_dry_run": "/api/jobs/dry-run?job_key=<job_key>",
+}
+
+
+def _normalize_origin(origin: str) -> str:
+    return (origin or "").strip().rstrip("/")
+
+
+def _request_is_protected(path: str, method: str, params: dict[str, list[str]] | None = None) -> bool:
+    normalized_method = (method or "").upper()
+    if normalized_method == "POST":
+        return path in PROTECTED_POST_PATHS
+    if normalized_method in {"GET", "OPTIONS"} and path in PROTECTED_GET_PATHS:
+        return True
+    if normalized_method == "OPTIONS" and path in PROTECTED_POST_PATHS:
+        return True
+    if path == "/api/database-audit":
+        refresh_raw = ((params or {}).get("refresh", ["0"])[0] or "").strip().lower()
+        return refresh_raw in {"1", "true", "yes", "y", "on"}
+    return False
+
+
+def _origin_matches_current_host(origin: str, host_header: str) -> bool:
+    parsed_origin = urlparse(origin)
+    if parsed_origin.scheme not in {"http", "https"}:
+        return False
+    origin_host = (parsed_origin.hostname or "").strip().lower()
+    request_host = (host_header or "").split(":", 1)[0].strip().lower()
+    if not origin_host or not request_host or origin_host != request_host:
+        return False
+    if parsed_origin.port is None:
+        return parsed_origin.scheme == "https"
+    return str(parsed_origin.port) in TRUSTED_FRONTEND_PORTS
+
+
+def _origin_allowed(origin: str, host_header: str) -> bool:
+    normalized = _normalize_origin(origin)
+    if not normalized:
+        return False
+    if normalized in DEFAULT_ALLOWED_ADMIN_ORIGINS:
+        return True
+    if normalized in {_normalize_origin(item) for item in BACKEND_ALLOWED_ORIGINS}:
+        return True
+    return _origin_matches_current_host(normalized, host_header)
+
 
 def resolve_signal_table(conn, scope: str) -> tuple[str, str]:
     scope = (scope or "").strip().lower()
@@ -1448,6 +1564,10 @@ def query_news(
                 "llm_finance_impact_score" if "llm_finance_impact_score" in cols else "NULL AS llm_finance_impact_score",
                 "llm_finance_importance" if "llm_finance_importance" in cols else "NULL AS llm_finance_importance",
                 "llm_impacts_json" if "llm_impacts_json" in cols else "NULL AS llm_impacts_json",
+                "related_ts_codes_json" if "related_ts_codes_json" in cols else "NULL AS related_ts_codes_json",
+                "related_stock_names_json" if "related_stock_names_json" in cols else "NULL AS related_stock_names_json",
+                "llm_direct_related_ts_codes_json" if "llm_direct_related_ts_codes_json" in cols else "NULL AS llm_direct_related_ts_codes_json",
+                "llm_direct_related_stock_names_json" if "llm_direct_related_stock_names_json" in cols else "NULL AS llm_direct_related_stock_names_json",
                 "llm_model" if "llm_model" in cols else "NULL AS llm_model",
                 "llm_scored_at" if "llm_scored_at" in cols else "NULL AS llm_scored_at",
                 "llm_sentiment_score" if "llm_sentiment_score" in cols else "NULL AS llm_sentiment_score",
@@ -1484,10 +1604,26 @@ def query_news(
     }
 
 
-def query_stock_news(ts_code: str, company_name: str, keyword: str, page: int, page_size: int):
+def query_stock_news(
+    ts_code: str,
+    company_name: str,
+    keyword: str,
+    source: str,
+    finance_levels: str,
+    date_from: str,
+    date_to: str,
+    scored: str,
+    page: int,
+    page_size: int,
+):
     ts_code = ts_code.strip().upper()
     company_name = company_name.strip()
     keyword = keyword.strip()
+    source = source.strip()
+    finance_levels = finance_levels.strip()
+    date_from = date_from.strip()
+    date_to = date_to.strip()
+    scored = scored.strip().lower()
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     offset = (page - 1) * page_size
@@ -1504,6 +1640,15 @@ def query_stock_news(ts_code: str, company_name: str, keyword: str, page: int, p
         where_clauses.append("(title LIKE ? OR summary LIKE ?)")
         kw = f"%{keyword}%"
         params.extend([kw, kw])
+    if source:
+        where_clauses.append("source = ?")
+        params.append(source)
+    if date_from:
+        where_clauses.append("pub_time >= ?")
+        params.append(date_from)
+    if date_to:
+        where_clauses.append("pub_time <= ?")
+        params.append(date_to)
 
     where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
@@ -1517,6 +1662,20 @@ def query_stock_news(ts_code: str, company_name: str, keyword: str, page: int, p
             return {"page": page, "page_size": page_size, "total": 0, "total_pages": 0, "items": []}
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(stock_news_items)").fetchall()}
+        valid_levels = []
+        if finance_levels:
+            levels = [x.strip() for x in finance_levels.split(",") if x.strip()]
+            valid_levels = [x for x in levels if x in {"极高", "高", "中", "低", "极低"}]
+        if valid_levels and "llm_finance_importance" in cols:
+            placeholders = ",".join(["?"] * len(valid_levels))
+            where_clauses.append(f"llm_finance_importance IN ({placeholders})")
+            params.extend(valid_levels)
+        if scored in {"scored", "unscored"}:
+            scored_sql = (
+                "(llm_system_score IS NOT NULL AND llm_finance_impact_score IS NOT NULL AND llm_finance_importance IS NOT NULL AND llm_summary IS NOT NULL)"
+            )
+            where_clauses.append(scored_sql if scored == "scored" else f"NOT {scored_sql}")
+        where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
         count_sql = f"SELECT COUNT(*) FROM stock_news_items{where_sql}"
         select_sentiment = ", ".join(
             [
@@ -1554,6 +1713,22 @@ def query_stock_news(ts_code: str, company_name: str, keyword: str, page: int, p
         "total_pages": (total + page_size - 1) // page_size,
         "items": data,
     }
+
+
+def query_stock_news_sources():
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        table_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='stock_news_items'"
+        ).fetchone()[0]
+        if not table_exists:
+            return []
+        rows = conn.execute(
+            "SELECT DISTINCT source FROM stock_news_items WHERE source IS NOT NULL AND source <> '' ORDER BY source"
+        ).fetchall()
+        return [r[0] for r in rows]
+    finally:
+        conn.close()
 
 
 def query_wechat_chatlog(
@@ -3212,7 +3387,8 @@ def generate_daily_summary(model: str, summary_date: str):
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0:
         raise RuntimeError(f"日报总结生成失败: {proc.stderr.strip() or proc.stdout.strip()}")
-    return {"stdout": proc.stdout, "stderr": proc.stderr}
+    meta = _extract_llm_result_marker(proc.stdout)
+    return {"stdout": proc.stdout, "stderr": proc.stderr, "meta": meta}
 
 
 def fetch_stock_news_now(ts_code: str, company_name: str, page_size: int, timeout_s: int = 180):
@@ -3264,31 +3440,40 @@ def fetch_stock_news_now(ts_code: str, company_name: str, page_size: int, timeou
     return {"stdout": proc.stdout, "stderr": proc.stderr}
 
 
-def score_stock_news_now(ts_code: str, limit: int, model: str, timeout_s: int = 300):
+def score_stock_news_now(ts_code: str, limit: int, model: str, timeout_s: int = 300, row_id: int = 0, force: bool = False):
     script_path = Path(__file__).resolve().parent.parent / "llm_score_stock_news.py"
     cmd = [
         "python3",
         str(script_path),
         "--db-path",
         str(DB_PATH),
-        "--ts-code",
-        ts_code.strip().upper(),
         "--limit",
         str(limit),
+        "--workers",
+        "4",
+        "--batch-size",
+        "6",
         "--retry",
         "1",
         "--sleep",
-        "0.05",
+        "0.02",
         "--model",
-        normalize_model_name(model),
+        "GPT-5.4",
     ]
+    if ts_code.strip():
+        cmd.extend(["--ts-code", ts_code.strip().upper()])
+    if int(row_id or 0) > 0:
+        cmd.extend(["--row-id", str(int(row_id))])
+    if force:
+        cmd.append("--force")
     publish_app_event(
         event="stock_news_score_update",
         payload={
             "ts_code": ts_code.strip().upper(),
+            "row_id": int(row_id or 0),
             "status": "running",
             "limit": int(limit),
-            "model": normalize_model_name(model),
+            "model": "GPT-5.4",
         },
         producer="backend.server",
     )
@@ -3298,8 +3483,9 @@ def score_stock_news_now(ts_code: str, limit: int, model: str, timeout_s: int = 
             event="stock_news_score_update",
             payload={
                 "ts_code": ts_code.strip().upper(),
+                "row_id": int(row_id or 0),
                 "status": "error",
-                "model": normalize_model_name(model),
+                "model": "GPT-5.4",
                 "error": proc.stderr.strip() or proc.stdout.strip() or "评分失败",
             },
             producer="backend.server",
@@ -3309,12 +3495,14 @@ def score_stock_news_now(ts_code: str, limit: int, model: str, timeout_s: int = 
         event="stock_news_score_update",
         payload={
             "ts_code": ts_code.strip().upper(),
+            "row_id": int(row_id or 0),
             "status": "done",
-            "model": normalize_model_name(model),
+            "model": "GPT-5.4",
         },
         producer="backend.server",
     )
-    return {"stdout": proc.stdout, "stderr": proc.stderr}
+    meta = _extract_llm_result_marker(proc.stdout)
+    return {"stdout": proc.stdout, "stderr": proc.stderr, "meta": meta}
 
 
 def _parse_iso_datetime(raw: str):
@@ -4057,6 +4245,7 @@ def query_dashboard():
             "daily_summary_running": sum(1 for x in daily_summary_jobs if x.get("status") == "running"),
             "daily_summary_error": sum(1 for x in daily_summary_jobs if x.get("status") == "error"),
         },
+        "orchestrator_alerts": query_job_alerts(limit=6, unresolved_only=True).get("items", []),
         "orchestrator_jobs": query_job_runs(limit=8).get("items", []),
         "database_health": query_database_health(),
         "top_scores": top_scores,
@@ -4264,6 +4453,19 @@ def _sanitize_json_value(value):
     if isinstance(value, tuple):
         return [_sanitize_json_value(v) for v in value]
     return value
+
+
+def _extract_llm_result_marker(text: str) -> dict:
+    raw = str(text or "")
+    for line in reversed(raw.splitlines()):
+        if not line.startswith("__LLM_RESULT__="):
+            continue
+        try:
+            obj = json.loads(line.split("=", 1)[1])
+            return obj if isinstance(obj, dict) else {}
+        except Exception:
+            return {}
+    return {}
 
 
 def build_trend_features(ts_code: str, lookback: int):
@@ -4838,27 +5040,10 @@ def _build_stock_news_summary(conn: sqlite3.Connection, ts_code: str):
         "recent_items": items,
     }
 
-
-def resolve_llm_endpoint(model: str):
-    return resolve_provider(model)
-
-
-def _post_chat_completions(url: str, payload: dict, api_key: str, timeout_s: int = 120) -> str:
-    route = build_route(
-        model=str(payload.get("model") or DEFAULT_LLM_MODEL),
-        base_url=url.rsplit("/chat/completions", 1)[0],
-        api_key=api_key,
-        temperature=float(payload.get("temperature") or 0.2),
-    )
-    return post_chat_completions(route=route, payload=payload, timeout_s=timeout_s)
-
-
 def call_llm_trend(ts_code: str, features: dict, model: str, temperature: float = 0.2):
     features = _sanitize_json_value(features)
     model = normalize_model_name(model)
     temperature = normalize_temperature_for_model(model, temperature)
-    base_url, api_key = resolve_llm_endpoint(model)
-    url = base_url.rstrip("/") + "/chat/completions"
     system_prompt = (
         "你是专业的A股量化研究助手。请基于给定特征做趋势分析，"
         "输出客观、结构化结论，并明确不确定性。"
@@ -4874,20 +5059,29 @@ def call_llm_trend(ts_code: str, features: dict, model: str, temperature: float 
         "6) 免责声明（非投资建议）\n\n"
         f"输入特征JSON：\n{json.dumps(features, ensure_ascii=False, allow_nan=False)}"
     )
-    payload = {
-        "model": model or DEFAULT_LLM_MODEL,
-        "temperature": temperature,
-        "messages": [
+    try:
+        result = chat_completion_with_fallback(
+            model=model or DEFAULT_LLM_MODEL,
+            temperature=temperature,
+            timeout_s=120,
+            max_retries=3,
+            messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
-        ],
-    }
-    try:
-        text = _post_chat_completions(url, payload, api_key, timeout_s=120)
+            ],
+        )
     except Exception as e:
         raise RuntimeError(f"LLM接口错误: {e}") from e
-    obj = json.loads(text)
-    return obj["choices"][0]["message"]["content"]
+    return {
+        "analysis": result.text,
+        "requested_model": result.requested_model,
+        "used_model": result.used_model,
+        "used_base_url": result.used_base_url,
+        "attempts": [
+            {"model": item.model, "base_url": item.base_url, "error": item.error}
+            for item in result.attempts
+        ],
+    }
 
 
 def _resolve_roles(raw: str) -> list[str]:
@@ -5009,26 +5203,33 @@ def build_multi_role_prompt(context: dict, roles: list[str]) -> str:
 def call_llm_multi_role(context: dict, roles: list[str], model: str, temperature: float = 0.2):
     model = normalize_model_name(model)
     temperature = normalize_temperature_for_model(model, temperature)
-    base_url, api_key = resolve_llm_endpoint(model)
-    url = base_url.rstrip("/") + "/chat/completions"
     prompt = build_multi_role_prompt(context, roles)
-    payload = {
-        "model": model or DEFAULT_LLM_MODEL,
-        "temperature": temperature,
-        "messages": [
+    try:
+        result = chat_completion_with_fallback(
+            model=model or DEFAULT_LLM_MODEL,
+            temperature=temperature,
+            timeout_s=180,
+            max_retries=3,
+            messages=[
             {
                 "role": "system",
                 "content": "你是专业投研团队的总协调人，擅长多角色观点整合，表达清晰、客观、可执行。",
             },
             {"role": "user", "content": prompt},
-        ],
-    }
-    try:
-        text = _post_chat_completions(url, payload, api_key, timeout_s=180)
+            ],
+        )
     except Exception as e:
         raise RuntimeError(f"LLM接口错误: {e}") from e
-    obj = json.loads(text)
-    return obj["choices"][0]["message"]["content"]
+    return {
+        "analysis": result.text,
+        "requested_model": result.requested_model,
+        "used_model": result.used_model,
+        "used_base_url": result.used_base_url,
+        "attempts": [
+            {"model": item.model, "base_url": item.base_url, "error": item.error}
+            for item in result.attempts
+        ],
+    }
 
 
 def _normalize_markdown_lines(text: str) -> str:
@@ -5518,6 +5719,9 @@ def _serialize_async_job(job: dict):
         "name": job.get("name"),
         "lookback": job.get("lookback"),
         "model": job.get("model"),
+        "requested_model": job.get("requested_model"),
+        "used_model": job.get("used_model"),
+        "attempts": job.get("attempts") or [],
         "roles": job.get("roles"),
         "context": job.get("context"),
         "analysis": job.get("analysis"),
@@ -5528,10 +5732,11 @@ def _serialize_async_job(job: dict):
     }
 
 
-def _create_async_multi_role_job(ts_code: str, lookback: int, model: str, roles: list[str], context: dict):
+def _create_async_multi_role_job(ts_code: str, lookback: int, model: str, roles: list[str], context: dict | None = None):
     _cleanup_async_multi_role_jobs()
     now = datetime.now(timezone.utc).isoformat()
     job_id = uuid.uuid4().hex
+    context = context or {}
     job = {
         "job_id": job_id,
         "status": "queued",
@@ -5546,6 +5751,9 @@ def _create_async_multi_role_job(ts_code: str, lookback: int, model: str, roles:
         "name": context.get("company_profile", {}).get("name", ""),
         "lookback": lookback,
         "model": model,
+        "requested_model": model,
+        "used_model": "",
+        "attempts": [],
         "roles": roles,
         "context": context,
         "analysis": "",
@@ -5577,22 +5785,22 @@ def _run_async_multi_role_job(job_id: str):
         if not job:
             return
         job["status"] = "running"
-        job["progress"] = 20
-        job["stage"] = "llm"
-        job["message"] = "大模型分析中，请稍候"
+        job["progress"] = 10
+        job["stage"] = "context"
+        job["message"] = "分析上下文构建中，请稍候"
         job["updated_at"] = datetime.now(timezone.utc).isoformat()
         job["updated_at_ts"] = time.time()
-        context = job["context"]
         roles = list(job["roles"])
         model = str(job["model"])
         ts_code = str(job.get("ts_code") or "")
+        lookback = int(job.get("lookback") or 120)
     publish_app_event(
         event="multi_role_job_update",
         payload={
             "job_id": job_id,
             "status": "running",
-            "progress": 20,
-            "stage": "llm",
+            "progress": 10,
+            "stage": "context",
             "ts_code": ts_code,
             "model": model,
         },
@@ -5600,7 +5808,33 @@ def _run_async_multi_role_job(job_id: str):
     )
 
     try:
-        analysis = call_llm_multi_role(context, roles, model=model, temperature=0.2)
+        context = build_multi_role_context(ts_code, lookback)
+        with ASYNC_MULTI_ROLE_LOCK:
+            job = ASYNC_MULTI_ROLE_JOBS.get(job_id)
+            if not job:
+                return
+            job["context"] = context
+            if not job.get("name"):
+                job["name"] = context.get("company_profile", {}).get("name", "")
+            job["progress"] = 35
+            job["stage"] = "llm"
+            job["message"] = "大模型分析中，请稍候"
+            job["updated_at"] = datetime.now(timezone.utc).isoformat()
+            job["updated_at_ts"] = time.time()
+        publish_app_event(
+            event="multi_role_job_update",
+            payload={
+                "job_id": job_id,
+                "status": "running",
+                "progress": 35,
+                "stage": "llm",
+                "ts_code": ts_code,
+                "model": model,
+            },
+            producer="backend.server",
+        )
+        llm_result = call_llm_multi_role(context, roles, model=model, temperature=0.2)
+        analysis = llm_result["analysis"]
         split_payload = split_multi_role_analysis(analysis, roles)
         conn = sqlite3.connect(DB_PATH)
         try:
@@ -5623,6 +5857,8 @@ def _run_async_multi_role_job(job_id: str):
             job["stage"] = "done"
             job["message"] = "分析完成"
             job["analysis"] = analysis
+            job["used_model"] = llm_result.get("used_model", "")
+            job["attempts"] = llm_result.get("attempts", [])
             job["logic_view"] = logic_view
             job["role_sections"] = split_payload.get("role_sections", [])
             job["common_sections_markdown"] = split_payload.get("common_sections_markdown", "")
@@ -5637,7 +5873,7 @@ def _run_async_multi_role_job(job_id: str):
                 "progress": 100,
                 "stage": "done",
                 "ts_code": ts_code,
-                "model": model,
+                "model": llm_result.get("used_model", model),
             },
             producer="backend.server",
         )
@@ -5671,8 +5907,7 @@ def _run_async_multi_role_job(job_id: str):
 
 
 def start_async_multi_role_job(ts_code: str, lookback: int, model: str, roles: list[str]):
-    context = build_multi_role_context(ts_code, lookback)
-    job = _create_async_multi_role_job(ts_code, lookback, model, roles, context)
+    job = _create_async_multi_role_job(ts_code, lookback, model, roles, context=None)
     worker = threading.Thread(
         target=_run_async_multi_role_job,
         args=(job["job_id"],),
@@ -5716,6 +5951,9 @@ def _serialize_async_daily_summary_job(job: dict):
         "finished_at": job.get("finished_at"),
         "summary_date": job.get("summary_date"),
         "model": job.get("model"),
+        "requested_model": job.get("requested_model"),
+        "used_model": job.get("used_model"),
+        "attempts": job.get("attempts") or [],
         "item": job.get("item"),
         "run_stdout": job.get("run_stdout"),
         "error": job.get("error"),
@@ -5738,6 +5976,9 @@ def _create_async_daily_summary_job(model: str, summary_date: str):
         "updated_at_ts": time.time(),
         "summary_date": summary_date,
         "model": model,
+        "requested_model": model,
+        "used_model": "",
+        "attempts": [],
         "item": None,
         "run_stdout": "",
         "error": "",
@@ -5798,6 +6039,8 @@ def _run_async_daily_summary_job(job_id: str):
             job["stage"] = "done"
             job["message"] = "日报总结生成完成"
             job["item"] = item
+            job["used_model"] = str((item or {}).get("model") or "")
+            job["attempts"] = list((run_info.get("meta") or {}).get("attempts") or [])
             job["run_stdout"] = run_info.get("stdout", "")
             job["finished_at"] = now
             job["updated_at"] = now
@@ -5810,7 +6053,7 @@ def _run_async_daily_summary_job(job_id: str):
                 "progress": 100,
                 "stage": "done",
                 "summary_date": summary_date,
-                "model": model,
+                "model": str((item or {}).get("model") or model),
             },
             producer="backend.server",
         )
@@ -5865,27 +6108,157 @@ def get_async_daily_summary_job(job_id: str):
 
 
 class ApiHandler(BaseHTTPRequestHandler):
+    def _request_params(self) -> dict[str, list[str]]:
+        return parse_qs(urlparse(self.path).query)
+
+    def _request_is_protected(self) -> bool:
+        parsed = urlparse(self.path)
+        return _request_is_protected(parsed.path, self.command, self._request_params())
+
+    def _cors_origin_for_request(self) -> str:
+        origin = _normalize_origin(self.headers.get("Origin", ""))
+        if not origin:
+            return "" if self._request_is_protected() else "*"
+        if self._request_is_protected():
+            host = self.headers.get("Host", "")
+            return origin if _origin_allowed(origin, host) else ""
+        return "*"
+
+    def _send_cors_headers(self):
+        cors_origin = self._cors_origin_for_request()
+        if not cors_origin:
+            return
+        self.send_header("Access-Control-Allow-Origin", cors_origin)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Token")
+        if cors_origin != "*":
+            self.send_header("Vary", "Origin")
+
+    def _extract_admin_token(self) -> str:
+        auth_header = (self.headers.get("Authorization", "") or "").strip()
+        if auth_header.lower().startswith("bearer "):
+            return auth_header[7:].strip()
+        return (self.headers.get("X-Admin-Token", "") or "").strip()
+
+    def _client_is_private(self) -> bool:
+        raw_ip = (self.client_address[0] if self.client_address else "") or ""
+        try:
+            addr = ipaddress.ip_address(raw_ip)
+        except ValueError:
+            return False
+        return bool(addr.is_private or addr.is_loopback)
+
+    def _reject_protected_request(self) -> bool:
+        if not self._request_is_protected():
+            return False
+
+        origin = _normalize_origin(self.headers.get("Origin", ""))
+        host = self.headers.get("Host", "")
+        if origin and not _origin_allowed(origin, host):
+            self._send_json({"error": f"当前来源不在允许列表中: {origin}"}, status=403)
+            return True
+
+        configured_token = (BACKEND_ADMIN_TOKEN or "").strip()
+        if not configured_token:
+            self._send_json({"error": "受保护接口尚未启用：请先设置 BACKEND_ADMIN_TOKEN"}, status=503)
+            return True
+
+        token = self._extract_admin_token()
+        if not token or not secrets.compare_digest(token, configured_token):
+            self._send_json({"error": "缺少或无效的管理令牌"}, status=401)
+            return True
+
+        if not origin and not self._client_is_private():
+            self._send_json({"error": "受保护接口仅允许可信来源访问"}, status=403)
+            return True
+
+        return False
+
     def _send_json(self, payload: dict, status: int = 200):
         clean_payload = _sanitize_json_value(payload)
         body = json.dumps(clean_payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._send_cors_headers()
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
+        if self._request_is_protected():
+            origin = _normalize_origin(self.headers.get("Origin", ""))
+            if not origin or not _origin_allowed(origin, self.headers.get("Host", "")):
+                self._send_json({"error": "当前来源不被允许"}, status=403)
+                return
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._send_cors_headers()
         self.end_headers()
+
+    def _route_deps(self) -> dict:
+        return {
+            "api_endpoints_catalog": API_ENDPOINTS_CATALOG,
+            "db_label": db_label,
+            "DEFAULT_LLM_MODEL": DEFAULT_LLM_MODEL,
+            "DB_PATH": DB_PATH,
+            "sqlite3": sqlite3,
+            "normalize_model_name": normalize_model_name,
+            "_resolve_roles": _resolve_roles,
+            "save_signal_quality_rules": save_signal_quality_rules,
+            "save_signal_mapping_blocklist": save_signal_mapping_blocklist,
+            "query_job_definitions": query_job_definitions,
+            "query_job_runs": query_job_runs,
+            "query_job_alerts": query_job_alerts,
+            "dry_run_job": dry_run_job,
+            "run_job": run_job,
+            "query_dashboard": query_dashboard,
+            "query_source_monitor": query_source_monitor,
+            "query_database_audit": query_database_audit,
+            "query_database_health": query_database_health,
+            "query_signal_audit": query_signal_audit,
+            "query_signal_quality_config": query_signal_quality_config,
+            "query_stock_detail": query_stock_detail,
+            "query_stocks": query_stocks,
+            "query_stock_filters": query_stock_filters,
+            "query_stock_score_filters": query_stock_score_filters,
+            "query_stock_scores": query_stock_scores,
+            "query_prices": query_prices,
+            "query_minline": query_minline,
+            "build_trend_features": build_trend_features,
+            "call_llm_trend": call_llm_trend,
+            "get_or_build_cached_logic_view": get_or_build_cached_logic_view,
+            "extract_logic_view_from_markdown": extract_logic_view_from_markdown,
+            "build_multi_role_context": build_multi_role_context,
+            "call_llm_multi_role": call_llm_multi_role,
+            "split_multi_role_analysis": split_multi_role_analysis,
+            "start_async_multi_role_job": start_async_multi_role_job,
+            "get_async_multi_role_job": get_async_multi_role_job,
+            "query_stock_news": query_stock_news,
+            "query_stock_news_sources": query_stock_news_sources,
+            "fetch_stock_news_now": fetch_stock_news_now,
+            "score_stock_news_now": score_stock_news_now,
+            "query_news_sources": query_news_sources,
+            "query_news": query_news,
+            "query_news_daily_summaries": query_news_daily_summaries,
+            "start_async_daily_summary_job": start_async_daily_summary_job,
+            "get_async_daily_summary_job": get_async_daily_summary_job,
+            "query_wechat_chatlog": query_wechat_chatlog,
+            "query_chatroom_overview": query_chatroom_overview,
+            "fetch_single_chatroom_now": fetch_single_chatroom_now,
+            "query_chatroom_investment_analysis": query_chatroom_investment_analysis,
+            "query_chatroom_candidate_pool": query_chatroom_candidate_pool,
+            "query_investment_signals": query_investment_signals,
+            "query_theme_hotspots": query_theme_hotspots,
+            "query_signal_state_timeline": query_signal_state_timeline,
+            "query_research_reports": query_research_reports,
+            "query_investment_signal_timeline": query_investment_signal_timeline,
+            "query_macro_indicators": query_macro_indicators,
+            "query_macro_series": query_macro_series,
+        }
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if self._reject_protected_request():
+            return
         try:
             length = int(self.headers.get("Content-Length", "0") or "0")
         except ValueError:
@@ -5897,30 +6270,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "请求体必须是 JSON"}, status=400)
             return
 
-        if parsed.path == "/api/signal-quality/rules/save":
-            items = payload.get("items", [])
-            if not isinstance(items, list):
-                self._send_json({"error": "items 必须是数组"}, status=400)
-                return
-            try:
-                result = save_signal_quality_rules(items)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"规则保存失败: {exc}"}, status=500)
-                return
-            self._send_json(result)
-            return
-
-        if parsed.path == "/api/signal-quality/blocklist/save":
-            items = payload.get("items", [])
-            if not isinstance(items, list):
-                self._send_json({"error": "items 必须是数组"}, status=400)
-                return
-            try:
-                result = save_signal_mapping_blocklist(items)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"黑名单保存失败: {exc}"}, status=500)
-                return
-            self._send_json(result)
+        if system_routes.dispatch_post(self, parsed, payload, self._route_deps()):
             return
 
         self._send_json({"error": "Not Found"}, status=404)
@@ -5928,882 +6278,19 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         host = self.headers.get("Host", f"127.0.0.1:{PORT}").split(":")[0]
-
-        if parsed.path in {"/", "/api"}:
-            self._send_json(
-                {
-                    "service": "stock-codes-api",
-                    "message": "这是后端 API 服务，不是前端页面。",
-                    "frontend_url": f"http://{host}:8080/",
-                    "endpoints": {
-                        "health": "/api/health",
-                        "dashboard": "/api/dashboard",
-                        "stock_detail": "/api/stock-detail?ts_code=000001.SZ&lookback=60",
-                        "stocks": "/api/stocks?keyword=&status=&market=&area=&page=1&page_size=20",
-                        "stocks_filters": "/api/stocks/filters",
-                        "stock_scores": "/api/stock-scores?keyword=&market=&area=&industry=&min_score=0&page=1&page_size=20&sort_by=total_score&sort_order=desc",
-                        "stock_scores_filters": "/api/stock-scores/filters",
-                        "stock_news": "/api/stock-news?ts_code=601100.SH&company_name=&keyword=&page=1&page_size=20",
-                        "wechat_chatlog": "/api/wechat-chatlog?talker=&sender_name=&keyword=&is_quote=&query_date_start=&query_date_end=&page=1&page_size=20",
-                        "chatroom_overview": "/api/chatrooms?keyword=&primary_category=&activity_level=&risk_level=&skip_realtime_monitor=&fetch_status=&page=1&page_size=20",
-                        "chatroom_fetch_now": "/api/chatrooms/fetch?room_id=<room_id>&mode=today|yesterday_and_today",
-                        "chatroom_investment_analysis": "/api/chatrooms/investment?keyword=&final_bias=&target_keyword=&page=1&page_size=20",
-                        "chatroom_candidate_pool": "/api/chatrooms/candidate-pool?keyword=&dominant_bias=&candidate_type=&page=1&page_size=20",
-                        "investment_signals": "/api/investment-signals?keyword=&signal_type=&signal_group=all|stock|non_stock&direction=&signal_status=&page=1&page_size=20",
-                        "investment_signal_timeline": "/api/investment-signals/timeline?signal_key=<signal_key>&page=1&page_size=20",
-                        "stock_news_fetch": "/api/stock-news/fetch?ts_code=601100.SH&company_name=&page_size=20&score=1&model=GPT-5.4",
-                        "news": "/api/news?source=&exclude_sources=cn_sina_7x24&exclude_source_prefixes=cn_sina_&keyword=&date_from=&date_to=&finance_levels=高,极高&page=1&page_size=20",
-                        "news_sources": "/api/news/sources",
-                        "news_daily_summaries": "/api/news/daily-summaries?summary_date=2026-03-25&source_filter=cn_sina_&model=GPT-5.4&page=1&page_size=20",
-                        "news_daily_summaries_generate": "/api/news/daily-summaries/generate?model=GPT-5.4|deepseek-chat",
-                        "news_daily_summaries_task": "/api/news/daily-summaries/task?job_id=<job_id>",
-                        "prices": (
-                            "/api/prices?ts_code=000001.SZ&start_date=20260223"
-                            "&end_date=20260325&page=1&page_size=20"
-                        ),
-                        "minline": "/api/minline?ts_code=600114.SH&trade_date=20260325&page=1&page_size=240",
-                        "llm_trend": "/api/llm/trend?ts_code=000001.SZ&lookback=120&model=GPT-5.4|deepseek-chat",
-                        "llm_multi_role": (
-                            "/api/llm/multi-role?ts_code=000001.SZ&lookback=120"
-                            "&model=GPT-5.4|deepseek-chat&roles=宏观经济分析师,股票分析师,国际资本分析师,汇率分析师"
-                        ),
-                        "llm_multi_role_start": (
-                            "/api/llm/multi-role/start?ts_code=000001.SZ&lookback=120"
-                            "&model=GPT-5.4|deepseek-chat&roles=宏观经济分析师,股票分析师"
-                        ),
-                        "llm_multi_role_task": "/api/llm/multi-role/task?job_id=<job_id>",
-                        "macro_indicators": "/api/macro/indicators",
-                        "macro_series": "/api/macro?indicator_code=cn_cpi.nt_yoy&freq=M&period_start=202001&period_end=202512&page=1&page_size=200",
-                        "source_monitor": "/api/source-monitor",
-                        "database_audit": "/api/database-audit?refresh=0|1",
-                        "signal_audit": "/api/signal-audit?scope=7d|1d",
-                        "signal_quality_config": "/api/signal-quality/config",
-                        "signal_quality_rules_save": "/api/signal-quality/rules/save",
-                        "signal_quality_blocklist_save": "/api/signal-quality/blocklist/save",
-                    },
-                }
-            )
+        if self._reject_protected_request():
             return
 
-        if parsed.path == "/api/health":
-            self._send_json({"ok": True, "db": db_label()})
+        deps = self._route_deps()
+        if system_routes.dispatch_get(self, parsed, host, deps):
             return
-
-        if parsed.path == "/api/jobs":
-            try:
-                payload = query_job_definitions()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"任务定义查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
+        if stock_routes.dispatch_get(self, parsed, deps):
             return
-
-        if parsed.path == "/api/job-runs":
-            params = parse_qs(parsed.query)
-            job_key = params.get("job_key", [""])[0]
-            status = params.get("status", [""])[0]
-            try:
-                limit = int(params.get("limit", ["50"])[0])
-            except ValueError:
-                self._send_json({"error": "limit 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_job_runs(job_key=job_key, status=status, limit=limit)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"任务运行记录查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
+        if news_routes.dispatch_get(self, parsed, deps):
             return
-
-        if parsed.path == "/api/jobs/trigger":
-            params = parse_qs(parsed.query)
-            job_key = params.get("job_key", [""])[0].strip()
-            if not job_key:
-                self._send_json({"error": "缺少 job_key"}, status=400)
-                return
-            try:
-                payload = run_job(job_key, trigger_mode="api")
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"任务触发失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
+        if chatroom_routes.dispatch_get(self, parsed, deps):
             return
-
-        if parsed.path == "/api/dashboard":
-            try:
-                payload = query_dashboard()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"工作台查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/source-monitor":
-            try:
-                payload = query_source_monitor()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"监控查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/database-audit":
-            params = parse_qs(parsed.query)
-            refresh_raw = params.get("refresh", ["0"])[0].strip().lower()
-            refresh = refresh_raw in {"1", "true", "yes", "y", "on"}
-            try:
-                payload = query_database_audit(refresh=refresh)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"审核报告查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/db-health":
-            try:
-                payload = query_database_health()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"数据库健康查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/signal-audit":
-            params = parse_qs(parsed.query)
-            scope = params.get("scope", ["7d"])[0]
-            try:
-                payload = query_signal_audit(scope=scope)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"信号审计查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/signal-quality/config":
-            try:
-                payload = query_signal_quality_config()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"信号质量配置查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/stock-detail":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0].strip().upper()
-            keyword = params.get("keyword", [""])[0].strip()
-            try:
-                lookback = int(params.get("lookback", ["60"])[0])
-            except ValueError:
-                self._send_json({"error": "lookback 必须是整数"}, status=400)
-                return
-            if not ts_code and not keyword:
-                self._send_json({"error": "缺少 ts_code 或 keyword"}, status=400)
-                return
-            try:
-                payload = query_stock_detail(ts_code=ts_code, keyword=keyword, lookback=lookback)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"详情查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/stocks":
-            params = parse_qs(parsed.query)
-            keyword = params.get("keyword", [""])[0]
-            status = params.get("status", [""])[0]
-            market = params.get("market", [""])[0]
-            area = params.get("area", [""])[0]
-
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-
-            try:
-                payload = query_stocks(keyword, status, market, area, page, page_size)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/stocks/filters":
-            try:
-                payload = query_stock_filters()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/stock-scores/filters":
-            try:
-                payload = query_stock_score_filters()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/stock-scores":
-            params = parse_qs(parsed.query)
-            keyword = params.get("keyword", [""])[0]
-            market = params.get("market", [""])[0]
-            area = params.get("area", [""])[0]
-            industry = params.get("industry", [""])[0]
-            sort_by = params.get("sort_by", ["total_score"])[0]
-            sort_order = params.get("sort_order", ["desc"])[0]
-            try:
-                min_score = float(params.get("min_score", ["0"])[0] or 0)
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "min_score/page/page_size 参数格式错误"}, status=400)
-                return
-            try:
-                payload = query_stock_scores(
-                    keyword=keyword,
-                    market=market,
-                    area=area,
-                    industry=industry,
-                    min_score=min_score,
-                    page=page,
-                    page_size=page_size,
-                    sort_by=sort_by,
-                    sort_order=sort_order,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/stock-news":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0]
-            company_name = params.get("company_name", [""])[0]
-            keyword = params.get("keyword", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_stock_news(ts_code, company_name, keyword, page, page_size)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/wechat-chatlog":
-            params = parse_qs(parsed.query)
-            talker = params.get("talker", [""])[0]
-            sender_name = params.get("sender_name", [""])[0]
-            keyword = params.get("keyword", [""])[0]
-            is_quote = params.get("is_quote", [""])[0]
-            query_date_start = params.get("query_date_start", [""])[0]
-            query_date_end = params.get("query_date_end", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_wechat_chatlog(
-                    talker=talker,
-                    sender_name=sender_name,
-                    keyword=keyword,
-                    is_quote=is_quote,
-                    query_date_start=query_date_start,
-                    query_date_end=query_date_end,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/chatrooms":
-            params = parse_qs(parsed.query)
-            keyword = params.get("keyword", [""])[0]
-            primary_category = params.get("primary_category", [""])[0]
-            activity_level = params.get("activity_level", [""])[0]
-            risk_level = params.get("risk_level", [""])[0]
-            skip_realtime_monitor = params.get("skip_realtime_monitor", [""])[0]
-            fetch_status = params.get("fetch_status", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_chatroom_overview(
-                    keyword=keyword,
-                    primary_category=primary_category,
-                    activity_level=activity_level,
-                    risk_level=risk_level,
-                    skip_realtime_monitor=skip_realtime_monitor,
-                    fetch_status=fetch_status,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/chatrooms/fetch":
-            params = parse_qs(parsed.query)
-            room_id = params.get("room_id", [""])[0]
-            mode = params.get("mode", ["today"])[0].strip()
-            try:
-                payload = fetch_single_chatroom_now(
-                    room_id=room_id,
-                    fetch_yesterday_and_today=(mode == "yesterday_and_today"),
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"立即拉取失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/chatrooms/investment":
-            params = parse_qs(parsed.query)
-            keyword = params.get("keyword", [""])[0]
-            final_bias = params.get("final_bias", [""])[0]
-            target_keyword = params.get("target_keyword", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_chatroom_investment_analysis(
-                    keyword=keyword,
-                    final_bias=final_bias,
-                    target_keyword=target_keyword,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/chatrooms/candidate-pool":
-            params = parse_qs(parsed.query)
-            keyword = params.get("keyword", [""])[0]
-            dominant_bias = params.get("dominant_bias", [""])[0]
-            candidate_type = params.get("candidate_type", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_chatroom_candidate_pool(
-                    keyword=keyword,
-                    dominant_bias=dominant_bias,
-                    candidate_type=candidate_type,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/investment-signals":
-            params = parse_qs(parsed.query)
-            keyword = params.get("keyword", [""])[0]
-            signal_type = params.get("signal_type", [""])[0]
-            signal_group = params.get("signal_group", [""])[0]
-            scope = params.get("scope", ["7d"])[0]
-            source_filter = params.get("source_filter", [""])[0]
-            direction = params.get("direction", [""])[0]
-            signal_status = params.get("signal_status", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_investment_signals(
-                    keyword=keyword,
-                    signal_type=signal_type,
-                    signal_group=signal_group,
-                    scope=scope,
-                    source_filter=source_filter,
-                    direction=direction,
-                    signal_status=signal_status,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/theme-hotspots":
-            params = parse_qs(parsed.query)
-            keyword = params.get("keyword", [""])[0]
-            theme_group = params.get("theme_group", [""])[0]
-            direction = params.get("direction", [""])[0]
-            heat_level = params.get("heat_level", [""])[0]
-            state_filter = params.get("state", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_theme_hotspots(
-                    keyword=keyword,
-                    theme_group=theme_group,
-                    direction=direction,
-                    heat_level=heat_level,
-                    state_filter=state_filter,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/signal-state/timeline":
-            params = parse_qs(parsed.query)
-            signal_scope = params.get("signal_scope", [""])[0]
-            signal_key = params.get("signal_key", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_signal_state_timeline(
-                    signal_scope=signal_scope,
-                    signal_key=signal_key,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"时间线查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/research-reports":
-            params = parse_qs(parsed.query)
-            report_type = params.get("report_type", [""])[0]
-            keyword = params.get("keyword", [""])[0]
-            report_date = params.get("report_date", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_research_reports(
-                    report_type=report_type,
-                    keyword=keyword,
-                    report_date=report_date,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/investment-signals/timeline":
-            params = parse_qs(parsed.query)
-            signal_key = params.get("signal_key", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_investment_signal_timeline(
-                    signal_key=signal_key,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"时间线查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/stock-news/fetch":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0].strip().upper()
-            company_name = params.get("company_name", [""])[0].strip()
-            model = normalize_model_name(params.get("model", [DEFAULT_LLM_MODEL])[0])
-            score = params.get("score", ["1"])[0].strip() not in {"0", "false", "False"}
-            try:
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page_size 必须是整数"}, status=400)
-                return
-            if not ts_code and not company_name:
-                self._send_json({"error": "缺少 ts_code 或 company_name"}, status=400)
-                return
-            try:
-                fetch_info = fetch_stock_news_now(
-                    ts_code=ts_code,
-                    company_name=company_name,
-                    page_size=page_size,
-                )
-                score_info = None
-                if score and ts_code:
-                    score_info = score_stock_news_now(
-                        ts_code=ts_code,
-                        limit=min(page_size, 10),
-                        model=model,
-                    )
-                payload = query_stock_news(ts_code, company_name, "", 1, min(page_size, 20))
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"采集失败: {exc}"}, status=500)
-                return
-            self._send_json(
-                {
-                    "ok": True,
-                    "ts_code": ts_code,
-                    "company_name": company_name,
-                    "model": model,
-                    "fetch_stdout": fetch_info.get("stdout", ""),
-                    "score_stdout": score_info.get("stdout", "") if score_info else "",
-                    "items": payload.get("items", []),
-                    "total": payload.get("total", 0),
-                }
-            )
-            return
-
-        if parsed.path == "/api/news/sources":
-            try:
-                payload = {"items": query_news_sources()}
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/news":
-            params = parse_qs(parsed.query)
-            source = params.get("source", [""])[0]
-            source_prefixes = params.get("source_prefixes", [""])[0]
-            keyword = params.get("keyword", [""])[0]
-            date_from = params.get("date_from", [""])[0]
-            date_to = params.get("date_to", [""])[0]
-            finance_levels = params.get("finance_levels", [""])[0]
-            exclude_sources = params.get("exclude_sources", [""])[0]
-            exclude_source_prefixes = params.get("exclude_source_prefixes", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_news(
-                    source=source,
-                    source_prefixes=source_prefixes,
-                    keyword=keyword,
-                    date_from=date_from,
-                    date_to=date_to,
-                    finance_levels=finance_levels,
-                    exclude_sources=exclude_sources,
-                    exclude_source_prefixes=exclude_source_prefixes,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/news/daily-summaries":
-            params = parse_qs(parsed.query)
-            summary_date = params.get("summary_date", [""])[0]
-            source_filter = params.get("source_filter", [""])[0]
-            model = params.get("model", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_news_daily_summaries(
-                    summary_date=summary_date,
-                    source_filter=source_filter,
-                    model=model,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/news/daily-summaries/generate":
-            params = parse_qs(parsed.query)
-            model = normalize_model_name(params.get("model", [DEFAULT_LLM_MODEL])[0])
-            summary_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            try:
-                job = start_async_daily_summary_job(model=model, summary_date=summary_date)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"启动生成失败: {exc}"}, status=500)
-                return
-            self._send_json(
-                {
-                    "ok": True,
-                    **job,
-                }
-            )
-            return
-
-        if parsed.path == "/api/news/daily-summaries/task":
-            params = parse_qs(parsed.query)
-            job_id = params.get("job_id", [""])[0].strip()
-            if not job_id:
-                self._send_json({"error": "缺少 job_id"}, status=400)
-                return
-            job = get_async_daily_summary_job(job_id)
-            if not job:
-                self._send_json({"error": f"任务不存在或已过期: {job_id}"}, status=404)
-                return
-            self._send_json({"ok": True, **job})
-            return
-
-        if parsed.path == "/api/prices":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0]
-            start_date = params.get("start_date", [""])[0]
-            end_date = params.get("end_date", [""])[0]
-
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["20"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-
-            try:
-                payload = query_prices(ts_code, start_date, end_date, page, page_size)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/minline":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0]
-            trade_date = params.get("trade_date", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["240"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_minline(ts_code, trade_date, page, page_size)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/llm/trend":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0].strip().upper()
-            model = normalize_model_name(params.get("model", [DEFAULT_LLM_MODEL])[0])
-            if not ts_code:
-                self._send_json({"error": "缺少 ts_code"}, status=400)
-                return
-            try:
-                lookback = int(params.get("lookback", ["120"])[0])
-            except ValueError:
-                self._send_json({"error": "lookback 必须是整数"}, status=400)
-                return
-            try:
-                features = build_trend_features(ts_code, lookback)
-                analysis = call_llm_trend(ts_code, features, model=model, temperature=0.2)
-                conn = sqlite3.connect(DB_PATH)
-                try:
-                    logic_view = get_or_build_cached_logic_view(
-                        conn,
-                        entity_type="llm_trend",
-                        entity_key=f"{ts_code}|{lookback}|{model}",
-                        source_payload=analysis,
-                        builder=lambda text=analysis: extract_logic_view_from_markdown(text),
-                    )
-                finally:
-                    conn.close()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"分析失败: {exc}"}, status=500)
-                return
-            self._send_json(
-                {
-                    "ts_code": ts_code,
-                    "name": features.get("name", ""),
-                    "lookback": lookback,
-                    "model": model,
-                    "features": features,
-                    "analysis": analysis,
-                    "logic_view": logic_view,
-                }
-            )
-            return
-
-        if parsed.path == "/api/llm/multi-role":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0].strip().upper()
-            model = normalize_model_name(params.get("model", [DEFAULT_LLM_MODEL])[0])
-            roles_raw = params.get("roles", [""])[0]
-            if not ts_code:
-                self._send_json({"error": "缺少 ts_code"}, status=400)
-                return
-            try:
-                lookback = int(params.get("lookback", ["120"])[0])
-            except ValueError:
-                self._send_json({"error": "lookback 必须是整数"}, status=400)
-                return
-            roles = _resolve_roles(roles_raw)
-            try:
-                context = build_multi_role_context(ts_code, lookback)
-                analysis = call_llm_multi_role(context, roles, model=model, temperature=0.2)
-                split_payload = split_multi_role_analysis(analysis, roles)
-                conn = sqlite3.connect(DB_PATH)
-                try:
-                    logic_view = get_or_build_cached_logic_view(
-                        conn,
-                        entity_type="llm_multi_role",
-                        entity_key=f"{ts_code}|{lookback}|{model}|{','.join(roles)}",
-                        source_payload=analysis,
-                        builder=lambda text=analysis: split_payload.get("logic_view", extract_logic_view_from_markdown(text)),
-                    )
-                finally:
-                    conn.close()
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"分析失败: {exc}"}, status=500)
-                return
-            self._send_json(
-                {
-                    "ts_code": ts_code,
-                    "name": context.get("company_profile", {}).get("name", ""),
-                    "lookback": lookback,
-                    "model": model,
-                    "roles": roles,
-                    "context": context,
-                    "analysis": analysis,
-                    "logic_view": logic_view,
-                    "role_sections": split_payload.get("role_sections", []),
-                    "common_sections_markdown": split_payload.get("common_sections_markdown", ""),
-                }
-            )
-            return
-
-        if parsed.path == "/api/llm/multi-role/start":
-            params = parse_qs(parsed.query)
-            ts_code = params.get("ts_code", [""])[0].strip().upper()
-            model = normalize_model_name(params.get("model", [DEFAULT_LLM_MODEL])[0])
-            roles_raw = params.get("roles", [""])[0]
-            if not ts_code:
-                self._send_json({"error": "缺少 ts_code"}, status=400)
-                return
-            try:
-                lookback = int(params.get("lookback", ["120"])[0])
-            except ValueError:
-                self._send_json({"error": "lookback 必须是整数"}, status=400)
-                return
-            roles = _resolve_roles(roles_raw)
-            try:
-                job = start_async_multi_role_job(ts_code, lookback, model, roles)
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"启动分析失败: {exc}"}, status=500)
-                return
-            self._send_json({"ok": True, **job})
-            return
-
-        if parsed.path == "/api/llm/multi-role/task":
-            params = parse_qs(parsed.query)
-            job_id = params.get("job_id", [""])[0].strip()
-            if not job_id:
-                self._send_json({"error": "缺少 job_id"}, status=400)
-                return
-            job = get_async_multi_role_job(job_id)
-            if not job:
-                self._send_json({"error": f"任务不存在或已过期: {job_id}"}, status=404)
-                return
-            self._send_json({"ok": True, **job})
-            return
-
-        if parsed.path == "/api/macro/indicators":
-            try:
-                payload = {"items": query_macro_indicators(limit=1000)}
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
-            return
-
-        if parsed.path == "/api/macro":
-            params = parse_qs(parsed.query)
-            indicator_code = params.get("indicator_code", [""])[0]
-            freq = params.get("freq", [""])[0]
-            period_start = params.get("period_start", [""])[0]
-            period_end = params.get("period_end", [""])[0]
-            keyword = params.get("keyword", [""])[0]
-            try:
-                page = int(params.get("page", ["1"])[0])
-                page_size = int(params.get("page_size", ["200"])[0])
-            except ValueError:
-                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
-                return
-            try:
-                payload = query_macro_series(
-                    indicator_code=indicator_code,
-                    freq=freq,
-                    period_start=period_start,
-                    period_end=period_end,
-                    keyword=keyword,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception as exc:  # pragma: no cover
-                self._send_json({"error": f"查询失败: {exc}"}, status=500)
-                return
-            self._send_json(payload)
+        if signal_routes.dispatch_get(self, parsed, deps):
             return
 
         self._send_json({"error": "Not Found"}, status=404)

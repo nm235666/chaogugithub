@@ -212,10 +212,7 @@
           <input id="ts_code" value="000001.SZ" placeholder="股票代码，如 000001.SZ" />
           <input id="lookback" value="120" placeholder="回看天数" />
           <select id="model">
-            <option value="GPT-5.4">GPT-5.4</option>
-            <option value="kimi-k2.5">kimi-k2.5</option>
-            <option value="deepseek-chat">deepseek-chat</option>
-            <option value="deepseek-reasoner">deepseek-reasoner</option>
+            <option value="auto">自动路由（默认 GPT-5.4）</option>
           </select>
           <button id="run_btn">分析</button>
         </div>
@@ -477,7 +474,7 @@
       async function run() {
         const tsCode = els.ts_code.value.trim().toUpperCase();
         const lookback = Number(els.lookback.value.trim() || '120');
-        const model = els.model.value;
+        const model = els.model.value || 'auto';
         if (!tsCode) {
           els.meta.textContent = '请输入 ts_code';
           return;
@@ -494,7 +491,7 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '请求失败');
 
-          els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，模型 ${data.model}`;
+          els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，实际模型 ${data.used_model || data.model || '-'}`;
           renderAnalysis(data.analysis || '', data.logic_view || null);
           els.features.textContent = fmtFeatures(data.features);
         } catch (err) {

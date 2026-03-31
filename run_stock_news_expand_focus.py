@@ -125,11 +125,15 @@ def main() -> int:
                 "--model",
                 "GPT-5.4",
                 "--limit",
-                "80",
+                "160",
+                "--workers",
+                "6",
+                "--batch-size",
+                "8",
                 "--retry",
-                "2",
+                "1",
                 "--sleep",
-                "0.2",
+                "0.02",
             ]
         )
 

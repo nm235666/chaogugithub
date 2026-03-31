@@ -10,12 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from llm_gateway import (
-    DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_BASE_URL,
-    chat_completion_text,
+    chat_completion_with_fallback,
     normalize_model_name,
     normalize_temperature_for_model,
-    resolve_provider,
 )
 from map_news_items_to_stocks import find_related_stocks, load_stock_aliases
 
@@ -29,9 +26,7 @@ def parse_args() -> argparse.Namespace:
         default=str(Path(__file__).resolve().parent / "stock_codes.db"),
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
-    parser.add_argument("--model", default="GPT-5.4", help="模型名，如 deepseek-chat / GPT-5.4")
-    parser.add_argument("--base-url", default=DEFAULT_LLM_BASE_URL, help="LLM Base URL")
-    parser.add_argument("--api-key", default=DEFAULT_LLM_API_KEY, help="LLM API Key")
+    parser.add_argument("--model", default="auto", help="模型名；默认 auto 自动路由并降级")
     parser.add_argument("--temperature", type=float, default=0.1, help="采样温度")
     parser.add_argument("--limit", type=int, default=30, help="本次最多评分条数")
     parser.add_argument("--source", default="", help="仅评分指定来源，如 mw_topstories")
@@ -133,11 +128,9 @@ def build_prompt(news: dict, candidate_stocks: list[dict]) -> str:
     )
 
 
-def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    return chat_completion_text(
+def call_llm(model: str, temperature: float, prompt: str):
+    return chat_completion_with_fallback(
         model=model,
-        base_url=base_url,
-        api_key=api_key,
         temperature=temperature,
         timeout_s=120,
         messages=[
@@ -280,7 +273,6 @@ def main() -> int:
         print(f"数据库不存在: {db_path}")
         return 1
 
-    base_url, api_key = resolve_provider(args.model, args.base_url, args.api_key)
     prompt_version = "news_score_v1"
 
     conn = sqlite3.connect(db_path)
@@ -314,25 +306,23 @@ def main() -> int:
             for attempt in range(args.retry + 1):
                 try:
                     raw = call_llm(
-                        base_url=base_url,
-                        api_key=api_key,
                         model=args.model,
                         temperature=args.temperature,
                         prompt=prompt,
                     )
-                    parsed = parse_llm_output(raw)
+                    parsed = parse_llm_output(raw.text)
                     update_row(
                         conn,
                         row_id=r["id"],
                         parsed=parsed,
-                        model=args.model,
+                        model=raw.used_model,
                         prompt_version=prompt_version,
-                        raw_output=raw,
+                        raw_output=raw.text,
                     )
                     conn.commit()
                     ok += 1
                     print(
-                        f"  -> 系统评分={parsed['system_score']}, 财经影响评分={parsed['finance_impact_score']}, 重要程度={parsed['finance_importance']}"
+                        f"  -> 系统评分={parsed['system_score']}, 财经影响评分={parsed['finance_impact_score']}, 重要程度={parsed['finance_importance']}, 实际模型={raw.used_model}"
                     )
                     last_err = None
                     break

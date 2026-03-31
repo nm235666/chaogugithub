@@ -40,8 +40,8 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
             py_cmd(str(ROOT_DIR / "fetch_news_rss.py"), "--limit", "15", "--timeout", "30"),
             py_cmd(str(ROOT_DIR / "fetch_news_marketscreener.py"), "--limit", "20", "--timeout", "30"),
             py_cmd(str(ROOT_DIR / "fetch_news_marketscreener_live.py"), "--limit", "30", "--timeout", "30"),
-            py_cmd(str(ROOT_DIR / "llm_score_news.py"), "--limit", "20", "--retry", "1", "--sleep", "0.1", "--model", "GPT-5.4"),
-            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--limit", "20", "--retry", "1", "--sleep", "0.1", "--model", "GPT-5.4"),
+            py_cmd(str(ROOT_DIR / "llm_score_news.py"), "--limit", "20", "--retry", "1", "--sleep", "0.1"),
+            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--limit", "20", "--retry", "1", "--sleep", "0.1"),
             py_cmd(str(ROOT_DIR / "map_news_items_to_stocks.py"), "--limit", "200", "--days", "7"),
         ),
     ),
@@ -50,11 +50,9 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="国内新闻采集评分映射",
         category="news",
         schedule_expr="*/2 * * * *",
-        description="抓取新浪国内财经新闻并做评分映射",
+        description="抓取新浪国内财经新闻并快速入库；评分与映射由独立任务补做",
         commands=(
             py_cmd(str(ROOT_DIR / "fetch_cn_news_sina_7x24.py"), "--limit", "60", "--timeout", "30"),
-            py_cmd(str(ROOT_DIR / "llm_score_news.py"), "--source", "cn_sina_7x24", "--limit", "30", "--retry", "1", "--sleep", "0.05", "--model", "GPT-5.4"),
-            py_cmd(str(ROOT_DIR / "map_news_items_to_stocks.py"), "--source", "cn_sina_7x24", "--limit", "300", "--days", "7"),
         ),
     ),
     JobDefinition(
@@ -74,7 +72,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="12 * * * *",
         description="为国际与国内新闻补统一情绪标签",
         commands=(
-            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--model", "GPT-5.4", "--limit", "60", "--retry", "1", "--sleep", "0.1"),
+            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--limit", "60", "--retry", "1", "--sleep", "0.1"),
         ),
     ),
     JobDefinition(
@@ -82,24 +80,14 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="新闻日报总结",
         category="reports",
         schedule_expr="30 3,15 * * *",
-        description="生成当日重要新闻总结，失败自动降级模型",
+        description="生成当日重要新闻总结，默认 GPT-5.4 优先，失败自动降级",
         commands=(
             bash_cmd(
                 "timeout 900s python3 -u "
                 f"{ROOT_DIR}/llm_summarize_daily_important_news.py "
                 "--date __CN_DATE__ --importance '极高,高,中' --max-news 30 --min-news 8 "
                 "--max-prompt-chars 9000 --request-timeout 180 --max-retries 2 --retry-backoff 2 "
-                "--model GPT-5.4 "
-                "|| timeout 900s python3 -u "
-                f"{ROOT_DIR}/llm_summarize_daily_important_news.py "
-                "--date __CN_DATE__ --importance '极高,高,中' --max-news 30 --min-news 8 "
-                "--max-prompt-chars 9000 --request-timeout 180 --max-retries 2 --retry-backoff 2 "
-                "--model kimi2.5 "
-                "|| timeout 900s python3 -u "
-                f"{ROOT_DIR}/llm_summarize_daily_important_news.py "
-                "--date __CN_DATE__ --importance '极高,高,中' --max-news 30 --min-news 8 "
-                "--max-prompt-chars 9000 --request-timeout 180 --max-retries 2 --retry-backoff 2 "
-                "--model deepseek-chat"
+                ""
             ),
         ),
     ),
@@ -138,10 +126,10 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="15 * * * *",
         description="群聊投资倾向、情绪、候选池与别名归一",
         commands=(
-            py_cmd(str(ROOT_DIR / "llm_analyze_chatroom_investment_bias.py"), "--model", "GPT-5.4", "--days", "7", "--limit", "20", "--primary-category", "投资交易", "--retry", "2", "--sleep", "0.5"),
-            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--model", "GPT-5.4", "--limit", "20", "--retry", "1", "--sleep", "0.1"),
+            py_cmd(str(ROOT_DIR / "llm_analyze_chatroom_investment_bias.py"), "--days", "7", "--limit", "20", "--primary-category", "投资交易", "--retry", "2", "--sleep", "0.5"),
+            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--limit", "20", "--retry", "1", "--sleep", "0.1"),
             py_cmd(str(ROOT_DIR / "build_chatroom_candidate_pool.py"), "--min-room-count", "1"),
-            py_cmd(str(ROOT_DIR / "llm_resolve_stock_aliases.py"), "--model", "GPT-5.4", "--limit", "20", "--min-confidence", "0.88", "--retry", "2", "--sleep", "0.3"),
+            py_cmd(str(ROOT_DIR / "llm_resolve_stock_aliases.py"), "--limit", "20", "--min-confidence", "0.88", "--retry", "2", "--sleep", "0.3"),
             py_cmd(str(ROOT_DIR / "build_chatroom_candidate_pool.py"), "--min-room-count", "1"),
         ),
     ),
@@ -152,7 +140,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="18 * * * *",
         description="为群聊投资总结补统一情绪",
         commands=(
-            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--model", "GPT-5.4", "--limit", "30", "--retry", "1", "--sleep", "0.1"),
+            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--limit", "30", "--retry", "1", "--sleep", "0.1"),
         ),
     ),
     JobDefinition(
@@ -176,9 +164,23 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="个股新闻评分刷新",
         category="stock_news",
         schedule_expr="*/10 * * * *",
-        description="为个股新闻补评分与摘要",
+        description="为个股新闻补评分与摘要（GPT 批处理并发）",
         commands=(
-            py_cmd(str(ROOT_DIR / "llm_score_stock_news.py"), "--model", "GPT-5.4", "--limit", "80", "--retry", "2", "--sleep", "0.2"),
+            py_cmd(
+                str(ROOT_DIR / "llm_score_stock_news.py"),
+                "--model",
+                "GPT-5.4",
+                "--limit",
+                "240",
+                "--workers",
+                "6",
+                "--batch-size",
+                "8",
+                "--retry",
+                "1",
+                "--sleep",
+                "0.02",
+            ),
         ),
     ),
     JobDefinition(
@@ -270,8 +272,6 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         commands=(
             py_cmd(
                 str(ROOT_DIR / "run_data_completion_batches.py"),
-                "--token",
-                "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb",
                 "--governance-batch",
                 "50",
                 "--events-batch",
@@ -302,7 +302,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="*/10 1-3,5-7 * * 1-5",
         description="盘中围绕重点标的补抓分钟线",
         commands=(
-            py_cmd(str(ROOT_DIR / "run_minline_focus_once.py"), "--token", "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb", "--limit-scores", "80", "--limit-candidates", "40", "--max-targets", "100"),
+            py_cmd(str(ROOT_DIR / "run_minline_focus_once.py"), "--limit-scores", "80", "--limit-candidates", "40", "--max-targets", "100"),
         ),
     ),
     JobDefinition(
@@ -399,8 +399,6 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         commands=(
             py_cmd(
                 str(ROOT_DIR / "llm_tag_chatrooms.py"),
-                "--model",
-                "GPT-5.4",
                 "--days",
                 "30",
                 "--limit",

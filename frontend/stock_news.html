@@ -169,6 +169,7 @@
       </div>
     </div>
 
+    <script src="/admin_auth.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -317,9 +318,8 @@
             company_name: companyName,
             page_size: String(pageSize),
             score: '1',
-            model: 'GPT-5.4',
           });
-          const res = await fetch(`${API_BASE}/api/stock-news/fetch?${q.toString()}`);
+          const res = await zanboAdminFetch(`${API_BASE}/api/stock-news/fetch?${q.toString()}`);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '采集失败');
           state.ts_code = tsCode;

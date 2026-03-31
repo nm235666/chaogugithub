@@ -16,6 +16,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from runtime_secrets import TUSHARE_TOKEN, resolve_tushare_token
 
 # 自动加载项目本地依赖目录，避免系统环境缺包
 LOCAL_DEPS = Path(__file__).resolve().parent / ".deps"
@@ -25,7 +26,7 @@ if LOCAL_DEPS.exists():
 import tushare as ts
 
 
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,15 +36,17 @@ def parse_args() -> argparse.Namespace:
         default="all_stock_codes.csv",
         help="导出的 CSV 文件名 (默认: all_stock_codes.csv)",
     )
+    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token（默认从 TUSHARE_TOKEN 读取）")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
 
-    token = os.getenv("TUSHARE_TOKEN", DEFAULT_TOKEN)
-    if not token:
-        print("错误: 未提供 Tushare token。", file=sys.stderr)
+    try:
+        token = resolve_tushare_token(args.token or os.getenv("TUSHARE_TOKEN", DEFAULT_TOKEN))
+    except RuntimeError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
         return 1
 
     # 直接传 token，避免 tushare 在家目录写 tk.csv

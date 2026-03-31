@@ -8,11 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import db_compat as sqlite3
-from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
+from llm_gateway import chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
 from realtime_streams import publish_app_event
-
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
 
 SENTIMENT_LABELS = {"偏多", "中性", "偏空"}
 
@@ -25,9 +22,7 @@ def parse_args():
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
     parser.add_argument("--target", default="all", choices=["all", "news", "stock_news"], help="目标表")
-    parser.add_argument("--model", default="GPT-5.4", help="模型名")
-    parser.add_argument("--base-url", default=DEEPSEEK_BASE_URL, help="LLM Base URL")
-    parser.add_argument("--api-key", default=DEEPSEEK_API_KEY, help="LLM API Key")
+    parser.add_argument("--model", default="auto", help="模型名；默认 auto 自动路由并降级")
     parser.add_argument("--temperature", type=float, default=0.1, help="采样温度")
     parser.add_argument("--limit", type=int, default=30, help="每类表最多处理条数")
     parser.add_argument("--force", action="store_true", help="强制重评")
@@ -112,11 +107,9 @@ def build_prompt(item: dict, table_name: str) -> str:
     )
 
 
-def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    return chat_completion_text(
+def call_llm(model: str, temperature: float, prompt: str):
+    return chat_completion_with_fallback(
         model=model,
-        base_url=base_url,
-        api_key=api_key,
         temperature=temperature,
         timeout_s=120,
         max_retries=3,
@@ -182,7 +175,7 @@ def update_row(conn: sqlite3.Connection, table_name: str, row_id: int, parsed: d
     )
 
 
-def score_table(conn, table_name: str, model: str, base_url: str, api_key: str, temperature: float, limit: int, force: bool, retry: int, sleep_s: float):
+def score_table(conn, table_name: str, model: str, temperature: float, limit: int, force: bool, retry: int, sleep_s: float):
     ensure_columns(conn, table_name)
     rows = fetch_rows(conn, table_name, limit=limit, force=force)
     ok = 0
@@ -192,12 +185,12 @@ def score_table(conn, table_name: str, model: str, base_url: str, api_key: str, 
         last_error = None
         for _ in range(max(retry, 0) + 1):
             try:
-                raw = call_llm(base_url, api_key, model, temperature, prompt)
-                parsed = parse_output(raw)
-                update_row(conn, table_name, int(row["id"]), parsed, model)
+                raw = call_llm(model, temperature, prompt)
+                parsed = parse_output(raw.text)
+                update_row(conn, table_name, int(row["id"]), parsed, raw.used_model)
                 conn.commit()
                 ok += 1
-                print(f"{table_name} #{row['id']}: {parsed['label']} score={parsed['score']}")
+                print(f"{table_name} #{row['id']}: {parsed['label']} score={parsed['score']} actual_model={raw.used_model}")
                 last_error = None
                 break
             except Exception as exc:
@@ -215,7 +208,6 @@ def main():
     args = parse_args()
     model = normalize_model_name(args.model)
     temperature = normalize_temperature_for_model(model, args.temperature)
-    base_url, api_key = resolve_provider(model, args.base_url, args.api_key)
     publish_app_event(
         event="llm_sentiment_update",
         payload={"status": "running", "target": args.target, "model": model, "limit": int(args.limit)},
@@ -233,8 +225,6 @@ def main():
                 conn,
                 table_name=table_name,
                 model=model,
-                base_url=base_url,
-                api_key=api_key,
                 temperature=temperature,
                 limit=args.limit,
                 force=args.force,

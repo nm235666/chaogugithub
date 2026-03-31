@@ -168,6 +168,7 @@
       </div>
     </div>
 
+    <script src="/admin_auth.js"></script>
     <script>
       const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://127.0.0.1:8077'
@@ -330,12 +331,12 @@
         els.meta.textContent = '正在保存规则与黑名单...';
         try {
           const [ruleResp, blockResp] = await Promise.all([
-            fetch(`${API_BASE}/api/signal-quality/rules/save`, {
+            zanboAdminFetch(`${API_BASE}/api/signal-quality/rules/save`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ items: state.rules }),
             }),
-            fetch(`${API_BASE}/api/signal-quality/blocklist/save`, {
+            zanboAdminFetch(`${API_BASE}/api/signal-quality/blocklist/save`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ items: state.blocklist }),

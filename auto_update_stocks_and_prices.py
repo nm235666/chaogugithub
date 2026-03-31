@@ -17,6 +17,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from runtime_secrets import TUSHARE_TOKEN, resolve_tushare_token
 
 LOCAL_DEPS = Path(__file__).resolve().parent / ".deps"
 if LOCAL_DEPS.exists():
@@ -24,7 +25,7 @@ if LOCAL_DEPS.exists():
 
 import tushare as ts
 
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bootstrap-days", type=int, default=30, help="价格表为空时回溯天数")
     parser.add_argument("--pause", type=float, default=0.03, help="每个交易日请求间隔秒数")
     parser.add_argument("--end-date", default="", help="结束日期(YYYYMMDD)，默认今天")
+    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token（默认从 TUSHARE_TOKEN 读取）")
     return parser.parse_args()
 
 
@@ -162,7 +164,7 @@ def main() -> int:
         print(f"错误: 数据库不存在: {db_path}", file=sys.stderr)
         return 1
 
-    pro = ts.pro_api(DEFAULT_TOKEN)
+    pro = ts.pro_api(resolve_tushare_token(args.token))
     conn = sqlite3.connect(db_path)
     try:
         ensure_tables(conn, args.price_table)

@@ -3,7 +3,8 @@
 ## 目录结构
 
 - `backend/server.py`：后端 API（PostgreSQL + Redis 缓存 + REST）
-- `frontend/index.html`：前端页面（静态网页）
+- `apps/web/`：新版前端（Vue 3 + TS + Vite，默认入口）
+- `frontend/`：旧版静态前端（已冻结为只读存档）
 - `stock_codes.db`：原 SQLite 数据库（迁移源/兼容保留）
 - `migrate_sqlite_to_postgres.py`：SQLite 全量迁移到 PostgreSQL
 - `init_postgres_schema.py`：仅初始化 PostgreSQL 表结构
@@ -11,7 +12,14 @@
 
 ## 启动方式
 
-1. 启动后端（监听局域网）：
+1. 一键启动（推荐，默认新版前端）：
+
+```bash
+cd /home/zanbo/zanbotest
+./start_all.sh
+```
+
+2. 分开启动后端（监听局域网）：
 
 ```bash
 cd /home/zanbo/zanbotest
@@ -22,12 +30,18 @@ cd /home/zanbo/zanbotest
 
 - `DATABASE_URL=postgresql://zanbo@/stockapp`
 - `REDIS_URL=redis://127.0.0.1:6379/0`
+- `TUSHARE_TOKEN=<你的 Tushare token>`
+- `BACKEND_ADMIN_TOKEN=<受保护接口令牌>`
+- `BACKEND_ALLOWED_ORIGINS=http://127.0.0.1:8077,http://localhost:8077,...`
 
 说明：
 
 - 现在主后端、新闻脚本、聊天脚本、回填脚本、LLM 脚本默认都直接读写 PostgreSQL
 - `stock_codes.db` 已可退役；退役后只保留 PostgreSQL 主库
 - 只有迁移脚本 `migrate_sqlite_to_postgres.py` / `init_postgres_schema.py` 仍会直接读取 SQLite 源结构
+- 任务触发、立即抓取、评分、日报生成、配置保存等受保护接口现在要求 `BACKEND_ADMIN_TOKEN`
+- 新版前端会自动从 `localStorage['zanbo_admin_token']` / `sessionStorage['zanbo_admin_token']` / `VITE_ADMIN_API_TOKEN` 读取令牌
+- 旧版 `frontend/` 目录已冻结只读，详见 `frontend/README_READONLY.md`
 
 ## SQLite 退役
 
@@ -49,18 +63,18 @@ bash /home/zanbo/zanbotest/retire_sqlite.sh --execute
 - 主目录只保留 PostgreSQL + Redis 运行链路
 - 退役说明会写入 [SQLITE_RETIRED.md](/home/zanbo/zanbotest/SQLITE_RETIRED.md)
 
-2. 新开一个终端，启动前端（监听局域网）：
+3. 新开一个终端，单独启动前端（默认新版构建产物）：
 
 ```bash
 cd /home/zanbo/zanbotest
 ./start_frontend.sh
 ```
 
-也可以一键启动：
+4. 开发模式运行新版前端：
 
 ```bash
-cd /home/zanbo/zanbotest
-./start_all.sh
+cd /home/zanbo/zanbotest/apps/web
+npm run dev
 ```
 
 ## 局域网访问

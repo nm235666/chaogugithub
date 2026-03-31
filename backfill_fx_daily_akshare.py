@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import db_compat as sqlite3
+from runtime_secrets import TUSHARE_TOKEN, resolve_tushare_token
 
 LOCAL_DEPS = Path(__file__).resolve().parent / ".deps"
 if LOCAL_DEPS.exists():
@@ -18,7 +19,7 @@ import akshare as ak
 import pandas as pd
 import tushare as ts
 
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 DEFAULT_PAIRS = ["USDJPY", "EURUSD", "DXY", "USDCNY"]
 
 
@@ -29,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         default=str(Path(__file__).resolve().parent / "stock_codes.db"),
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
-    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token")
+    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token（默认从 TUSHARE_TOKEN 读取）")
     parser.add_argument("--table-name", default="fx_daily", help="目标表名")
     parser.add_argument("--pairs", default=",".join(DEFAULT_PAIRS), help="标准币对列表，逗号分隔")
     parser.add_argument("--lookback-days", type=int, default=365, help="回溯天数")
@@ -263,7 +264,7 @@ def main() -> int:
     start_date = args.start_date.strip() or calc_start(end_date, args.lookback_days)
     pairs = [x.strip().upper() for x in args.pairs.split(",") if x.strip()]
 
-    pro = ts.pro_api(args.token)
+    pro = ts.pro_api(resolve_tushare_token(args.token))
     conn = sqlite3.connect(args.db_path)
     try:
         ensure_table(conn, args.table_name)

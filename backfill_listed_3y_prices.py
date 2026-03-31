@@ -24,6 +24,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
+from runtime_secrets import TUSHARE_TOKEN, resolve_tushare_token
 
 # 自动加载项目本地依赖目录，避免系统环境缺包
 LOCAL_DEPS = Path(__file__).resolve().parent / ".deps"
@@ -32,7 +33,7 @@ if LOCAL_DEPS.exists():
 
 import tushare as ts
 
-DEFAULT_TOKEN = "42e5d45b54aedf3a9f339ff8010327582ae8ad2819e18dca5c3457bb"
+DEFAULT_TOKEN = TUSHARE_TOKEN
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +65,7 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="从某个 ts_code 开始(含该代码)，用于断点续跑",
     )
+    parser.add_argument("--token", default=DEFAULT_TOKEN, help="Tushare Token（默认从 TUSHARE_TOKEN 读取）")
     parser.add_argument(
         "--truncate",
         action="store_true",
@@ -168,7 +170,7 @@ def upsert_prices(conn: sqlite3.Connection, table_name: str, rows: Iterable[tupl
 
 def main() -> int:
     args = parse_args()
-    token = DEFAULT_TOKEN
+    token = resolve_tushare_token(args.token)
 
     end_date = args.end_date.strip() or yyyymmdd_utc_today()
     start_date = args.start_date.strip() or default_start_date_by_lookback(
