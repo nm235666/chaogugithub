@@ -8,52 +8,745 @@
   "providers": {
     "gpt-5.4": [
       {
-        "model": "GPT-5.4",
-        "base_url": "http://38.175.200.219:8317/v1",
-        "api_key": "sk-FHXaxDVKoAXagmSH2",
-        "default_temperature": 0.2
+        "model": "gpt-5.4",
+        "base_url": "https://api.univibe.cc/openai",
+        "api_key": "sk-MgXNjvdZtv6qcLbV8Voe9nRhwSftFjUY",
+        "default_temperature": 0.2,
+        "enabled": true,
+        "status": "active",
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 200,
+        "last_latency_ms": 1264,
+        "last_error": "",
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://api.univibe.cc/openai",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://api.univibe.cc/openai/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 402,
+            "latency_ms": 1289,
+            "error": "{     \"code\": 402,     \"message\": \"402 insufficient credits 积分已耗尽\",     \"data\": [] }"
+          },
+          {
+            "round": 1,
+            "base_url": "https://api.univibe.cc/openai/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 402,
+            "latency_ms": 1370,
+            "error": "{     \"code\": 402,     \"message\": \"402 insufficient credits 积分已耗尽\",     \"data\": [] }"
+          },
+          {
+            "round": 1,
+            "base_url": "https://api.univibe.cc/openai/v1",
+            "model": "Gpt-5.4",
+            "ok": false,
+            "status_code": 402,
+            "latency_ms": 1137,
+            "error": "{     \"code\": 402,     \"message\": \"402 insufficient credits 积分已耗尽\",     \"data\": [] }"
+          },
+          {
+            "round": 1,
+            "base_url": "https://api.univibe.cc/openai",
+            "model": "gpt-5.4",
+            "ok": true,
+            "status_code": 200,
+            "latency_ms": 1264,
+            "error": ""
+          }
+        ],
+        "health_status": "healthy",
+        "priority": 1,
+        "consecutive_failures": 0
       },
       {
-        "model": "GPT-5.4",
+        "model": "gpt-5.4",
+        "base_url": "https://jiuuij.de5.net/v1",
+        "api_key": "sk-aSNr05h7EMdf1L15rc38gwf4hGR38BefI6xjII7QW6JEuxPB",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 200,
+        "last_latency_ms": 2076,
+        "last_error": "",
+        "enabled": true,
+        "status": "active",
+        "health_status": "healthy",
+        "priority": 2,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://jiuuij.de5.net/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://jiuuij.de5.net/v1",
+            "model": "gpt-5.4",
+            "ok": true,
+            "status_code": 200,
+            "latency_ms": 2076,
+            "error": ""
+          }
+        ],
+        "consecutive_failures": 0
+      },
+      {
+        "model": "gpt-5.4",
+        "base_url": "https://ice.v.ua/v1",
+        "api_key": "sk-74121c517c9e362f7fa1b5b28bb91b9bedc806aff9c4ce96504e6ca257be5659",
+        "default_temperature": 0.2,
+        "enabled": true,
+        "status": "active",
+        "health_status": "healthy",
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 200,
+        "last_latency_ms": 2304,
+        "last_error": "",
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://ice.v.ua/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://ice.v.ua/v1",
+            "model": "gpt-5.4",
+            "ok": true,
+            "status_code": 200,
+            "latency_ms": 2304,
+            "error": ""
+          }
+        ],
+        "priority": 3,
+        "consecutive_failures": 0
+      },
+      {
+        "model": "gpt-5.4",
+        "base_url": "https://ai-agent-888.site:8443/v1",
+        "api_key": "sk-Gey7fQi7LHMk8OeCcNIfjE8BQtyyMTIGkbq0u22aAw46CAJb",
+        "default_temperature": 0.2,
+        "enabled": true,
+        "status": "active",
+        "health_status": "healthy",
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 200,
+        "last_latency_ms": 2304,
+        "last_error": "",
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://ice.v.ua/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://ice.v.ua/v1",
+            "model": "gpt-5.4",
+            "ok": true,
+            "status_code": 200,
+            "latency_ms": 2304,
+            "error": ""
+          }
+        ],
+        "priority": 3,
+        "consecutive_failures": 0
+      },
+      {
+        "model": "gpt-5.4",
+        "base_url": "https://ai-agent-888.site:8443/v1",
+        "api_key": "sk-iklggIfeRmE4QlyYLK3IEBpPEn0Wx6w5K6iS0t9iAXbS2ZIl",
+        "default_temperature": 0.2,
+        "enabled": true,
+        "status": "active",
+        "health_status": "healthy",
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 200,
+        "last_latency_ms": 4612,
+        "last_error": "",
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://ai-agent-888.site:8443/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://ai-agent-888.site:8443/v1",
+            "model": "gpt-5.4",
+            "ok": true,
+            "status_code": 200,
+            "latency_ms": 4612,
+            "error": ""
+          }
+        ],
+        "priority": 4,
+        "consecutive_failures": 0
+      },
+      {
+        "model": "gpt-5.4",
         "base_url": "https://ai.td.ee/v1",
-        "api_key": "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343",
-        "default_temperature": 0.2
+        "api_key": "sk-1f03f59c2e73e2e0d0cff0912baab113efb41483cb9f25e0612cc07b01448a5a",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 200,
+        "last_latency_ms": 5159,
+        "last_error": "",
+        "enabled": true,
+        "status": "active",
+        "health_status": "healthy",
+        "priority": 5,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://ai.td.ee/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://ai.td.ee/v1",
+            "model": "gpt-5.4",
+            "ok": true,
+            "status_code": 200,
+            "latency_ms": 5159,
+            "error": ""
+          }
+        ],
+        "consecutive_failures": 0
       },
       {
-      "model": "GPT-5.4",
-      "base_url": "http://192.168.5.43:8087/v1",
-      "api_key": "sk-1cefe212ace017b3ba7f4983ee29d60e297ef042f369c868249ad7c4f790583c",
-      "default_temperature": 0.2
+        "model": "GPT-5.4",
+        "base_url": "http://192.168.5.43:8087/v1",
+        "api_key": "sk-1cefe212ace017b3ba7f4983ee29d60e297ef042f369c868249ad7c4f790583c",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": null,
+        "last_latency_ms": 20022,
+        "last_error": "timed out",
+        "enabled": false,
+        "status": "disabled",
+        "health_status": "unhealthy",
+        "priority": 6,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "http://192.168.5.43:8087/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": null,
+            "latency_ms": 20022,
+            "error": "timed out"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": null,
+            "latency_ms": 20013,
+            "error": "timed out"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 4,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 5,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
+          },
+          {
+            "round": 2,
+            "base_url": "http://192.168.5.43:8087/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": null,
+            "latency_ms": 20023,
+            "error": "timed out"
+          },
+          {
+            "round": 2,
+            "base_url": "http://192.168.5.43:8087/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": null,
+            "latency_ms": 20027,
+            "error": "timed out"
+          },
+          {
+            "round": 2,
+            "base_url": "http://192.168.5.43:8087",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 4,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
+          },
+          {
+            "round": 2,
+            "base_url": "http://192.168.5.43:8087",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 3,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
+          }
+        ],
+        "consecutive_failures": 2
       },
       {
-      "model": "GPT-5.4",
-      "base_url": "https://free.9e.nz/v1",
-      "api_key": "sk-9a579252126cbe7b97b574002f07d413e5a219d3c4f5df8b5599e84dd65b64c2",
-      "default_temperature": 0.2
+        "model": "GPT-5.4",
+        "base_url": "http://38.175.200.219:8317",
+        "api_key": "sk-FHXaxDVKoAXagmSH2",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 429,
+        "last_latency_ms": 727,
+        "last_error": "{\"error\":{\"code\":\"model_cooldown\",\"message\":\"All credentials for model gpt-5.4 are cooling down\",\"model\":\"gpt-5.4\",\"reset_seconds\":484588,\"reset_time\":\"134h36m27s\"}}",
+        "enabled": false,
+        "status": "disabled",
+        "health_status": "unhealthy",
+        "priority": 7,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "http://38.175.200.219:8317/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "http://38.175.200.219:8317/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 429,
+            "latency_ms": 727,
+            "error": "{\"error\":{\"code\":\"model_cooldown\",\"message\":\"All credentials for model gpt-5.4 are cooling down\",\"model\":\"gpt-5.4\",\"reset_seconds\":484588,\"reset_time\":\"134h36m27s\"}}"
+          },
+          {
+            "round": 1,
+            "base_url": "http://38.175.200.219:8317/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 502,
+            "latency_ms": 688,
+            "error": "{\"error\":{\"message\":\"unknown provider for model GPT-5.4\",\"type\":\"server_error\",\"code\":\"internal_server_error\"}}"
+          },
+          {
+            "round": 1,
+            "base_url": "http://38.175.200.219:8317",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 404,
+            "latency_ms": 757,
+            "error": "404 page not found"
+          },
+          {
+            "round": 1,
+            "base_url": "http://38.175.200.219:8317",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 404,
+            "latency_ms": 596,
+            "error": "404 page not found"
+          },
+          {
+            "round": 2,
+            "base_url": "http://38.175.200.219:8317/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 429,
+            "latency_ms": 899,
+            "error": "{\"error\":{\"code\":\"model_cooldown\",\"message\":\"All credentials for model gpt-5.4 are cooling down\",\"model\":\"gpt-5.4\",\"reset_seconds\":484585,\"reset_time\":\"134h36m25s\"}}"
+          },
+          {
+            "round": 2,
+            "base_url": "http://38.175.200.219:8317/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 502,
+            "latency_ms": 575,
+            "error": "{\"error\":{\"message\":\"unknown provider for model GPT-5.4\",\"type\":\"server_error\",\"code\":\"internal_server_error\"}}"
+          },
+          {
+            "round": 2,
+            "base_url": "http://38.175.200.219:8317",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 404,
+            "latency_ms": 512,
+            "error": "404 page not found"
+          },
+          {
+            "round": 2,
+            "base_url": "http://38.175.200.219:8317",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 404,
+            "latency_ms": 585,
+            "error": "404 page not found"
+          }
+        ],
+        "consecutive_failures": 2
       },
       {
-      "model": "GPT-5.4",
-      "base_url": "https://ai.ijunze.cn/v1",
-      "api_key": "sk-g3bumJwpN8og2caMQmRBQa3qjYmUK6vRFe7Uyaz4KoKr62ev",
-      "default_temperature": 0.2
+        "model": "GPT-5.4",
+        "base_url": "https://free.9e.nz",
+        "api_key": "sk-9a579252126cbe7b97b574002f07d413e5a219d3c4f5df8b5599e84dd65b64c2",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 403,
+        "last_latency_ms": 485,
+        "last_error": "Your request was blocked.",
+        "enabled": false,
+        "status": "disabled",
+        "health_status": "unhealthy",
+        "priority": 8,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://free.9e.nz/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://free.9e.nz/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 485,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://free.9e.nz/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 1243,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://free.9e.nz",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 396,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://free.9e.nz",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 676,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://free.9e.nz/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 488,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://free.9e.nz/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 824,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://free.9e.nz",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 490,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://free.9e.nz",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 486,
+            "error": "Your request was blocked."
+          }
+        ],
+        "consecutive_failures": 2
       },
       {
-      "model": "GPT-5.4",
-      "base_url": "https://ai.zzhdsgsss.xyz/v1",
-      "api_key": "sk-ovLSrR0fpHX7H5NBlt5WvAyZhOgcivunXKn1niM30C0bI9kP",
-      "default_temperature": 0.2
+        "model": "GPT-5.4",
+        "base_url": "https://ai.ijunze.cn",
+        "api_key": "sk-g3bumJwpN8og2caMQmRBQa3qjYmUK6vRFe7Uyaz4KoKr62ev",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 524,
+        "last_latency_ms": 16475,
+        "last_error": "HTTP Error 524: Receive timeout from origin",
+        "enabled": false,
+        "status": "disabled",
+        "health_status": "unhealthy",
+        "priority": 9,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://ai.ijunze.cn/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 524,
+            "latency_ms": 16475,
+            "error": "HTTP Error 524: Receive timeout from origin"
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 503,
+            "latency_ms": 1435,
+            "error": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model GPT-5.4 under group default (distributor) (request id: 20260401170153426679415EUxitNLo)\",\"type\":\"new_api_error\"}}"
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 2948,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh\">   <head>     <meta charset=\"utf-8\" />     <link rel=\"icon\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />     <meta name=\"theme-color\" content=\"#ffffff\" />    "
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 1753,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh\">   <head>     <meta charset=\"utf-8\" />     <link rel=\"icon\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />     <meta name=\"theme-color\" content=\"#ffffff\" />    "
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.ijunze.cn/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 524,
+            "latency_ms": 16701,
+            "error": "HTTP Error 524: Receive timeout from origin"
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.ijunze.cn/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 503,
+            "latency_ms": 1786,
+            "error": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model GPT-5.4 under group default (distributor) (request id: 20260401170216513715725uXl4np71)\",\"type\":\"new_api_error\"}}"
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.ijunze.cn",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 946,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh\">   <head>     <meta charset=\"utf-8\" />     <link rel=\"icon\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />     <meta name=\"theme-color\" content=\"#ffffff\" />    "
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.ijunze.cn",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 1440,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh\">   <head>     <meta charset=\"utf-8\" />     <link rel=\"icon\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />     <meta name=\"theme-color\" content=\"#ffffff\" />    "
+          }
+        ],
+        "consecutive_failures": 2
       },
       {
-      "model": "GPT-5.4",
-      "base_url": "https://ai.acmi.run/v1",
-      "api_key": "sk-df7ae81d0492d07ade8f3ffbf1cce9c61958020757965f172fc29b855bad6720",
-      "default_temperature": 0.2
+        "model": "GPT-5.4",
+        "base_url": "https://ai.zzhdsgsss.xyz",
+        "api_key": "sk-ovLSrR0fpHX7H5NBlt5WvAyZhOgcivunXKn1niM30C0bI9kP",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 403,
+        "last_latency_ms": 397,
+        "last_error": "Your request was blocked.",
+        "enabled": false,
+        "status": "disabled",
+        "health_status": "unhealthy",
+        "priority": 10,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://ai.zzhdsgsss.xyz/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://ai.zzhdsgsss.xyz/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 397,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.zzhdsgsss.xyz/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 1164,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.zzhdsgsss.xyz",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 659,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.zzhdsgsss.xyz",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 667,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.zzhdsgsss.xyz/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 488,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.zzhdsgsss.xyz/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 626,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.zzhdsgsss.xyz",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 478,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.zzhdsgsss.xyz",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 660,
+            "error": "Your request was blocked."
+          }
+        ],
+        "consecutive_failures": 2
       },
       {
-      "model": "GPT-5.4",
-      "base_url": "https://jiuuij.de5.net/v1",
-      "api_key": "sk-aSNr05h7EMdf1L15rc38gwf4hGR38BefI6xjII7QW6JEuxPB",
-      "default_temperature": 0.2
+        "model": "GPT-5.4",
+        "base_url": "https://ai.acmi.run",
+        "api_key": "sk-df7ae81d0492d07ade8f3ffbf1cce9c61958020757965f172fc29b855bad6720",
+        "default_temperature": 0.2,
+        "last_checked_at": "2026-04-01T16:59:51Z",
+        "last_http_status": 403,
+        "last_latency_ms": 657,
+        "last_error": "Your request was blocked.",
+        "enabled": false,
+        "status": "disabled",
+        "health_status": "unhealthy",
+        "priority": 11,
+        "last_probe_model": "gpt-5.4",
+        "last_probe_base_url": "https://ai.acmi.run/v1",
+        "last_probe_attempts": [
+          {
+            "round": 1,
+            "base_url": "https://ai.acmi.run/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 657,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.acmi.run/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 692,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.acmi.run",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 601,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.acmi.run",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 686,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.acmi.run/v1",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 497,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.acmi.run/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 488,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.acmi.run",
+            "model": "gpt-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 419,
+            "error": "Your request was blocked."
+          },
+          {
+            "round": 2,
+            "base_url": "https://ai.acmi.run",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 403,
+            "latency_ms": 646,
+            "error": "Your request was blocked."
+          }
+        ],
+        "consecutive_failures": 2
       }
     ],
     "kimi-k2.5": [
@@ -63,7 +756,6 @@
         "api_key": "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72",
         "default_temperature": 1.0
       }
-      
     ],
     "deepseek-chat": [
       {
@@ -75,5 +767,3 @@
     ]
   }
 }
-
-

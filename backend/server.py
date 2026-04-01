@@ -46,6 +46,30 @@ from backend.routes import system as system_routes
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "8000"))
 DB_PATH = ROOT_DIR / "stock_codes.db"
+SERVER_STARTED_AT_UTC = datetime.now(timezone.utc).isoformat()
+
+
+def _resolve_build_id() -> str:
+    env_id = str(os.getenv("BACKEND_BUILD_ID", "") or "").strip()
+    if env_id:
+        return env_id
+    try:
+        rev = (
+            subprocess.check_output(
+                ["git", "-C", str(ROOT_DIR), "rev-parse", "--short", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            )
+            .decode("utf-8", errors="ignore")
+            .strip()
+        )
+        if rev:
+            return f"git-{rev}"
+    except Exception:
+        pass
+    return f"dev-{int(time.time())}"
+
+
+BUILD_ID = _resolve_build_id()
 DEFAULT_MULTI_ROLES = [
     "宏观经济分析师",
     "股票分析师",
@@ -96,6 +120,12 @@ ASYNC_MULTI_ROLE_LOCK = threading.Lock()
 ASYNC_DAILY_SUMMARY_JOBS: dict[str, dict] = {}
 ASYNC_DAILY_SUMMARY_LOCK = threading.Lock()
 TMP_DIR = Path("/tmp")
+AUTH_SESSION_DAYS = int(os.getenv("AUTH_SESSION_DAYS", "30") or "30")
+AUTH_LOCK_THRESHOLD = int(os.getenv("AUTH_LOCK_THRESHOLD", "5") or "5")
+AUTH_LOCK_MINUTES = int(os.getenv("AUTH_LOCK_MINUTES", "15") or "15")
+AUTH_USERS_COUNT_CACHE_SECONDS = 15
+AUTH_USERS_COUNT_CACHE: dict[str, float | int] = {"value": -1, "expires_at": 0.0}
+AUTH_USERS_COUNT_LOCK = threading.Lock()
 STOCK_SCORE_CACHE_TTL_SECONDS = 300
 STOCK_SCORE_CACHE: dict[str, object] = {
     "generated_at": 0.0,
@@ -114,6 +144,7 @@ AUDIT_REPORT_PATH = ROOT_DIR / "docs" / "database_audit_report.md"
 PROTECTED_POST_PATHS = {
     "/api/signal-quality/rules/save",
     "/api/signal-quality/blocklist/save",
+    "/api/auth/quota/reset-batch",
 }
 PROTECTED_GET_PATHS = {
     "/api/jobs",
@@ -140,9 +171,91 @@ DEFAULT_ALLOWED_ADMIN_ORIGINS = {
     "https://tianbo.asia:6273",
 }
 TRUSTED_FRONTEND_PORTS = {"8077", "8080", "5173", "4173"}
+AUTH_PUBLIC_API_PATHS = {
+    "/api/health",
+    "/api/auth/status",
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/verify-email",
+    "/api/auth/send-verify-code",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/auth/logout",
+}
+LIMITED_ALLOWED_PATH_PREFIXES = (
+    "/api/news",
+    "/api/stock-news",
+)
+LIMITED_ALLOWED_EXACT_PATHS = {
+    "/api/news",
+    "/api/news/sources",
+    "/api/news/daily-summaries",
+    "/api/stock-news",
+    "/api/stock-news/sources",
+    "/api/llm/trend",
+}
+ROLE_PERMISSIONS = {
+    "admin": {"*"},
+    "pro": {"*"},
+    "limited": {"news_read", "stock_news_read", "daily_summary_read", "trend_analyze", "multi_role_analyze"},
+}
+TREND_DAILY_LIMIT_BY_ROLE = {
+    "limited": 30,
+}
+MULTI_ROLE_DAILY_LIMIT_BY_ROLE = {
+    "limited": 10,
+}
+
+
+def _role_permission_matrix() -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for role, perms in ROLE_PERMISSIONS.items():
+        out[str(role)] = sorted(str(x) for x in perms)
+    return out
+
+
+def _effective_permissions_for_user(user: dict | None) -> list[str]:
+    if not user:
+        return []
+    role = str((user or {}).get("role") or (user or {}).get("tier") or "limited").lower()
+    perms = ROLE_PERMISSIONS.get(role, set())
+    return sorted(str(x) for x in perms)
+
+
+def _build_info_payload() -> dict:
+    return {
+        "build_id": BUILD_ID,
+        "port": PORT,
+        "pid": os.getpid(),
+        "started_at": SERVER_STARTED_AT_UTC,
+    }
 
 API_ENDPOINTS_CATALOG = {
     "health": "/api/health",
+    "auth_status": "/api/auth/status",
+    "auth_permissions": "/api/auth/permissions",
+    "auth_register": "/api/auth/register",
+    "auth_verify_email": "/api/auth/verify-email",
+    "auth_send_verify_code": "/api/auth/send-verify-code",
+    "auth_login": "/api/auth/login",
+    "auth_forgot_password": "/api/auth/forgot-password",
+    "auth_reset_password": "/api/auth/reset-password",
+    "auth_logout": "/api/auth/logout",
+    "auth_invite_create": "/api/auth/invite/create",
+    "auth_invites": "/api/auth/invites?keyword=&active=&page=1&page_size=20",
+    "auth_invite_update": "/api/auth/invite/update",
+    "auth_invite_delete": "/api/auth/invite/delete",
+    "auth_users_summary": "/api/auth/users/summary",
+    "auth_users": "/api/auth/users?keyword=&role=&active=&page=1&page_size=20",
+    "auth_user_update": "/api/auth/user/update",
+    "auth_user_reset_password": "/api/auth/user/reset-password",
+    "auth_user_reset_trend_quota": "/api/auth/user/reset-trend-quota",
+    "auth_user_reset_multi_role_quota": "/api/auth/user/reset-multi-role-quota",
+    "auth_quota_reset_batch": "/api/auth/quota/reset-batch",
+    "auth_sessions": "/api/auth/sessions?keyword=&user_id=&page=1&page_size=20",
+    "auth_session_revoke": "/api/auth/session/revoke",
+    "auth_user_sessions_revoke": "/api/auth/user/revoke-sessions",
+    "auth_audit_logs": "/api/auth/audit-logs?keyword=&event_type=&result=&page=1&page_size=20",
     "dashboard": "/api/dashboard",
     "stock_detail": "/api/stock-detail?ts_code=000001.SZ&lookback=60",
     "stocks": "/api/stocks?keyword=&status=&market=&area=&page=1&page_size=20",
@@ -224,6 +337,32 @@ def _origin_allowed(origin: str, host_header: str) -> bool:
     if normalized in {_normalize_origin(item) for item in BACKEND_ALLOWED_ORIGINS}:
         return True
     return _origin_matches_current_host(normalized, host_header)
+
+
+def _permission_denied_payload(path: str) -> dict:
+    code = "AUTH_PERMISSION_DENIED"
+    hint = "当前账号无此接口权限，请联系管理员升级或切换账号。"
+    if path in {"/api/stocks", "/api/stocks/filters"}:
+        code = "AUTH_PERMISSION_DENIED_STOCK_SEARCH"
+        hint = "该账号不可访问股票检索接口。可改用 ts_code 直接分析，或联系管理员开通检索权限。"
+    elif path in {"/api/llm/multi-role", "/api/llm/multi-role/start", "/api/llm/multi-role/task"}:
+        code = "AUTH_PERMISSION_DENIED_MULTI_ROLE"
+        hint = "该账号不可访问多角色分析接口，请联系管理员开通。"
+    elif path == "/api/llm/trend":
+        code = "AUTH_PERMISSION_DENIED_TREND"
+        hint = "该账号不可访问走势分析接口，请联系管理员开通。"
+    elif path.startswith("/api/signals"):
+        code = "AUTH_PERMISSION_DENIED_SIGNALS"
+        hint = "该账号不可访问投资信号模块。"
+    elif path.startswith("/api/system") or path.startswith("/api/jobs"):
+        code = "AUTH_PERMISSION_DENIED_SYSTEM"
+        hint = "该账号不可访问系统运维接口。"
+    return {
+        "error": "当前账号权限不足，请升级后使用该功能",
+        "code": code,
+        "path": path,
+        "hint": hint,
+    }
 
 
 def resolve_signal_table(conn, scope: str) -> tuple[str, str]:
@@ -4213,6 +4352,52 @@ def _safe_float(v):
         return None
 
 
+def _probe_backend_port_health(port: int, timeout: float = 1.5) -> dict:
+    url = f"http://127.0.0.1:{int(port)}/api/health"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+        payload = json.loads(raw) if raw else {}
+        return {
+            "port": int(port),
+            "ok": bool(payload.get("ok")),
+            "build_id": str(payload.get("build_id") or ""),
+            "pid": payload.get("pid"),
+            "started_at": payload.get("started_at"),
+            "db": payload.get("db"),
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "port": int(port),
+            "ok": False,
+            "build_id": "",
+            "pid": None,
+            "started_at": None,
+            "db": None,
+            "error": str(exc),
+        }
+
+
+def query_api_stack_consistency() -> dict:
+    ports = [8002, 8004, 8005, 8006]
+    items = [_probe_backend_port_health(p) for p in ports]
+    ok_items = [x for x in items if x.get("ok")]
+    build_ids = [str(x.get("build_id") or "") for x in ok_items if str(x.get("build_id") or "")]
+    unique_build_ids = sorted(set(build_ids))
+    all_ports_online = len(ok_items) == len(ports)
+    build_consistent = all_ports_online and len(unique_build_ids) == 1
+    return {
+        "ports": ports,
+        "items": items,
+        "all_ports_online": all_ports_online,
+        "build_consistent": build_consistent,
+        "unique_build_ids": unique_build_ids,
+        "expected_build_id": unique_build_ids[0] if len(unique_build_ids) == 1 else "",
+    }
+
+
 def query_dashboard():
     cached = cache_get_json("api:dashboard:v1")
     if cached:
@@ -4353,6 +4538,7 @@ def query_dashboard():
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "api_stack_consistency": query_api_stack_consistency(),
         "overview": {
             "stock_total": stock_total,
             "listed_total": listed_total,
@@ -4576,6 +4762,8 @@ def _calc_ma(values: list[float], n: int):
 
 
 def _sanitize_json_value(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             return None
@@ -4587,6 +4775,1293 @@ def _sanitize_json_value(value):
     if isinstance(value, tuple):
         return [_sanitize_json_value(v) for v in value]
     return value
+
+
+def _ensure_auth_tables(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            display_name TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_token_hash TEXT NOT NULL UNIQUE,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_sessions_user ON app_auth_sessions(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_sessions_expire ON app_auth_sessions(expires_at)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_invites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invite_code TEXT NOT NULL UNIQUE,
+            max_uses INTEGER NOT NULL DEFAULT 1,
+            used_count INTEGER NOT NULL DEFAULT 0,
+            expires_at TIMESTAMP,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_email_verifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            email TEXT NOT NULL,
+            verify_code TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_usage_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            usage_date TEXT NOT NULL,
+            trend_count INTEGER NOT NULL DEFAULT 0,
+            multi_role_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_app_auth_usage_user_date ON app_auth_usage_daily(user_id, usage_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_verify_user ON app_auth_email_verifications(user_id, used_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_verify_email ON app_auth_email_verifications(email, used_at)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            username TEXT,
+            user_id INTEGER,
+            result TEXT NOT NULL DEFAULT 'ok',
+            detail TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_audit_time ON app_auth_audit_logs(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_audit_user ON app_auth_audit_logs(username, user_id)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_password_resets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            reset_code TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_pwd_reset_user ON app_auth_password_resets(user_id, used_at)")
+
+    # migrate columns for existing deployments
+    try:
+        columns = {
+            str(r["name"]) if isinstance(r, dict) else str(r[1])
+            for r in conn.execute("PRAGMA table_info(app_auth_users)").fetchall()
+        }
+    except Exception:
+        columns = set()
+    if "email" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN email TEXT")
+    if "email_verified" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+    if "role" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN role TEXT NOT NULL DEFAULT 'limited'")
+    if "tier" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN tier TEXT NOT NULL DEFAULT 'limited'")
+    if "invite_code_used" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN invite_code_used TEXT")
+    if "failed_login_count" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0")
+    if "locked_until" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN locked_until TIMESTAMP")
+    if "last_login_at" not in columns:
+        conn.execute("ALTER TABLE app_auth_users ADD COLUMN last_login_at TIMESTAMP")
+
+    try:
+        usage_columns = {
+            str(r["name"]) if isinstance(r, dict) else str(r[1])
+            for r in conn.execute("PRAGMA table_info(app_auth_usage_daily)").fetchall()
+        }
+    except Exception:
+        usage_columns = set()
+    if "multi_role_count" not in usage_columns:
+        conn.execute("ALTER TABLE app_auth_usage_daily ADD COLUMN multi_role_count INTEGER NOT NULL DEFAULT 0")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_app_auth_users_email ON app_auth_users(email)")
+
+
+def _hash_password(password: str, salt_hex: str | None = None) -> str:
+    salt = bytes.fromhex(salt_hex) if salt_hex else secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 210_000)
+    return f"pbkdf2_sha256$210000${salt.hex()}${digest.hex()}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algo, rounds_s, salt_hex, digest_hex = (stored_hash or "").split("$", 3)
+        if algo != "pbkdf2_sha256":
+            return False
+        rounds = int(rounds_s)
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(digest_hex)
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds)
+        return secrets.compare_digest(actual, expected)
+    except Exception:
+        return False
+
+
+def _invalidate_auth_users_count_cache():
+    with AUTH_USERS_COUNT_LOCK:
+        AUTH_USERS_COUNT_CACHE["value"] = -1
+        AUTH_USERS_COUNT_CACHE["expires_at"] = 0.0
+
+
+def _active_auth_users_count(force: bool = False) -> int:
+    now = time.time()
+    with AUTH_USERS_COUNT_LOCK:
+        if not force and AUTH_USERS_COUNT_CACHE["value"] >= 0 and now < float(AUTH_USERS_COUNT_CACHE["expires_at"]):
+            return int(AUTH_USERS_COUNT_CACHE["value"])
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute("SELECT COUNT(*) FROM app_auth_users WHERE is_active = 1").fetchone()
+        count = int((row[0] if row else 0) or 0)
+    finally:
+        conn.close()
+    with AUTH_USERS_COUNT_LOCK:
+        AUTH_USERS_COUNT_CACHE["value"] = count
+        AUTH_USERS_COUNT_CACHE["expires_at"] = now + AUTH_USERS_COUNT_CACHE_SECONDS
+    return count
+
+
+def _new_session_token() -> str:
+    return f"u_{secrets.token_urlsafe(32)}"
+
+
+def _record_auth_audit(
+    event_type: str,
+    username: str = "",
+    user_id: int | None = None,
+    result: str = "ok",
+    detail: str = "",
+    ip: str = "",
+    user_agent: str = "",
+):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO app_auth_audit_logs (event_type, username, user_id, result, detail, ip, user_agent, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (
+                (event_type or "").strip(),
+                (username or "").strip(),
+                int(user_id or 0) if user_id is not None else None,
+                (result or "ok").strip(),
+                (detail or "").strip()[:500],
+                (ip or "").strip()[:100],
+                (user_agent or "").strip()[:300],
+            ),
+        )
+    finally:
+        conn.close()
+
+
+def _user_locked(locked_until) -> bool:
+    raw = str(locked_until or "").strip()
+    if not raw:
+        return False
+    norm = raw.replace("T", " ").replace("Z", "")
+    try:
+        when = datetime.strptime(norm[:19], "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return False
+    return when > datetime.utcnow()
+
+
+def _register_login_failure(conn, user_id: int):
+    row = conn.execute(
+        "SELECT failed_login_count FROM app_auth_users WHERE id = ? LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    current = int((row[0] if row else 0) or 0)
+    next_count = current + 1
+    if next_count >= max(AUTH_LOCK_THRESHOLD, 1):
+        lock_until = (datetime.now(timezone.utc) + timedelta(minutes=max(AUTH_LOCK_MINUTES, 1))).replace(tzinfo=None)
+        conn.execute(
+            "UPDATE app_auth_users SET failed_login_count = ?, locked_until = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (next_count, lock_until, user_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE app_auth_users SET failed_login_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (next_count, user_id),
+        )
+
+
+def _clear_login_failure(conn, user_id: int):
+    conn.execute(
+        "UPDATE app_auth_users SET failed_login_count = 0, locked_until = NULL, last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (user_id,),
+    )
+
+
+def _generate_invite_code() -> str:
+    return f"INV-{secrets.token_hex(4).upper()}"
+
+
+def _create_invite_code(
+    max_uses: int = 1,
+    expires_at: str = "",
+    created_by: str = "",
+    explicit_code: str = "",
+) -> dict:
+    code = (explicit_code or _generate_invite_code()).strip().upper()
+    max_uses = max(1, int(max_uses or 1))
+    expiry = (expires_at or "").strip() or None
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO app_auth_invites (invite_code, max_uses, used_count, expires_at, is_active, created_by, created_at, updated_at)
+            VALUES (?, ?, 0, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (code, max_uses, expiry, (created_by or "").strip()),
+        )
+    finally:
+        conn.close()
+    return {"invite_code": code, "max_uses": max_uses, "expires_at": expiry}
+
+
+def _assert_invite_valid(conn, invite_code: str) -> str:
+    code = (invite_code or "").strip().upper()
+    if not code:
+        raise ValueError("邀请码不能为空")
+    row = conn.execute(
+        """
+        SELECT invite_code, max_uses, used_count, is_active, expires_at
+        FROM app_auth_invites
+        WHERE invite_code = ?
+        LIMIT 1
+        """,
+        (code,),
+    ).fetchone()
+    if not row:
+        raise RuntimeError("邀请码不存在")
+    max_uses = int((row[1] or 0) or 0)
+    used_count = int((row[2] or 0) or 0)
+    is_active = int((row[3] or 0) or 0) == 1
+    expires_at = row[4]
+    if not is_active:
+        raise RuntimeError("邀请码已失效")
+    if max_uses > 0 and used_count >= max_uses:
+        raise RuntimeError("邀请码已用尽")
+    if expires_at:
+        expires_s = str(expires_at).strip().replace("T", " ").replace("Z", "")
+        if expires_s and datetime.strptime(expires_s[:19], "%Y-%m-%d %H:%M:%S") < datetime.utcnow():
+            raise RuntimeError("邀请码已过期")
+    return code
+
+
+def _reserve_invite_use(conn, invite_code: str):
+    conn.execute(
+        "UPDATE app_auth_invites SET used_count = COALESCE(used_count, 0) + 1, updated_at = CURRENT_TIMESTAMP WHERE invite_code = ?",
+        (invite_code,),
+    )
+
+
+def _create_email_verification(conn, user_id: int, email: str) -> dict:
+    verify_code = f"{secrets.randbelow(1000000):06d}"
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=15)).replace(tzinfo=None)
+    conn.execute(
+        "UPDATE app_auth_email_verifications SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL",
+        (user_id,),
+    )
+    conn.execute(
+        """
+        INSERT INTO app_auth_email_verifications (user_id, email, verify_code, expires_at, used_at, created_at)
+        VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
+        """,
+        (user_id, email, verify_code, expires_at),
+    )
+    return {
+        "sent": True,
+        "expires_minutes": 15,
+        "email_masked": re.sub(r"(^.).+(@.+$)", r"\1***\2", email),
+        "dev_verify_code": verify_code if os.getenv("AUTH_DEV_EXPOSE_VERIFY_CODE", "1").strip().lower() not in {"0", "false", "no"} else "",
+    }
+
+
+def _register_auth_user(
+    username: str,
+    password: str,
+    display_name: str = "",
+    email: str = "",
+    invite_code: str = "",
+) -> tuple[str, dict, dict]:
+    normalized_username = (username or "").strip()
+    pwd = (password or "").strip()
+    display = (display_name or "").strip()
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        normalized_email = f"{normalized_username.lower()}@local.invalid"
+    if not re.fullmatch(r"[A-Za-z0-9_.\-]{3,32}", normalized_username):
+        raise ValueError("用户名仅支持 3-32 位英文、数字、下划线、点和中划线")
+    if len(pwd) < 6:
+        raise ValueError("密码至少 6 位")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        invite = _assert_invite_valid(conn, invite_code)
+        exists = conn.execute("SELECT id FROM app_auth_users WHERE username = ?", (normalized_username,)).fetchone()
+        if exists:
+            raise RuntimeError("用户名已存在")
+        email_exists = conn.execute("SELECT id FROM app_auth_users WHERE email = ? LIMIT 1", (normalized_email,)).fetchone()
+        if email_exists:
+            raise RuntimeError("邮箱已被注册")
+        conn.execute(
+            """
+            INSERT INTO app_auth_users (
+                username, password_hash, display_name, email, email_verified, role, tier, invite_code_used, is_active, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, 1, 'limited', 'limited', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (normalized_username, _hash_password(pwd), display, normalized_email, invite),
+        )
+        _reserve_invite_use(conn, invite)
+        _invalidate_auth_users_count_cache()
+        row = conn.execute(
+            "SELECT id, username, display_name, email, role, tier, email_verified FROM app_auth_users WHERE username = ? LIMIT 1",
+            (normalized_username,),
+        ).fetchone()
+        if not row:
+            raise RuntimeError("注册后未找到用户")
+        user_id = int(row[0])
+        token = _new_session_token()
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=max(AUTH_SESSION_DAYS, 1))).replace(tzinfo=None)
+        conn.execute("DELETE FROM app_auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP")
+        conn.execute(
+            "INSERT INTO app_auth_sessions (user_id, session_token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (user_id, token_hash, expires_at),
+        )
+        conn.execute(
+            """
+            DELETE FROM app_auth_sessions
+            WHERE user_id = ? AND id NOT IN (
+                SELECT id FROM app_auth_sessions WHERE user_id = ? ORDER BY id DESC LIMIT 10
+            )
+            """,
+            (user_id, user_id),
+        )
+        user = {
+            "id": user_id,
+            "username": str(row[1] or ""),
+            "display_name": str(row[2] or ""),
+            "email": str(row[3] or ""),
+            "role": str(row[4] or "limited"),
+            "tier": str(row[5] or "limited"),
+            "email_verified": int((row[6] or 0)) == 1,
+        }
+        return token, user, {}
+    finally:
+        conn.close()
+
+
+def _login_auth_user(username: str, password: str) -> tuple[str, dict]:
+    normalized_username = (username or "").strip()
+    pwd = (password or "").strip()
+    if not normalized_username or not pwd:
+        raise ValueError("用户名和密码不能为空")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute(
+            "SELECT id, username, display_name, password_hash, is_active, email, role, tier, email_verified, failed_login_count, locked_until FROM app_auth_users WHERE username = ? LIMIT 1",
+            (normalized_username,),
+        ).fetchone()
+        if not row or int((row[4] or 0)) != 1:
+            raise RuntimeError("用户名或密码错误")
+        if _user_locked(row[10]):
+            raise RuntimeError(f"账号已临时锁定，请 {AUTH_LOCK_MINUTES} 分钟后再试")
+        if not _verify_password(pwd, str(row[3] or "")):
+            _register_login_failure(conn, int(row[0]))
+            raise RuntimeError("用户名或密码错误")
+        user_id = int(row[0])
+        _clear_login_failure(conn, user_id)
+        token = _new_session_token()
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=max(AUTH_SESSION_DAYS, 1))).replace(tzinfo=None)
+        conn.execute("DELETE FROM app_auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP")
+        conn.execute(
+            "INSERT INTO app_auth_sessions (user_id, session_token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (user_id, token_hash, expires_at),
+        )
+        conn.execute(
+            """
+            DELETE FROM app_auth_sessions
+            WHERE user_id = ? AND id NOT IN (
+                SELECT id FROM app_auth_sessions WHERE user_id = ? ORDER BY id DESC LIMIT 10
+            )
+            """,
+            (user_id, user_id),
+        )
+        return token, {
+            "id": user_id,
+            "username": str(row[1] or ""),
+            "display_name": str(row[2] or ""),
+            "email": str(row[5] or ""),
+            "role": str(row[6] or "limited"),
+            "tier": str(row[7] or "limited"),
+            "email_verified": int((row[8] or 0)) == 1,
+        }
+    finally:
+        conn.close()
+
+
+def _verify_email_code(username: str = "", email: str = "", verify_code: str = "") -> dict:
+    normalized_username = (username or "").strip()
+    normalized_email = (email or "").strip().lower()
+    normalized_code = (verify_code or "").strip()
+    if not normalized_code:
+        raise ValueError("验证码不能为空")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        if normalized_username:
+            user = conn.execute("SELECT id, username, email FROM app_auth_users WHERE username = ? LIMIT 1", (normalized_username,)).fetchone()
+        elif normalized_email:
+            user = conn.execute("SELECT id, username, email FROM app_auth_users WHERE email = ? LIMIT 1", (normalized_email,)).fetchone()
+        else:
+            raise ValueError("请提供用户名或邮箱")
+        if not user:
+            raise RuntimeError("用户不存在")
+        user_id = int(user[0])
+        user_email = str(user[2] or "").strip().lower()
+        row = conn.execute(
+            """
+            SELECT id
+            FROM app_auth_email_verifications
+            WHERE user_id = ?
+              AND email = ?
+              AND verify_code = ?
+              AND used_at IS NULL
+              AND expires_at > CURRENT_TIMESTAMP
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user_id, user_email, normalized_code),
+        ).fetchone()
+        if not row:
+            raise RuntimeError("验证码无效或已过期")
+        conn.execute("UPDATE app_auth_email_verifications SET used_at = CURRENT_TIMESTAMP WHERE id = ?", (int(row[0]),))
+        conn.execute(
+            "UPDATE app_auth_users SET email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (user_id,),
+        )
+        return {"user_id": user_id, "username": str(user[1] or ""), "email": user_email, "verified": True}
+    finally:
+        conn.close()
+
+
+def _resend_email_verification(username: str = "", email: str = "") -> dict:
+    normalized_username = (username or "").strip()
+    normalized_email = (email or "").strip().lower()
+    if not normalized_username and not normalized_email:
+        raise ValueError("请提供用户名或邮箱")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        if normalized_username:
+            user = conn.execute(
+                "SELECT id, username, email, email_verified FROM app_auth_users WHERE username = ? LIMIT 1",
+                (normalized_username,),
+            ).fetchone()
+        else:
+            user = conn.execute(
+                "SELECT id, username, email, email_verified FROM app_auth_users WHERE email = ? LIMIT 1",
+                (normalized_email,),
+            ).fetchone()
+        if not user:
+            raise RuntimeError("用户不存在，请先注册")
+        if int((user[3] or 0)) == 1:
+            raise RuntimeError("该账号邮箱已验证，无需重复发送")
+        payload = _create_email_verification(conn, int(user[0]), str(user[2] or "").strip().lower())
+        payload["username"] = str(user[1] or "")
+        return payload
+    finally:
+        conn.close()
+
+
+def _forgot_password(username_or_email: str = "") -> dict:
+    key = (username_or_email or "").strip()
+    if not key:
+        raise ValueError("请输入账号或邮箱")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute(
+            """
+            SELECT id, username, email, is_active
+            FROM app_auth_users
+            WHERE username = ? OR email = ?
+            LIMIT 1
+            """,
+            (key, key.lower()),
+        ).fetchone()
+        if not row or int((row[3] or 0)) != 1:
+            return {"sent": True}
+        user_id = int(row[0])
+        username = str(row[1] or "")
+        code = f"{secrets.randbelow(1000000):06d}"
+        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=15)).replace(tzinfo=None)
+        conn.execute(
+            "UPDATE app_auth_password_resets SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL",
+            (user_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO app_auth_password_resets (user_id, username, reset_code, expires_at, used_at, created_at)
+            VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
+            """,
+            (user_id, username, code, expires_at),
+        )
+        return {
+            "sent": True,
+            "username": username,
+            "expires_minutes": 15,
+            "dev_reset_code": code if os.getenv("AUTH_DEV_EXPOSE_VERIFY_CODE", "1").strip().lower() not in {"0", "false", "no"} else "",
+        }
+    finally:
+        conn.close()
+
+
+def _reset_password_with_code(username: str = "", reset_code: str = "", new_password: str = "") -> dict:
+    uname = (username or "").strip()
+    code = (reset_code or "").strip()
+    pwd = (new_password or "").strip()
+    if not uname or not code or not pwd:
+        raise ValueError("缺少用户名、验证码或新密码")
+    if len(pwd) < 6:
+        raise ValueError("新密码至少6位")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        user = conn.execute("SELECT id, username FROM app_auth_users WHERE username = ? LIMIT 1", (uname,)).fetchone()
+        if not user:
+            raise RuntimeError("用户不存在")
+        user_id = int(user[0])
+        row = conn.execute(
+            """
+            SELECT id
+            FROM app_auth_password_resets
+            WHERE user_id = ?
+              AND username = ?
+              AND reset_code = ?
+              AND used_at IS NULL
+              AND expires_at > CURRENT_TIMESTAMP
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user_id, uname, code),
+        ).fetchone()
+        if not row:
+            raise RuntimeError("重置码无效或已过期")
+        conn.execute("UPDATE app_auth_password_resets SET used_at = CURRENT_TIMESTAMP WHERE id = ?", (int(row[0]),))
+        conn.execute(
+            "UPDATE app_auth_users SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (_hash_password(pwd), user_id),
+        )
+        conn.execute("DELETE FROM app_auth_sessions WHERE user_id = ?", (user_id,))
+        return {"ok": True, "username": uname}
+    finally:
+        conn.close()
+
+
+def _consume_trend_daily_quota(user: dict | None) -> dict:
+    if not user:
+        return {"allowed": True, "limit": None, "used": 0, "remaining": None}
+    role = str(user.get("role") or user.get("tier") or "limited")
+    limit = TREND_DAILY_LIMIT_BY_ROLE.get(role)
+    if not limit:
+        return {"allowed": True, "limit": None, "used": 0, "remaining": None}
+    user_id = int(user.get("id") or 0)
+    if user_id <= 0:
+        return {"allowed": False, "limit": limit, "used": limit, "remaining": 0}
+    usage_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute(
+            "SELECT trend_count FROM app_auth_usage_daily WHERE user_id = ? AND usage_date = ? LIMIT 1",
+            (user_id, usage_date),
+        ).fetchone()
+        used = int((row[0] if row else 0) or 0)
+        if used >= limit:
+            return {"allowed": False, "limit": limit, "used": used, "remaining": 0}
+        if row:
+            conn.execute(
+                "UPDATE app_auth_usage_daily SET trend_count = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND usage_date = ?",
+                (used + 1, user_id, usage_date),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO app_auth_usage_daily (user_id, usage_date, trend_count, created_at, updated_at) VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (user_id, usage_date),
+            )
+        return {"allowed": True, "limit": limit, "used": used + 1, "remaining": max(limit - (used + 1), 0)}
+    finally:
+        conn.close()
+
+
+def _get_trend_daily_quota_status(user: dict | None) -> dict:
+    if not user:
+        return {"limit": None, "used": 0, "remaining": None}
+    role = str(user.get("role") or user.get("tier") or "limited")
+    limit = TREND_DAILY_LIMIT_BY_ROLE.get(role)
+    if not limit:
+        return {"limit": None, "used": 0, "remaining": None}
+    user_id = int(user.get("id") or 0)
+    usage_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute(
+            "SELECT trend_count FROM app_auth_usage_daily WHERE user_id = ? AND usage_date = ? LIMIT 1",
+            (user_id, usage_date),
+        ).fetchone()
+        used = int((row[0] if row else 0) or 0)
+        return {"limit": limit, "used": used, "remaining": max(limit - used, 0)}
+    finally:
+        conn.close()
+
+
+def _consume_multi_role_daily_quota(user: dict | None) -> dict:
+    if not user:
+        return {"allowed": True, "limit": None, "used": 0, "remaining": None}
+    role = str(user.get("role") or user.get("tier") or "limited")
+    limit = MULTI_ROLE_DAILY_LIMIT_BY_ROLE.get(role)
+    if not limit:
+        return {"allowed": True, "limit": None, "used": 0, "remaining": None}
+    user_id = int(user.get("id") or 0)
+    if user_id <= 0:
+        return {"allowed": False, "limit": limit, "used": limit, "remaining": 0}
+    usage_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute(
+            "SELECT multi_role_count FROM app_auth_usage_daily WHERE user_id = ? AND usage_date = ? LIMIT 1",
+            (user_id, usage_date),
+        ).fetchone()
+        used = int((row[0] if row else 0) or 0)
+        if used >= limit:
+            return {"allowed": False, "limit": limit, "used": used, "remaining": 0}
+        if row:
+            conn.execute(
+                "UPDATE app_auth_usage_daily SET multi_role_count = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND usage_date = ?",
+                (used + 1, user_id, usage_date),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO app_auth_usage_daily (user_id, usage_date, multi_role_count, created_at, updated_at) VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (user_id, usage_date),
+            )
+        return {"allowed": True, "limit": limit, "used": used + 1, "remaining": max(limit - (used + 1), 0)}
+    finally:
+        conn.close()
+
+
+def _get_multi_role_daily_quota_status(user: dict | None) -> dict:
+    if not user:
+        return {"limit": None, "used": 0, "remaining": None}
+    role = str(user.get("role") or user.get("tier") or "limited")
+    limit = MULTI_ROLE_DAILY_LIMIT_BY_ROLE.get(role)
+    if not limit:
+        return {"limit": None, "used": 0, "remaining": None}
+    user_id = int(user.get("id") or 0)
+    usage_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute(
+            "SELECT multi_role_count FROM app_auth_usage_daily WHERE user_id = ? AND usage_date = ? LIMIT 1",
+            (user_id, usage_date),
+        ).fetchone()
+        used = int((row[0] if row else 0) or 0)
+        return {"limit": limit, "used": used, "remaining": max(limit - used, 0)}
+    finally:
+        conn.close()
+
+
+def _validate_auth_session(token: str) -> dict | None:
+    normalized = (token or "").strip()
+    if not normalized:
+        return None
+    token_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        row = conn.execute(
+            """
+            SELECT u.id, u.username, u.display_name, u.email, u.role, u.tier, u.email_verified
+            FROM app_auth_sessions s
+            JOIN app_auth_users u ON u.id = s.user_id
+            WHERE s.session_token_hash = ?
+              AND s.expires_at > CURRENT_TIMESTAMP
+              AND u.is_active = 1
+            ORDER BY s.id DESC
+            LIMIT 1
+            """,
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE app_auth_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE session_token_hash = ?",
+            (token_hash,),
+        )
+        return {
+            "id": int(row[0]),
+            "username": str(row[1] or ""),
+            "display_name": str(row[2] or ""),
+            "email": str(row[3] or ""),
+            "role": str(row[4] or "limited"),
+            "tier": str(row[5] or "limited"),
+            "email_verified": int((row[6] or 0)) == 1,
+        }
+    finally:
+        conn.close()
+
+
+def _revoke_auth_session(token: str) -> int:
+    normalized = (token or "").strip()
+    if not normalized:
+        return 0
+    token_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        cur = conn.execute("DELETE FROM app_auth_sessions WHERE session_token_hash = ?", (token_hash,))
+        return int(getattr(cur, "rowcount", 0) or 0)
+    finally:
+        conn.close()
+
+
+def _query_auth_users(keyword: str = "", role: str = "", active: str = "", page: int = 1, page_size: int = 20) -> dict:
+    kw = (keyword or "").strip()
+    role_s = (role or "").strip().lower()
+    active_s = (active or "").strip().lower()
+    page = max(int(page or 1), 1)
+    page_size = max(min(int(page_size or 20), 200), 1)
+    where = []
+    vals: list[object] = []
+    if kw:
+        where.append("(username LIKE ? OR display_name LIKE ? OR email LIKE ?)")
+        like = f"%{kw}%"
+        vals.extend([like, like, like])
+    if role_s:
+        where.append("LOWER(role) = ?")
+        vals.append(role_s)
+    if active_s in {"1", "true", "yes", "on"}:
+        where.append("is_active = 1")
+    elif active_s in {"0", "false", "no", "off"}:
+        where.append("is_active = 0")
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        total = int((conn.execute(f"SELECT COUNT(*) FROM app_auth_users {where_sql}", tuple(vals)).fetchone()[0]) or 0)
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"""
+            SELECT id, username, display_name, email, role, tier, is_active, email_verified, failed_login_count, locked_until, created_at, updated_at, last_login_at
+            FROM app_auth_users
+            {where_sql}
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            tuple([*vals, page_size, offset]),
+        ).fetchall()
+    finally:
+        conn.close()
+    items = [
+        {
+            "id": int(r[0]),
+            "username": str(r[1] or ""),
+            "display_name": str(r[2] or ""),
+            "email": str(r[3] or ""),
+            "role": str(r[4] or "limited"),
+            "tier": str(r[5] or "limited"),
+            "is_active": int((r[6] or 0)) == 1,
+            "email_verified": int((r[7] or 0)) == 1,
+            "failed_login_count": int((r[8] or 0) or 0),
+            "locked_until": r[9],
+            "created_at": r[10],
+            "updated_at": r[11],
+            "last_login_at": r[12],
+        }
+        for r in rows
+    ]
+    usage_date_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    usage_map: dict[int, dict[str, int]] = {}
+    if items:
+        user_ids = [int(it["id"]) for it in items]
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            _ensure_auth_tables(conn)
+            placeholders = ",".join(["?"] * len(user_ids))
+            usage_rows = conn.execute(
+                f"""
+                SELECT user_id, trend_count, multi_role_count
+                FROM app_auth_usage_daily
+                WHERE usage_date = ? AND user_id IN ({placeholders})
+                """,
+                tuple([usage_date_utc, *user_ids]),
+            ).fetchall()
+            usage_map = {
+                int(r[0]): {
+                    "trend": int((r[1] or 0) or 0),
+                    "multi_role": int((r[2] or 0) or 0),
+                }
+                for r in usage_rows
+            }
+        finally:
+            conn.close()
+    for item in items:
+        role_key = str(item.get("role") or item.get("tier") or "limited")
+        usage = usage_map.get(int(item["id"]), {"trend": 0, "multi_role": 0})
+        trend_limit = TREND_DAILY_LIMIT_BY_ROLE.get(role_key)
+        trend_used = int(usage.get("trend", 0))
+        multi_role_limit = MULTI_ROLE_DAILY_LIMIT_BY_ROLE.get(role_key)
+        multi_role_used = int(usage.get("multi_role", 0))
+        item["trend_usage_date_utc"] = usage_date_utc
+        item["trend_used_today"] = trend_used
+        item["trend_limit"] = trend_limit
+        item["trend_remaining_today"] = (None if trend_limit is None else max(int(trend_limit) - trend_used, 0))
+        item["multi_role_used_today"] = multi_role_used
+        item["multi_role_limit"] = multi_role_limit
+        item["multi_role_remaining_today"] = (
+            None if multi_role_limit is None else max(int(multi_role_limit) - multi_role_used, 0)
+        )
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if page_size else 0,
+    }
+
+
+def _update_auth_user(user_id: int | None = None, username: str = "", role: str | None = None, is_active: int | None = None, display_name: str | None = None) -> dict:
+    uid = int(user_id or 0)
+    uname = (username or "").strip()
+    if uid <= 0 and not uname:
+        raise ValueError("缺少 user_id 或 username")
+    updates = []
+    vals: list[object] = []
+    if role is not None:
+        role_s = str(role or "").strip().lower()
+        if role_s not in {"limited", "pro", "admin"}:
+            raise ValueError("role 必须是 limited/pro/admin")
+        updates.extend(["role = ?", "tier = ?"])
+        vals.extend([role_s, role_s])
+    if is_active is not None:
+        updates.append("is_active = ?")
+        vals.append(1 if int(is_active) else 0)
+    if display_name is not None:
+        updates.append("display_name = ?")
+        vals.append(str(display_name or "").strip())
+    if not updates:
+        raise ValueError("未提供可更新字段")
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        if uid > 0:
+            vals.append(uid)
+            conn.execute(f"UPDATE app_auth_users SET {', '.join(updates)} WHERE id = ?", tuple(vals))
+            row = conn.execute("SELECT id, username, role, tier, is_active, display_name FROM app_auth_users WHERE id = ? LIMIT 1", (uid,)).fetchone()
+        else:
+            vals.append(uname)
+            conn.execute(f"UPDATE app_auth_users SET {', '.join(updates)} WHERE username = ?", tuple(vals))
+            row = conn.execute("SELECT id, username, role, tier, is_active, display_name FROM app_auth_users WHERE username = ? LIMIT 1", (uname,)).fetchone()
+        if not row:
+            raise RuntimeError("用户不存在")
+        _invalidate_auth_users_count_cache()
+        return {
+            "id": int(row[0]),
+            "username": str(row[1] or ""),
+            "role": str(row[2] or "limited"),
+            "tier": str(row[3] or "limited"),
+            "is_active": int((row[4] or 0)) == 1,
+            "display_name": str(row[5] or ""),
+        }
+    finally:
+        conn.close()
+
+
+def _admin_reset_user_password(user_id: int | None = None, username: str = "", new_password: str = "") -> dict:
+    uid = int(user_id or 0)
+    uname = (username or "").strip()
+    pwd = (new_password or "").strip()
+    if uid <= 0 and not uname:
+        raise ValueError("缺少 user_id 或 username")
+    if len(pwd) < 6:
+        raise ValueError("新密码至少6位")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        if uid > 0:
+            conn.execute(
+                "UPDATE app_auth_users SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (_hash_password(pwd), uid),
+            )
+            row = conn.execute("SELECT id, username FROM app_auth_users WHERE id = ? LIMIT 1", (uid,)).fetchone()
+        else:
+            conn.execute(
+                "UPDATE app_auth_users SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
+                (_hash_password(pwd), uname),
+            )
+            row = conn.execute("SELECT id, username FROM app_auth_users WHERE username = ? LIMIT 1", (uname,)).fetchone()
+        if not row:
+            raise RuntimeError("用户不存在")
+        conn.execute("DELETE FROM app_auth_sessions WHERE user_id = ?", (int(row[0]),))
+        return {"id": int(row[0]), "username": str(row[1] or ""), "session_revoked": True}
+    finally:
+        conn.close()
+
+
+def _admin_reset_user_trend_quota(user_id: int | None = None, username: str = "", usage_date: str = "") -> dict:
+    uid = int(user_id or 0)
+    uname = (username or "").strip()
+    usage_date_s = (usage_date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if uid <= 0 and not uname:
+        raise ValueError("缺少 user_id 或 username")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        if uid > 0:
+            row = conn.execute(
+                "SELECT id, username FROM app_auth_users WHERE id = ? LIMIT 1",
+                (uid,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, username FROM app_auth_users WHERE username = ? LIMIT 1",
+                (uname,),
+            ).fetchone()
+        if not row:
+            raise RuntimeError("用户不存在")
+        target_user_id = int(row[0])
+        row_usage = conn.execute(
+            "SELECT trend_count, multi_role_count FROM app_auth_usage_daily WHERE user_id = ? AND usage_date = ? LIMIT 1",
+            (target_user_id, usage_date_s),
+        ).fetchone()
+        if row_usage:
+            conn.execute(
+                "UPDATE app_auth_usage_daily SET trend_count = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND usage_date = ?",
+                (target_user_id, usage_date_s),
+            )
+            old_trend = int((row_usage[0] or 0) or 0)
+        else:
+            conn.execute(
+                "INSERT INTO app_auth_usage_daily (user_id, usage_date, trend_count, multi_role_count, created_at, updated_at) VALUES (?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (target_user_id, usage_date_s),
+            )
+            old_trend = 0
+        return {
+            "id": target_user_id,
+            "username": str(row[1] or ""),
+            "usage_date": usage_date_s,
+            "previous_trend_count": old_trend,
+            "trend_count": 0,
+        }
+    finally:
+        conn.close()
+
+
+def _admin_reset_user_multi_role_quota(user_id: int | None = None, username: str = "", usage_date: str = "") -> dict:
+    uid = int(user_id or 0)
+    uname = (username or "").strip()
+    usage_date_s = (usage_date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if uid <= 0 and not uname:
+        raise ValueError("缺少 user_id 或 username")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        if uid > 0:
+            row = conn.execute(
+                "SELECT id, username FROM app_auth_users WHERE id = ? LIMIT 1",
+                (uid,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, username FROM app_auth_users WHERE username = ? LIMIT 1",
+                (uname,),
+            ).fetchone()
+        if not row:
+            raise RuntimeError("用户不存在")
+        target_user_id = int(row[0])
+        row_usage = conn.execute(
+            "SELECT trend_count, multi_role_count FROM app_auth_usage_daily WHERE user_id = ? AND usage_date = ? LIMIT 1",
+            (target_user_id, usage_date_s),
+        ).fetchone()
+        if row_usage:
+            conn.execute(
+                "UPDATE app_auth_usage_daily SET multi_role_count = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND usage_date = ?",
+                (target_user_id, usage_date_s),
+            )
+            old_multi = int((row_usage[1] or 0) or 0)
+        else:
+            conn.execute(
+                "INSERT INTO app_auth_usage_daily (user_id, usage_date, trend_count, multi_role_count, created_at, updated_at) VALUES (?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (target_user_id, usage_date_s),
+            )
+            old_multi = 0
+        return {
+            "id": target_user_id,
+            "username": str(row[1] or ""),
+            "usage_date": usage_date_s,
+            "previous_multi_role_count": old_multi,
+            "multi_role_count": 0,
+        }
+    finally:
+        conn.close()
+
+
+def _admin_reset_quota_batch(usage_date: str = "", role: str = "", usernames: list[str] | None = None) -> dict:
+    usage_date_s = (usage_date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    role_s = (role or "").strip().lower()
+    name_list = [str(x or "").strip() for x in (usernames or []) if str(x or "").strip()]
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        where = ["is_active = 1"]
+        vals: list[object] = []
+        if role_s:
+            where.append("LOWER(role) = ?")
+            vals.append(role_s)
+        if name_list:
+            placeholders = ",".join(["?"] * len(name_list))
+            where.append(f"username IN ({placeholders})")
+            vals.extend(name_list)
+        rows = conn.execute(
+            f"SELECT id, username, role FROM app_auth_users WHERE {' AND '.join(where)} ORDER BY id ASC",
+            tuple(vals),
+        ).fetchall()
+        if not rows:
+            return {
+                "usage_date": usage_date_s,
+                "matched_users": 0,
+                "affected_rows": 0,
+                "items": [],
+            }
+        user_ids = [int(r[0]) for r in rows]
+        placeholders = ",".join(["?"] * len(user_ids))
+        args = tuple([usage_date_s, *user_ids])
+        cur = conn.execute(
+            f"""
+            UPDATE app_auth_usage_daily
+            SET trend_count = 0,
+                multi_role_count = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE usage_date = ? AND user_id IN ({placeholders})
+            """,
+            args,
+        )
+        affected_rows = int(getattr(cur, "rowcount", 0) or 0)
+        items = [
+            {"id": int(r[0]), "username": str(r[1] or ""), "role": str(r[2] or "")}
+            for r in rows
+        ]
+        return {
+            "usage_date": usage_date_s,
+            "matched_users": len(items),
+            "affected_rows": affected_rows,
+            "items": items,
+        }
+    finally:
+        conn.close()
+
+
+def _query_auth_sessions(keyword: str = "", user_id: int | None = None, page: int = 1, page_size: int = 20) -> dict:
+    kw = (keyword or "").strip()
+    uid = int(user_id or 0)
+    page = max(int(page or 1), 1)
+    page_size = max(min(int(page_size or 20), 200), 1)
+    where = ["s.expires_at > CURRENT_TIMESTAMP"]
+    vals: list[object] = []
+    if uid > 0:
+        where.append("s.user_id = ?")
+        vals.append(uid)
+    if kw:
+        where.append("(u.username LIKE ? OR u.display_name LIKE ? OR u.email LIKE ?)")
+        like = f"%{kw}%"
+        vals.extend([like, like, like])
+    where_sql = f"WHERE {' AND '.join(where)}"
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        total = int(
+            (
+                conn.execute(
+                    f"SELECT COUNT(*) FROM app_auth_sessions s JOIN app_auth_users u ON u.id = s.user_id {where_sql}",
+                    tuple(vals),
+                ).fetchone()[0]
+            )
+            or 0
+        )
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"""
+            SELECT s.id, s.user_id, u.username, u.display_name, s.expires_at, s.created_at, s.last_seen_at, s.session_token_hash
+            FROM app_auth_sessions s
+            JOIN app_auth_users u ON u.id = s.user_id
+            {where_sql}
+            ORDER BY s.last_seen_at DESC, s.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            tuple([*vals, page_size, offset]),
+        ).fetchall()
+    finally:
+        conn.close()
+    items = [
+        {
+            "session_id": int(r[0]),
+            "user_id": int(r[1]),
+            "username": str(r[2] or ""),
+            "display_name": str(r[3] or ""),
+            "expires_at": r[4],
+            "created_at": r[5],
+            "last_seen_at": r[6],
+            "token_hash_preview": f"{str(r[7] or '')[:12]}...",
+        }
+        for r in rows
+    ]
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if page_size else 0,
+    }
+
+
+def _revoke_auth_session_by_id(session_id: int) -> int:
+    sid = int(session_id or 0)
+    if sid <= 0:
+        return 0
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        cur = conn.execute("DELETE FROM app_auth_sessions WHERE id = ?", (sid,))
+        return int(getattr(cur, "rowcount", 0) or 0)
+    finally:
+        conn.close()
+
+
+def _revoke_auth_sessions_by_user(user_id: int) -> int:
+    uid = int(user_id or 0)
+    if uid <= 0:
+        return 0
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        cur = conn.execute("DELETE FROM app_auth_sessions WHERE user_id = ?", (uid,))
+        return int(getattr(cur, "rowcount", 0) or 0)
+    finally:
+        conn.close()
+
+
+def _query_auth_audit_logs(keyword: str = "", event_type: str = "", result: str = "", page: int = 1, page_size: int = 20) -> dict:
+    kw = (keyword or "").strip()
+    evt = (event_type or "").strip()
+    res = (result or "").strip()
+    page = max(int(page or 1), 1)
+    page_size = max(min(int(page_size or 20), 200), 1)
+    where = []
+    vals: list[object] = []
+    if kw:
+        where.append("(username LIKE ? OR detail LIKE ? OR ip LIKE ?)")
+        like = f"%{kw}%"
+        vals.extend([like, like, like])
+    if evt:
+        where.append("event_type = ?")
+        vals.append(evt)
+    if res:
+        where.append("result = ?")
+        vals.append(res)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        total = int((conn.execute(f"SELECT COUNT(*) FROM app_auth_audit_logs {where_sql}", tuple(vals)).fetchone()[0]) or 0)
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"""
+            SELECT id, event_type, username, user_id, result, detail, ip, user_agent, created_at
+            FROM app_auth_audit_logs
+            {where_sql}
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            tuple([*vals, page_size, offset]),
+        ).fetchall()
+    finally:
+        conn.close()
+    items = [
+        {
+            "id": int(r[0]),
+            "event_type": str(r[1] or ""),
+            "username": str(r[2] or ""),
+            "user_id": int((r[3] or 0) or 0),
+            "result": str(r[4] or ""),
+            "detail": str(r[5] or ""),
+            "ip": str(r[6] or ""),
+            "user_agent": str(r[7] or ""),
+            "created_at": r[8],
+        }
+        for r in rows
+    ]
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if page_size else 0,
+    }
 
 
 def _extract_llm_result_marker(text: str) -> dict:
@@ -5150,7 +6625,14 @@ def _stock_news_is_fresh(conn: sqlite3.Connection, ts_code: str):
     return latest_date == today_cn, latest_pub
 
 
-def _ensure_stock_news_fresh(ts_code: str, company_name: str, page_size: int = 20, score_model: str = DEFAULT_LLM_MODEL):
+def _ensure_stock_news_fresh(
+    ts_code: str,
+    company_name: str,
+    page_size: int = 20,
+    score_model: str = DEFAULT_LLM_MODEL,
+    score_limit: int = 3,
+    score_timeout_s: int = 90,
+):
     conn = sqlite3.connect(DB_PATH)
     try:
         fresh, latest_pub = _stock_news_is_fresh(conn, ts_code)
@@ -5158,20 +6640,34 @@ def _ensure_stock_news_fresh(ts_code: str, company_name: str, page_size: int = 2
         conn.close()
     if fresh:
         return {"fetched": False, "scored": False, "latest_pub": latest_pub}
-    fetch_info = fetch_stock_news_now(ts_code=ts_code, company_name=company_name, page_size=page_size)
-    score_info = score_stock_news_now(ts_code=ts_code, limit=min(page_size, 10), model=score_model)
+    out = {"fetched": False, "scored": False, "latest_pub": latest_pub, "fetch_error": "", "score_error": ""}
+    fetch_info = {"stdout": "", "stderr": ""}
+    score_info = {"stdout": "", "stderr": ""}
+    try:
+        fetch_info = fetch_stock_news_now(ts_code=ts_code, company_name=company_name, page_size=page_size)
+        out["fetched"] = True
+    except Exception as exc:
+        out["fetch_error"] = str(exc)
+    try:
+        safe_limit = max(1, min(int(score_limit or 1), min(page_size, 10)))
+        score_info = score_stock_news_now(
+            ts_code=ts_code,
+            limit=safe_limit,
+            model=score_model,
+            timeout_s=max(30, int(score_timeout_s or 90)),
+        )
+        out["scored"] = True
+    except Exception as exc:
+        out["score_error"] = str(exc)
     conn = sqlite3.connect(DB_PATH)
     try:
         latest_pub = _stock_news_latest_pub(conn, ts_code)
     finally:
         conn.close()
-    return {
-        "fetched": True,
-        "scored": True,
-        "latest_pub": latest_pub,
-        "fetch_stdout": fetch_info.get("stdout", ""),
-        "score_stdout": score_info.get("stdout", ""),
-    }
+    out["latest_pub"] = latest_pub
+    out["fetch_stdout"] = fetch_info.get("stdout", "")
+    out["score_stdout"] = score_info.get("stdout", "")
+    return out
 
 
 def _build_stock_news_summary(conn: sqlite3.Connection, ts_code: str):
@@ -5285,8 +6781,10 @@ def build_multi_role_context(ts_code: str, lookback: int):
         stock_news_freshness = _ensure_stock_news_fresh(
             ts_code=ts_code,
             company_name=company_name,
-            page_size=20,
+            page_size=10,
             score_model=DEFAULT_LLM_MODEL,
+            score_limit=2,
+            score_timeout_s=60,
         )
 
     conn = sqlite3.connect(DB_PATH)
@@ -6314,6 +7812,77 @@ class ApiHandler(BaseHTTPRequestHandler):
             return auth_header[7:].strip()
         return (self.headers.get("X-Admin-Token", "") or "").strip()
 
+    def _configured_admin_token(self) -> str:
+        return (BACKEND_ADMIN_TOKEN or "").strip()
+
+    def _resolve_auth_context(self) -> dict:
+        token = self._extract_admin_token()
+        configured = self._configured_admin_token()
+        if configured and token and secrets.compare_digest(token, configured):
+            return {
+                "authenticated": True,
+                "auth_mode": "admin_token",
+                "is_admin": True,
+                "user": {
+                    "id": 0,
+                    "username": "system_admin",
+                    "display_name": "System Admin",
+                    "role": "admin",
+                    "tier": "admin",
+                    "email_verified": True,
+                },
+            }
+        user = _validate_auth_session(token) if token else None
+        return {
+            "authenticated": bool(user),
+            "auth_mode": "account_session" if user else "anonymous",
+            "is_admin": bool(user and str(user.get("role") or "") == "admin"),
+            "user": user,
+        }
+
+    def _admin_token_required(self) -> bool:
+        return bool(self._configured_admin_token()) or _active_auth_users_count() > 0
+
+    def _token_valid(self, token: str) -> bool:
+        configured_token = self._configured_admin_token()
+        normalized = (token or "").strip()
+        if configured_token and normalized and secrets.compare_digest(normalized, configured_token):
+            return True
+        return _validate_auth_session(normalized) is not None
+
+    def _requires_auth_for_path(self, path: str) -> bool:
+        if not path.startswith("/api/"):
+            return False
+        if path in AUTH_PUBLIC_API_PATHS:
+            return False
+        return self._admin_token_required()
+
+    def _has_permission(self, auth_ctx: dict, path: str) -> bool:
+        if not path.startswith("/api/"):
+            return True
+        if path in AUTH_PUBLIC_API_PATHS:
+            return True
+        if auth_ctx.get("is_admin"):
+            return True
+        user = auth_ctx.get("user") or {}
+        role = str(user.get("role") or user.get("tier") or "limited")
+        perms = ROLE_PERMISSIONS.get(role, set())
+        if "*" in perms:
+            return True
+        if path == "/api/llm/trend":
+            return "trend_analyze" in perms
+        if path in {"/api/llm/multi-role", "/api/llm/multi-role/start", "/api/llm/multi-role/task"}:
+            return "multi_role_analyze" in perms
+        if path in {"/api/stocks", "/api/stocks/filters"}:
+            return "multi_role_analyze" in perms
+        if path == "/api/news/daily-summaries":
+            return "daily_summary_read" in perms
+        if path in {"/api/news", "/api/news/sources"}:
+            return "news_read" in perms
+        if path in {"/api/stock-news", "/api/stock-news/sources"}:
+            return "stock_news_read" in perms
+        return False
+
     def _client_is_private(self) -> bool:
         raw_ip = (self.client_address[0] if self.client_address else "") or ""
         try:
@@ -6332,13 +7901,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"当前来源不在允许列表中: {origin}"}, status=403)
             return True
 
-        configured_token = (BACKEND_ADMIN_TOKEN or "").strip()
-        if not configured_token:
+        if not self._admin_token_required():
             # Dev/LAN default: if admin token is not configured, protected routes are open.
             return False
 
         token = self._extract_admin_token()
-        if not token or not secrets.compare_digest(token, configured_token):
+        if not token or not self._token_valid(token):
             self._send_json({"error": "缺少或无效的管理令牌"}, status=401)
             return True
 
@@ -6372,6 +7940,35 @@ class ApiHandler(BaseHTTPRequestHandler):
         return {
             "api_endpoints_catalog": API_ENDPOINTS_CATALOG,
             "db_label": db_label,
+            "admin_token_required": self._admin_token_required,
+            "token_valid": self._token_valid,
+            "extract_admin_token": self._extract_admin_token,
+            "validate_auth_session": _validate_auth_session,
+            "register_auth_user": _register_auth_user,
+            "login_auth_user": _login_auth_user,
+            "verify_email_code": _verify_email_code,
+            "resend_email_verification": _resend_email_verification,
+            "forgot_password": _forgot_password,
+            "reset_password_with_code": _reset_password_with_code,
+            "create_invite_code": _create_invite_code,
+            "revoke_auth_session": _revoke_auth_session,
+            "active_auth_users_count": _active_auth_users_count,
+            "consume_trend_daily_quota": _consume_trend_daily_quota,
+            "get_trend_daily_quota_status": _get_trend_daily_quota_status,
+            "consume_multi_role_daily_quota": _consume_multi_role_daily_quota,
+            "get_multi_role_daily_quota_status": _get_multi_role_daily_quota_status,
+            "ensure_auth_tables": _ensure_auth_tables,
+            "record_auth_audit": _record_auth_audit,
+            "query_auth_users": _query_auth_users,
+            "update_auth_user": _update_auth_user,
+            "admin_reset_user_password": _admin_reset_user_password,
+            "admin_reset_user_trend_quota": _admin_reset_user_trend_quota,
+            "admin_reset_user_multi_role_quota": _admin_reset_user_multi_role_quota,
+            "admin_reset_quota_batch": _admin_reset_quota_batch,
+            "query_auth_sessions": _query_auth_sessions,
+            "revoke_auth_session_by_id": _revoke_auth_session_by_id,
+            "revoke_auth_sessions_by_user": _revoke_auth_sessions_by_user,
+            "query_auth_audit_logs": _query_auth_audit_logs,
             "DEFAULT_LLM_MODEL": DEFAULT_LLM_MODEL,
             "DB_PATH": DB_PATH,
             "sqlite3": sqlite3,
@@ -6427,11 +8024,29 @@ class ApiHandler(BaseHTTPRequestHandler):
             "query_investment_signal_timeline": query_investment_signal_timeline,
             "query_macro_indicators": query_macro_indicators,
             "query_macro_series": query_macro_series,
+            "build_info": _build_info_payload,
+            "permission_matrix": _role_permission_matrix,
+            "effective_permissions_for_user": _effective_permissions_for_user,
         }
 
     def do_POST(self):
         parsed = urlparse(self.path)
         if self._reject_protected_request():
+            return
+        auth_ctx = self._resolve_auth_context()
+        if self._requires_auth_for_path(parsed.path) and not auth_ctx.get("authenticated"):
+            self._send_json(
+                {
+                    "error": "请先登录后再访问该接口",
+                    "code": "AUTH_REQUIRED",
+                    "path": parsed.path,
+                    "hint": "请先完成账号登录，若已登录请重新登录刷新会话。",
+                },
+                status=401,
+            )
+            return
+        if self._requires_auth_for_path(parsed.path) and not self._has_permission(auth_ctx, parsed.path):
+            self._send_json(_permission_denied_payload(parsed.path), status=403)
             return
         try:
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -6444,7 +8059,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "请求体必须是 JSON"}, status=400)
             return
 
-        if system_routes.dispatch_post(self, parsed, payload, self._route_deps()):
+        deps = self._route_deps()
+        deps["auth_context"] = auth_ctx
+        if system_routes.dispatch_post(self, parsed, payload, deps):
             return
 
         self._send_json({"error": "Not Found"}, status=404)
@@ -6454,8 +8071,24 @@ class ApiHandler(BaseHTTPRequestHandler):
         host = self.headers.get("Host", f"127.0.0.1:{PORT}").split(":")[0]
         if self._reject_protected_request():
             return
+        auth_ctx = self._resolve_auth_context()
+        if self._requires_auth_for_path(parsed.path) and not auth_ctx.get("authenticated"):
+            self._send_json(
+                {
+                    "error": "请先登录后再访问该接口",
+                    "code": "AUTH_REQUIRED",
+                    "path": parsed.path,
+                    "hint": "请先完成账号登录，若已登录请重新登录刷新会话。",
+                },
+                status=401,
+            )
+            return
+        if self._requires_auth_for_path(parsed.path) and not self._has_permission(auth_ctx, parsed.path):
+            self._send_json(_permission_denied_payload(parsed.path), status=403)
+            return
 
         deps = self._route_deps()
+        deps["auth_context"] = auth_ctx
         if system_routes.dispatch_get(self, parsed, host, deps):
             return
         if stock_routes.dispatch_get(self, parsed, deps):

@@ -5,20 +5,24 @@
       page-subtitle="过滤国内源，只看国际财经链路。"
       :query-key="['news', 'global', filters]"
       :query-fn="() => fetchNews({ ...filters, exclude_sources: excludedSources.join(','), exclude_source_prefixes: excludedPrefixes.join(',') })"
-      v-model:filters="filters"
+      :filters="filters"
       :show-source="true"
       :load-sources="true"
+      :hide-filter-panel="isLimited"
     />
   </AppShell>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import AppShell from '../../shared/ui/AppShell.vue'
 import { fetchNews } from '../../services/api/news'
 import NewsListPageBlock from './NewsListPageBlock.vue'
+import { useAuthStore } from '../../stores/auth'
 
 const excludedSources = ['cn_sina_7x24', 'cn_eastmoney_fastnews']
 const excludedPrefixes = ['cn_']
 const filters = reactive({ source: '', keyword: '', date_from: '', date_to: '', finance_levels: '极高,高,中', page: 1, page_size: 20 })
+const auth = useAuthStore()
+const isLimited = computed(() => String(auth.role || '').toLowerCase() === 'limited')
 </script>

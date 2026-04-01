@@ -10,7 +10,7 @@
           <div class="relative mb-5">
             <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/82">Zanbo Quant</div>
             <div class="mt-3 text-xl font-extrabold">研究终端</div>
-            <div class="mt-2 text-sm leading-6 text-white/72">统一股票、新闻、信号、群聊与系统监控。</div>
+            <div class="mt-2 text-sm leading-6 text-white/72">统一股票、新闻、信号</div>
           </div>
           <nav class="relative space-y-5">
             <div v-for="group in navGroups" :key="group.title" class="space-y-2">
@@ -53,6 +53,13 @@
               <button class="rounded-[20px] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-3 text-sm font-semibold text-white" @click="ui.toggleSidebar()">
                 {{ ui.sidebarOpen ? '收起导航' : '展开导航' }}
               </button>
+              <button
+                v-if="hasAdminToken"
+                class="rounded-[20px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]"
+                @click="logout"
+              >
+                退出登录
+              </button>
             </div>
           </div>
         </header>
@@ -66,10 +73,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useUiStore } from '../../stores/ui'
 import { useRealtimeStore } from '../../stores/realtime'
+import { useAuthStore } from '../../stores/auth'
+import { clearAuthStatusCache, fetchAuthStatus, logoutAuth } from '../../services/api/auth'
+import { clearAdminToken, readAdminToken } from '../../services/authToken'
+import { hasPermissionByEffective, type AppPermission } from '../../app/permissions'
 
 const props = defineProps<{
   title: string
@@ -78,7 +89,11 @@ const props = defineProps<{
 
 const ui = useUiStore()
 const realtime = useRealtimeStore()
+const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
+const hasAdminToken = ref(!!readAdminToken())
+const currentRole = ref('')
 
 const sidebarClasses = computed(() => [
   'hidden shrink-0 xl:block',
@@ -88,52 +103,63 @@ const sidebarClasses = computed(() => [
 const title = computed(() => props.title)
 const subtitle = computed(() => props.subtitle || '统一研究、监控与信号分析工作流')
 
-const navGroups = [
+const fullNavGroups = [
   {
     title: '总控',
     items: [
-      { to: '/dashboard', label: '总控台', desc: '全局健康度、热点、任务与新鲜度' },
-      { to: '/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板' },
-      { to: '/system/database-audit', label: '数据库审计', desc: '缺口、重复、未评分、陈旧数据' },
+      { to: '/dashboard', label: '总控台', desc: '全局健康度、热点、任务与新鲜度', permission: 'admin_system' as AppPermission },
+      { to: '/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板', permission: 'admin_system' as AppPermission },
+      { to: '/system/database-audit', label: '数据库审计', desc: '缺口、重复、未评分、陈旧数据', permission: 'admin_system' as AppPermission },
+      { to: '/system/invites', label: '邀请码管理', desc: '管理员邀请码与账号规模管理', permission: 'admin_users' as AppPermission },
+      { to: '/system/users', label: '用户与会话', desc: '用户、会话、审计日志管理', permission: 'admin_users' as AppPermission },
     ],
   },
   {
     title: '股票',
     items: [
-      { to: '/stocks/list', label: '股票列表', desc: '代码、简称、市场、地区快速检索' },
-      { to: '/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序' },
-      { to: '/stocks/detail/000001.SZ', label: '股票详情', desc: '统一聚合价格、新闻、群聊与分析' },
-      { to: '/stocks/prices', label: '价格中心', desc: '日线 + 分钟线统一查询与图表' },
+      { to: '/stocks/list', label: '股票列表', desc: '代码、简称、市场、地区快速检索', permission: 'stocks_advanced' as AppPermission },
+      { to: '/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序', permission: 'stocks_advanced' as AppPermission },
+      { to: '/stocks/detail/000001.SZ', label: '股票详情', desc: '统一聚合价格、新闻、群聊与分析', permission: 'stocks_advanced' as AppPermission },
+      { to: '/stocks/prices', label: '价格中心', desc: '日线 + 分钟线统一查询与图表', permission: 'stocks_advanced' as AppPermission },
     ],
   },
   {
     title: '情报与信号',
     items: [
-      { to: '/intelligence/global-news', label: '国际资讯', desc: '全球财经新闻、评分与映射' },
-      { to: '/intelligence/cn-news', label: '国内资讯', desc: '新浪 / 东财资讯统一看' },
-      { to: '/intelligence/stock-news', label: '个股新闻', desc: '聚焦单股新闻与立即采集' },
-      { to: '/intelligence/daily-summaries', label: '新闻日报总结', desc: '日报生成、历史查询与双格式导出' },
-      { to: '/signals/overview', label: '投资信号', desc: '股票与主题信号总览' },
-      { to: '/signals/themes', label: '主题热点', desc: '主题强度、方向、预期与证据链' },
-      { to: '/signals/audit', label: '信号审计', desc: '误映射、弱信号与质量问题' },
-      { to: '/signals/quality-config', label: '信号配置', desc: '规则参数与映射黑名单' },
-      { to: '/signals/state-timeline', label: '状态时间线', desc: '状态机迁移与市场预期层' },
+      { to: '/intelligence/global-news', label: '国际资讯', desc: '全球财经新闻、评分与映射', permission: 'news_read' as AppPermission },
+      { to: '/intelligence/cn-news', label: '国内资讯', desc: '新浪 / 东财资讯统一看', permission: 'news_read' as AppPermission },
+      { to: '/intelligence/stock-news', label: '个股新闻', desc: '聚焦单股新闻与立即采集', permission: 'stock_news_read' as AppPermission },
+      { to: '/intelligence/daily-summaries', label: '新闻日报总结', desc: '日报生成、历史查询与双格式导出', permission: 'daily_summary_read' as AppPermission },
+      { to: '/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced' as AppPermission },
+      { to: '/signals/themes', label: '主题热点', desc: '主题强度、方向、预期与证据链', permission: 'signals_advanced' as AppPermission },
+      { to: '/signals/audit', label: '信号审计', desc: '误映射、弱信号与质量问题', permission: 'signals_advanced' as AppPermission },
+      { to: '/signals/quality-config', label: '信号配置', desc: '规则参数与映射黑名单', permission: 'signals_advanced' as AppPermission },
+      { to: '/signals/state-timeline', label: '状态时间线', desc: '状态机迁移与市场预期层', permission: 'signals_advanced' as AppPermission },
     ],
   },
   {
-    title: '研究与群聊',
+    title: '研究与舆情',
     items: [
-      { to: '/macro', label: '宏观看板', desc: '宏观指标查询与序列趋势' },
-      { to: '/research/trend', label: '走势分析', desc: 'LLM 股票走势分析工作台' },
-      { to: '/research/reports', label: '标准报告', desc: '统一投研报告列表' },
-      { to: '/research/multi-role', label: '多角色分析', desc: 'LLM 多角色公司分析工作台' },
-      { to: '/chatrooms/overview', label: '群聊总览', desc: '群聊标签、状态、拉取健康度' },
-      { to: '/chatrooms/chatlog', label: '聊天记录', desc: '消息正文、引用和筛选查询' },
-      { to: '/chatrooms/investment', label: '投资倾向', desc: '群聊结论、情绪和标的清单' },
-      { to: '/chatrooms/candidates', label: '股票候选池', desc: '群聊汇总候选池与偏向' },
+      { to: '/macro', label: '宏观看板', desc: '宏观指标查询与序列趋势', permission: 'macro_advanced' as AppPermission },
+      { to: '/research/trend', label: '走势分析', desc: 'LLM 股票走势分析工作台', permission: 'trend_analyze' as AppPermission },
+      { to: '/research/reports', label: '标准报告', desc: '统一投研报告列表', permission: 'research_advanced' as AppPermission },
+      { to: '/research/multi-role', label: '多角色分析', desc: 'LLM 多角色公司分析工作台', permission: 'multi_role_analyze' as AppPermission },
+      { to: '/chatrooms/overview', label: '群聊总览', desc: '群聊标签、状态、拉取健康度', permission: 'chatrooms_advanced' as AppPermission },
+      { to: '/chatrooms/chatlog', label: '聊天记录', desc: '消息正文、引用和筛选查询', permission: 'chatrooms_advanced' as AppPermission },
+      { to: '/chatrooms/investment', label: '投资倾向', desc: '群聊结论、情绪和标的清单', permission: 'chatrooms_advanced' as AppPermission },
+      { to: '/chatrooms/candidates', label: '股票候选池', desc: '群聊汇总候选池与偏向', permission: 'chatrooms_advanced' as AppPermission },
     ],
   },
 ]
+
+const navGroups = computed(() => {
+  return fullNavGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => hasPermissionByEffective(auth.effectivePermissions, currentRole.value, item.permission)),
+    }))
+    .filter((group) => group.items.length > 0)
+})
 
 function isNavActive(to: string): boolean {
   const targetPath = String(to || '').split('?')[0] || ''
@@ -145,4 +171,27 @@ function isNavActive(to: string): boolean {
   }
   return false
 }
+
+async function logout() {
+  try {
+    await logoutAuth()
+  } catch {
+    // ignore logout API errors; local clear is enough for UX
+  }
+  clearAdminToken()
+  clearAuthStatusCache()
+  auth.status = null
+  auth.loaded = false
+  hasAdminToken.value = false
+  router.replace('/login')
+}
+
+onMounted(async () => {
+  try {
+    const status = await fetchAuthStatus()
+    currentRole.value = String(status.user?.role || status.user?.tier || '')
+  } catch {
+    currentRole.value = ''
+  }
+})
 </script>

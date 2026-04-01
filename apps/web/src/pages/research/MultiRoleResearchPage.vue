@@ -18,6 +18,7 @@
         </div>
         <div class="mt-2 text-sm text-[var(--muted)]">实际模型：{{ usedModel }}</div>
         <div v-if="attemptChain" class="mt-1 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
+        <div v-if="quotaHint" class="mt-1 text-sm text-[var(--muted)]">今日额度：{{ quotaHint }}</div>
       </PageSection>
 
       <PageSection title="角色视图" subtitle="优先展示按角色切分后的结论，也保留完整原文。">
@@ -50,11 +51,12 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { useMutation } from '@tanstack/vue-query'
+import { useMutation, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import { fetchMultiRoleTask, fetchStocks, triggerMultiRoleTask } from '../../services/api/stocks'
+import { fetchAuthStatus } from '../../services/api/auth'
 
 function looksLikeTsCode(value: string) {
   return /^[0-9A-Z]{6}\.(SZ|SH|BJ)$/i.test(value.trim())
@@ -85,6 +87,17 @@ let timer = 0
 const selectedRoleSection = computed(() => roleSections.value.find((item) => item.role === activeRole.value) || null)
 const selectedRoleContent = computed(() => selectedRoleSection.value?.content || fullMarkdown.value)
 const attemptChain = computed(() => attempts.value.map((item) => `${item.model || '-'}${item.error ? '×' : '√'}`).join(' -> '))
+const { data: authStatus, refetch: refetchAuthStatus } = useQuery({
+  queryKey: ['auth-status-multi-role-page'],
+  queryFn: () => fetchAuthStatus(true),
+  staleTime: 10_000,
+})
+const quotaHint = computed(() => {
+  const q = authStatus.value?.multi_role_quota as any
+  if (!q) return ''
+  if (q.limit == null) return '不限'
+  return `${q.used ?? 0} / ${q.limit}，剩余 ${q.remaining ?? 0}`
+})
 
 const mutation = useMutation({
   mutationFn: async () => {
@@ -131,6 +144,7 @@ const mutation = useMutation({
       timer = window.setTimeout(poll, 3000)
     }
     poll()
+    refetchAuthStatus()
   },
   onError: (error: Error) => {
     actionMessage.value = `分析失败：${error.message}`

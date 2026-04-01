@@ -5,10 +5,11 @@
         <div class="grid gap-3 xl:grid-cols-[180px_120px_120px] md:grid-cols-2">
           <input v-model="form.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="股票代码，如 000001.SZ" />
           <input v-model.number="form.lookback" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="回看天数" />
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" :disabled="isPending" @click="runAnalysis">
+          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-50" :disabled="isPending || quotaBlocked" @click="runAnalysis">
             {{ isPending ? '分析中...' : '分析' }}
           </button>
         </div>
+        <div v-if="quotaText" class="mt-3 text-sm text-[var(--muted)]">{{ quotaText }}</div>
       </PageSection>
 
       <div class="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -47,13 +48,14 @@
 
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref } from 'vue'
-import { useMutation } from '@tanstack/vue-query'
+import { useMutation, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import MetricGrid from '../../shared/ui/MetricGrid.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import { triggerTrendAnalysis } from '../../services/api/stocks'
+import { fetchAuthStatus } from '../../services/api/auth'
 import { formatNumber } from '../../shared/utils/format'
 import { downloadElementAsImage, downloadTextFile } from '../../shared/utils/export'
 
@@ -64,6 +66,19 @@ const form = reactive({
 
 const result = ref<Record<string, any> | null>(null)
 const analysisExportRef = ref<HTMLElement | null>(null)
+const { data: authStatus, refetch: refetchAuthStatus } = useQuery({
+  queryKey: ['auth-status-trend-page'],
+  queryFn: () => fetchAuthStatus(),
+})
+const quotaText = computed(() => {
+  const quota = authStatus.value?.trend_quota
+  if (!quota || quota.limit == null) return ''
+  return `今日剩余次数：${quota.remaining} / ${quota.limit}`
+})
+const quotaBlocked = computed(() => {
+  const quota = authStatus.value?.trend_quota
+  return !!(quota && quota.limit != null && Number(quota.remaining || 0) <= 0)
+})
 const analysisText = computed(() => result.value?.analysis || '（点击“分析”开始）')
 const actualModel = computed(() => result.value?.used_model || result.value?.model || '待执行')
 const attemptChain = computed(() =>
@@ -117,6 +132,7 @@ const mutation = useMutation({
   }),
   onSuccess: (payload: Record<string, any>) => {
     result.value = payload
+    refetchAuthStatus()
   },
   onError: (error: Error) => {
     result.value = { analysis: `分析失败：${error.message}` }

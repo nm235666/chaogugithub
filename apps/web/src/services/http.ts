@@ -1,18 +1,8 @@
 import axios from 'axios'
+import { readAdminToken } from './authToken'
 
 const resolvedBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || ''
 const bundledAdminToken = import.meta.env.VITE_ADMIN_API_TOKEN?.trim() || ''
-
-function readAdminToken() {
-  if (typeof window === 'undefined') {
-    return bundledAdminToken
-  }
-  return (
-    window.localStorage.getItem('zanbo_admin_token')?.trim() ||
-    window.sessionStorage.getItem('zanbo_admin_token')?.trim() ||
-    bundledAdminToken
-  )
-}
 
 export const http = axios.create({
   baseURL: resolvedBaseUrl,
@@ -20,7 +10,7 @@ export const http = axios.create({
 })
 
 http.interceptors.request.use((config) => {
-  const token = readAdminToken()
+  const token = readAdminToken() || bundledAdminToken
   if (token) {
     config.headers = config.headers || {}
     config.headers['X-Admin-Token'] = token
@@ -31,7 +21,10 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error?.response?.data?.error || error?.message || '请求失败'
+    const data = error?.response?.data || {}
+    const code = data?.code ? ` [${data.code}]` : ''
+    const hint = data?.hint ? `（${data.hint}）` : ''
+    const message = `${data?.error || error?.message || '请求失败'}${code}${hint}`
     return Promise.reject(new Error(message))
   },
 )

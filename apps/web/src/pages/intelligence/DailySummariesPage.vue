@@ -16,7 +16,7 @@
           </button>
         </div>
         <div class="mt-3 flex flex-wrap gap-3">
-          <button class="rounded-2xl bg-blue-700 px-4 py-3 font-semibold text-white" :disabled="isGenerating" @click="generateTodaySummary">
+          <button class="rounded-2xl bg-blue-700 px-4 py-3 font-semibold text-white disabled:opacity-50" :disabled="isGenerating || !canGenerate" @click="generateTodaySummary">
             {{ isGenerating ? '生成中...' : '生成今日总结' }}
           </button>
           <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]">
@@ -75,6 +75,7 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import { fetchDailySummaries, fetchDailySummaryTask, triggerDailySummaryGenerate } from '../../services/api/news'
+import { fetchAuthStatus } from '../../services/api/auth'
 import { formatDateTime } from '../../shared/utils/format'
 import { downloadElementAsImage, downloadTextFile } from '../../shared/utils/export'
 
@@ -148,6 +149,14 @@ const generateMutation = useMutation({
 })
 
 const isGenerating = computed(() => generateMutation.isPending.value)
+const { data: authStatus } = useQuery({
+  queryKey: ['auth-status-for-daily-summary'],
+  queryFn: () => fetchAuthStatus(),
+})
+const canGenerate = computed(() => {
+  const role = String(authStatus.value?.user?.role || authStatus.value?.user?.tier || '')
+  return role !== 'limited'
+})
 
 function selectItem(item: Record<string, any>) {
   selectedItem.value = item

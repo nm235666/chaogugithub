@@ -1,5 +1,12 @@
 export interface DashboardPayload {
   generated_at: string
+  api_stack_consistency?: {
+    all_ports_online?: boolean
+    build_consistent?: boolean
+    expected_build_id?: string
+    unique_build_ids?: string[]
+    items?: Array<Record<string, any>>
+  }
   overview: Record<string, number>
   source_monitor?: {
     summary?: Record<string, number | string>

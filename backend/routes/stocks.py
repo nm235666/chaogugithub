@@ -150,6 +150,17 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         except ValueError:
             handler._send_json({"error": "lookback 必须是整数"}, status=400)
             return True
+        auth_ctx = deps.get("auth_context") or {}
+        quota = deps["consume_trend_daily_quota"](auth_ctx.get("user"))
+        if not quota.get("allowed", True):
+            handler._send_json(
+                {
+                    "error": f"LLM走势分析今日次数已用完（{quota.get('limit')} 次/日），请明日再试或升级权限",
+                    "quota": quota,
+                },
+                status=429,
+            )
+            return True
         try:
             features = deps["build_trend_features"](ts_code, lookback)
             llm_result = deps["call_llm_trend"](ts_code, features, model=model, temperature=0.2)
@@ -177,6 +188,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
                 "requested_model": llm_result.get("requested_model") or model,
                 "used_model": llm_result.get("used_model") or model,
                 "attempts": llm_result.get("attempts", []),
+                "quota": quota,
                 "features": features,
                 "analysis": analysis,
                 "logic_view": logic_view,
@@ -196,6 +208,17 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             lookback = int(params.get("lookback", ["120"])[0])
         except ValueError:
             handler._send_json({"error": "lookback 必须是整数"}, status=400)
+            return True
+        auth_ctx = deps.get("auth_context") or {}
+        quota = deps["consume_multi_role_daily_quota"](auth_ctx.get("user"))
+        if not quota.get("allowed", True):
+            handler._send_json(
+                {
+                    "error": f"LLM多角色分析今日次数已用完（{quota.get('limit')} 次/日），请明日再试或升级权限",
+                    "quota": quota,
+                },
+                status=429,
+            )
             return True
         roles = deps["_resolve_roles"](roles_raw)
         try:
@@ -226,6 +249,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
                 "requested_model": llm_result.get("requested_model") or model,
                 "used_model": llm_result.get("used_model") or model,
                 "attempts": llm_result.get("attempts", []),
+                "quota": quota,
                 "roles": roles,
                 "context": context,
                 "analysis": analysis,
@@ -249,13 +273,24 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         except ValueError:
             handler._send_json({"error": "lookback 必须是整数"}, status=400)
             return True
+        auth_ctx = deps.get("auth_context") or {}
+        quota = deps["consume_multi_role_daily_quota"](auth_ctx.get("user"))
+        if not quota.get("allowed", True):
+            handler._send_json(
+                {
+                    "error": f"LLM多角色分析今日次数已用完（{quota.get('limit')} 次/日），请明日再试或升级权限",
+                    "quota": quota,
+                },
+                status=429,
+            )
+            return True
         roles = deps["_resolve_roles"](roles_raw)
         try:
             job = deps["start_async_multi_role_job"](ts_code, lookback, model, roles)
         except Exception as exc:  # pragma: no cover
             handler._send_json({"error": f"启动分析失败: {exc}"}, status=500)
             return True
-        handler._send_json({"ok": True, **job})
+        handler._send_json({"ok": True, "quota": quota, **job})
         return True
 
     if parsed.path == "/api/llm/multi-role/task":

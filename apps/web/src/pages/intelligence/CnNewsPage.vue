@@ -5,7 +5,7 @@
       page-subtitle="只展示国内新闻源。"
       :query-key="['news', 'cn', filters]"
       :query-fn="() => fetchNews({ ...filters, source_prefixes: 'cn_' })"
-      v-model:filters="filters"
+      :filters="filters"
       :show-source="false"
       :load-sources="false"
     />

@@ -89,6 +89,29 @@
         </PageSection>
 
         <PageSection title="实时链路与数据源" subtitle="看关键数据源、实时链路、评分与日报系统是否在线。">
+          <div class="mb-3 rounded-[18px] border border-[var(--line)] bg-white px-3 py-3">
+            <div class="mb-2 flex items-center justify-between">
+              <div class="text-sm font-bold text-[var(--ink)]">API 端口 build_id 一致性</div>
+              <StatusBadge
+                :value="dashboard?.api_stack_consistency?.all_ports_online && dashboard?.api_stack_consistency?.build_consistent ? 'success' : 'warning'"
+                :label="dashboard?.api_stack_consistency?.all_ports_online && dashboard?.api_stack_consistency?.build_consistent ? '一致' : '存在偏差'"
+              />
+            </div>
+            <div class="text-xs text-[var(--muted)]">
+              期望 build_id：{{ dashboard?.api_stack_consistency?.expected_build_id || '-' }} · 实际集合：{{ (dashboard?.api_stack_consistency?.unique_build_ids || []).join(', ') || '-' }}
+            </div>
+            <div class="mt-2 grid gap-2 md:grid-cols-2">
+              <div
+                v-for="item in dashboard?.api_stack_consistency?.items || []"
+                :key="`api-stack-${item.port}`"
+                class="rounded-[14px] border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs"
+              >
+                <div class="font-semibold">:{{ item.port }} · {{ item.ok ? '在线' : '离线' }}</div>
+                <div class="mt-1 text-[var(--muted)]">build_id: {{ item.build_id || '-' }}</div>
+                <div class="text-[var(--muted)]" v-if="item.error">错误: {{ item.error }}</div>
+              </div>
+            </div>
+          </div>
           <div class="space-y-2">
             <InfoCard
               v-for="item in dashboard?.source_monitor?.sources || []"

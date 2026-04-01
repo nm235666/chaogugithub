@@ -168,6 +168,11 @@ def _apply_external_overrides(
             for item in entry_list:
                 if not isinstance(item, dict):
                     continue
+                enabled = item.get("enabled", True)
+                status = str(item.get("status") or item.get("health_status") or "").strip().lower()
+                # Skip providers explicitly disabled by health-check script or manual ops.
+                if enabled is False or status in {"disabled", "inactive", "down", "unavailable", "unhealthy"}:
+                    continue
                 base_url = str(item.get("base_url") or "").strip()
                 api_key = str(item.get("api_key") or "").strip()
                 if not base_url or not api_key:

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <PageSection :title="pageTitle" :subtitle="pageSubtitle">
+    <PageSection v-if="!hideFilterPanel" :title="pageTitle" :subtitle="pageSubtitle">
       <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-3">
         <select v-if="showSource" v-model="draftFilters.source" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
           <option value="">全部来源</option>
@@ -123,6 +123,7 @@ const props = defineProps<{
   filters: Record<string, any>
   showSource?: boolean
   loadSources?: boolean
+  hideFilterPanel?: boolean
 }>()
 
 const router = useRouter()
@@ -147,6 +148,10 @@ watch(
   () => ({ ...localFilters }),
   (next) => {
     Object.assign(draftFilters, next || {})
+    selectedFinanceLevels.value = String((next || {}).finance_levels || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
   },
   { deep: true },
 )
@@ -157,9 +162,10 @@ const { data: sourceData } = useQuery({
   enabled: !!props.loadSources,
 })
 
-const { data: result, isFetching } = useQuery({ queryKey: props.queryKey, queryFn: props.queryFn })
+const { data: result, isFetching, refetch } = useQuery({ queryKey: props.queryKey, queryFn: props.queryFn })
 const sourceOptions = computed(() => sourceData.value?.items || [])
 const importanceLevels = importanceOptions()
+const hideFilterPanel = computed(() => Boolean(props.hideFilterPanel))
 
 function toggleLevel(level: string) {
   if (selectedFinanceLevels.value.includes(level)) {
@@ -167,14 +173,18 @@ function toggleLevel(level: string) {
   } else {
     selectedFinanceLevels.value = [...selectedFinanceLevels.value, level]
   }
+  draftFilters.finance_levels = selectedFinanceLevels.value.join(',')
+  applyFilters()
 }
 
 function applyFilters() {
   Object.assign(localFilters, { ...draftFilters, page: 1 })
+  refetch()
 }
 
 function changePage(delta: number) {
   localFilters.page = Math.max(1, Number(localFilters.page || 1) + delta)
+  refetch()
 }
 
 function impactTags(item: Record<string, any>) {
