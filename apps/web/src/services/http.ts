@@ -22,9 +22,14 @@ http.interceptors.response.use(
   (response) => response,
   (error) => {
     const data = error?.response?.data || {}
+    const status = error?.response?.status
     const code = data?.code ? ` [${data.code}]` : ''
     const hint = data?.hint ? `（${data.hint}）` : ''
     const message = `${data?.error || error?.message || '请求失败'}${code}${hint}`
-    return Promise.reject(new Error(message))
+    const wrapped: Error & { status?: number; response?: any; data?: any } = new Error(message)
+    wrapped.status = status
+    wrapped.response = error?.response
+    wrapped.data = data
+    return Promise.reject(wrapped)
   },
 )

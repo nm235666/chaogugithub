@@ -4,6 +4,102 @@ from urllib.parse import parse_qs
 
 
 def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
+    if parsed.path in {"/api/system/llm-providers/create", "/api/llm-providers/create"}:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可新增 LLM 节点"}, status=403)
+            return True
+        try:
+            result = deps["create_llm_provider"](payload)
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"新增失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
+    if parsed.path in {"/api/system/llm-providers/update", "/api/llm-providers/update"}:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可更新 LLM 节点"}, status=403)
+            return True
+        try:
+            result = deps["update_llm_provider"](payload)
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"更新失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
+    if parsed.path in {"/api/system/llm-providers/delete", "/api/llm-providers/delete"}:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可删除 LLM 节点"}, status=403)
+            return True
+        try:
+            result = deps["delete_llm_provider"](payload)
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"删除失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
+    if parsed.path in {"/api/system/llm-providers/test-one", "/api/llm-providers/test-one"}:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可测试 LLM 节点"}, status=403)
+            return True
+        try:
+            result = deps["test_one_llm_provider"](payload)
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"测试失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
+    if parsed.path in {"/api/system/llm-providers/test-model", "/api/llm-providers/test-model"}:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可一键测试模型节点"}, status=403)
+            return True
+        try:
+            result = deps["test_model_llm_providers"](payload)
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"一键测试失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
+    if parsed.path in {"/api/system/llm-providers/default-rate-limit", "/api/llm-providers/default-rate-limit"}:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可更新全局限速"}, status=403)
+            return True
+        try:
+            result = deps["update_default_rate_limit"](payload)
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"更新全局限速失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
     if parsed.path == "/api/auth/invite/create":
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("is_admin"):
@@ -446,6 +542,19 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
 
 
 def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
+    if parsed.path in {"/api/system/llm-providers", "/api/llm-providers"}:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可查看 LLM 节点"}, status=403)
+            return True
+        try:
+            payload = deps["list_llm_providers"]()
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"LLM 节点查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
     if parsed.path in {"/", "/api"}:
         handler._send_json(
             {

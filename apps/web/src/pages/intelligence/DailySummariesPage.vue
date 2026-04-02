@@ -24,6 +24,11 @@
           </div>
         </div>
         <div v-if="attemptChain" class="mt-2 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
+        <div v-if="protocolMetaText" class="mt-2 text-sm text-[var(--muted)]">{{ protocolMetaText }}</div>
+      </PageSection>
+
+      <PageSection title="任务闭环状态" subtitle="展示日报任务的通知发送状态，便于联调 webhook。">
+        <InfoCard title="通知发送" :description="notificationDescription" :meta="notificationMeta" />
       </PageSection>
 
       <div class="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
@@ -92,6 +97,7 @@ const selectedItem = ref<Record<string, any> | null>(null)
 const actionMessage = ref('准备就绪')
 const attempts = ref<Array<Record<string, any>>>([])
 const detailExportRef = ref<HTMLElement | null>(null)
+const latestTaskNotification = ref<Record<string, any>>({})
 let pollTimer = 0
 
 const { data: result, refetch, isFetching } = useQuery({
@@ -113,8 +119,33 @@ watch(
   { immediate: true },
 )
 
-const selectedContent = computed(() => selectedItem.value?.summary_markdown || selectedItem.value?.summary_text || '请选择左侧一条日报总结查看内容。')
+const selectedContent = computed(() => {
+  const primary = String(selectedItem.value?.analysis_markdown || '').trim()
+  if (primary) return primary
+  return selectedItem.value?.summary_markdown || selectedItem.value?.summary_text || '请选择左侧一条日报总结查看内容。'
+})
 const attemptChain = computed(() => attempts.value.map((item) => `${item.model || '-'}${item.error ? '×' : '√'}`).join(' -> '))
+const protocolMetaText = computed(() => {
+  const protocol = result.value?.protocol || {}
+  const version = String(protocol.version || '').trim()
+  const primary = String(protocol.primary_markdown_field || '').trim()
+  const compat = String(protocol.compat_markdown_field || '').trim()
+  const retireAfter = String(protocol.compat_retire_after || '').trim()
+  if (!version && !primary && !compat && !retireAfter) return ''
+  return `协议版本 ${version || '-'} · 主字段 ${primary || '-'} · 兼容字段 ${compat || '-'} · 兼容退场时间 ${retireAfter || '-'}`
+})
+const notificationDescription = computed(() => {
+  if (!Object.keys(latestTaskNotification.value).length) return '尚未触发任务通知或通知开关未开启。'
+  if (latestTaskNotification.value.ok) return '通知已发送。'
+  if (latestTaskNotification.value.skipped) return `通知未发送：${latestTaskNotification.value.reason || 'skipped'}`
+  return `通知失败：${latestTaskNotification.value.error || 'unknown error'}`
+})
+const notificationMeta = computed(() => {
+  if (!Object.keys(latestTaskNotification.value).length) return '-'
+  if (latestTaskNotification.value.ok) return 'ok'
+  if (latestTaskNotification.value.skipped) return 'skipped'
+  return 'error'
+})
 
 const generateMutation = useMutation({
   mutationFn: () => triggerDailySummaryGenerate({}),
@@ -129,12 +160,14 @@ const generateMutation = useMutation({
       attempts.value = Array.isArray(task.attempts) ? task.attempts : attempts.value
       if (task.status === 'done') {
         actionMessage.value = `日报总结生成完成${task.used_model ? ` · 实际模型 ${task.used_model}` : ''}`
+        latestTaskNotification.value = (task.notification || {}) as Record<string, any>
         await refetch()
         if (task.item) selectedItem.value = task.item
         return
       }
       if (task.status === 'error') {
         actionMessage.value = `日报总结生成失败：${task.error || task.message || '未知错误'}`
+        latestTaskNotification.value = (task.notification || {}) as Record<string, any>
         return
       }
       actionMessage.value = `日报总结生成中：${task.progress || 0}% · ${task.message || task.stage || '运行中'}`
@@ -145,6 +178,7 @@ const generateMutation = useMutation({
   onError: (error: Error) => {
     actionMessage.value = `生成失败：${error.message}`
     attempts.value = []
+    latestTaskNotification.value = {}
   },
 })
 

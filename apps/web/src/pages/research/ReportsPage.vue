@@ -20,6 +20,9 @@
             {{ isFetching ? '查询中...' : '查询' }}
           </button>
         </div>
+        <div v-if="protocolMetaText" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
+          {{ protocolMetaText }}
+        </div>
       </PageSection>
 
       <PageSection :title="`报告结果 (${result?.total || 0})`" subtitle="列表看摘要，抽屉里看正文、预期层和相关内链。">
@@ -28,7 +31,7 @@
             v-for="item in result?.items || []"
             :key="item.id"
             :title="item.subject_name || item.subject_key || '-'" :meta="`${reportTypeLabel(item.report_type)} · ${item.report_date || '-'} · ${item.model || '-'}`"
-            :description="reportPreview(item.markdown_content)"
+            :description="reportPreview(item.analysis_markdown || item.markdown_content)"
             @click="openDetail(item)"
           >
             <template #badge>
@@ -145,9 +148,23 @@ const reportTypeOptions = computed(() => result.value?.filters?.report_types || 
 const reportDateOptions = computed(() => result.value?.filters?.report_dates || [])
 const selectedTitle = computed(() => selectedItem.value?.subject_name || selectedItem.value?.subject_key || '报告详情')
 const selectedSubtitle = computed(() => [reportTypeLabel(selectedItem.value?.report_type), selectedItem.value?.report_date, selectedItem.value?.model].filter(Boolean).join(' · '))
-const selectedMarkdown = computed(() => String(selectedItem.value?.markdown_content || '').trim() || '暂无报告正文。')
+const selectedMarkdown = computed(() => {
+  const primary = String(selectedItem.value?.analysis_markdown || '').trim()
+  if (primary) return primary
+  const compat = String(selectedItem.value?.markdown_content || '').trim()
+  return compat || '暂无报告正文。'
+})
 const marketExpectations = computed(() => selectedItem.value?.market_expectations || [])
 const relatedLinks = computed(() => buildRelatedLinks(selectedItem.value))
+const protocolMetaText = computed(() => {
+  const protocol = result.value?.protocol || {}
+  const version = String(protocol.version || '').trim()
+  const primary = String(protocol.primary_markdown_field || '').trim()
+  const compat = String(protocol.compat_markdown_field || '').trim()
+  const retireAfter = String(protocol.compat_retire_after || '').trim()
+  if (!version && !primary && !compat && !retireAfter) return ''
+  return `协议版本 ${version || '-'} · 主字段 ${primary || '-'} · 兼容字段 ${compat || '-'} · 兼容退场时间 ${retireAfter || '-'}`
+})
 
 function reportTypeLabel(value: unknown) {
   const raw = String(value || '').trim()

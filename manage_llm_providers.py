@@ -26,6 +26,7 @@ def default_payload() -> dict[str, Any]:
     return {
         "default_request_model": "GPT-5.4",
         "fallback_models": ["GPT-5.4", "kimi-k2.5", "deepseek-chat"],
+        "default_rate_limit_per_minute": 10,
         "providers": {},
     }
 
@@ -82,9 +83,12 @@ def cmd_list(args: argparse.Namespace) -> int:
         for idx, row in enumerate(rows, start=1):
             model_name = row.get("model", model_key)
             base_url = row.get("base_url", "")
-            has_key = bool(str(row.get("api_key", "")).strip())
+            api_key = str(row.get("api_key", "")).strip()
+            api_key_env = str(row.get("api_key_env", "")).strip()
+            has_key = bool(api_key) or bool(api_key_env)
             temp = row.get("default_temperature", "")
-            print(f"  {idx}. model={model_name} base_url={base_url} api_key={'set' if has_key else 'empty'} temp={temp}")
+            key_source = f"env:{api_key_env}" if api_key_env else ("inline" if api_key else "empty")
+            print(f"  {idx}. model={model_name} base_url={base_url} api_key={'set' if has_key else 'empty'} source={key_source} temp={temp}")
     return 0
 
 
@@ -94,8 +98,8 @@ def cmd_add(args: argparse.Namespace) -> int:
     key = normalize_key(args.model)
     if not key:
         raise SystemExit("model 不能为空")
-    if not args.base_url.strip() or not args.api_key.strip():
-        raise SystemExit("base_url 和 api_key 不能为空")
+    if not args.base_url.strip() or (not args.api_key.strip() and not args.api_key_env.strip()):
+        raise SystemExit("base_url 不能为空，且 api_key/api_key_env 至少一个不为空")
     providers = payload.setdefault("providers", {})
     rows = ensure_list(providers.get(key))
     rows.append(
@@ -103,7 +107,11 @@ def cmd_add(args: argparse.Namespace) -> int:
             "model": args.model.strip(),
             "base_url": args.base_url.strip(),
             "api_key": args.api_key.strip(),
+            "api_key_env": args.api_key_env.strip(),
             "default_temperature": args.temperature,
+            "status": "active",
+            "rate_limit_enabled": True,
+            "rate_limit_per_minute": int(payload.get("default_rate_limit_per_minute") or 10),
         }
     )
     providers[key] = rows
@@ -128,6 +136,8 @@ def cmd_update(args: argparse.Namespace) -> int:
         row["base_url"] = args.base_url.strip()
     if args.api_key is not None:
         row["api_key"] = args.api_key.strip()
+    if args.api_key_env is not None:
+        row["api_key_env"] = args.api_key_env.strip()
     if args.temperature is not None:
         row["default_temperature"] = args.temperature
     if args.name is not None:
@@ -228,7 +238,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_add = sub.add_parser("add", help="新增一个提供商节点")
     p_add.add_argument("--model", required=True, help="模型键，例如 gpt-5.4")
     p_add.add_argument("--base-url", required=True)
-    p_add.add_argument("--api-key", required=True)
+    p_add.add_argument("--api-key", default="")
+    p_add.add_argument("--api-key-env", default="")
     p_add.add_argument("--temperature", type=float, default=0.2)
 
     p_upd = sub.add_parser("update", help="更新指定节点")
@@ -236,6 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_upd.add_argument("--index", type=int, default=1, help="从 1 开始")
     p_upd.add_argument("--base-url")
     p_upd.add_argument("--api-key")
+    p_upd.add_argument("--api-key-env")
     p_upd.add_argument("--temperature", type=float)
     p_upd.add_argument("--name", help="模型名字段，例如 GPT-5.4")
 

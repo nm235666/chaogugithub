@@ -42,6 +42,32 @@
         <MarkdownBlock :content="selectedRoleContent" />
       </PageSection>
 
+      <PageSection title="公共结论" subtitle="统一展示置信度、风险复核和行动视图。">
+        <div class="grid gap-3 xl:grid-cols-3 md:grid-cols-1">
+          <InfoCard title="决策置信度" :description="decisionConfidence.summary || '暂无结构化置信度'" :meta="decisionConfidence.label || '-'" />
+          <InfoCard title="风险复核" :description="riskReview.summary || '暂无结构化风险复核'" :meta="riskReview.source || '-'" />
+          <InfoCard title="行动视图" :description="portfolioView.summary || '暂无结构化行动视图'" :meta="portfolioView.source || '-'" />
+        </div>
+        <div v-if="usedContextDims.length" class="mt-3 flex flex-wrap gap-2">
+          <span v-for="item in usedContextDims" :key="item" class="metric-chip">{{ item }}</span>
+        </div>
+      </PageSection>
+
+      <PageSection title="风控与通知" subtitle="展示 pre-trade 风控校验结果和通知发送状态。">
+        <div class="grid gap-3 xl:grid-cols-2 md:grid-cols-1">
+          <InfoCard
+            title="Pre-trade 风控"
+            :description="riskCheckDescription"
+            :meta="riskCheckMeta"
+          />
+          <InfoCard
+            title="通知发送"
+            :description="notificationDescription"
+            :meta="notificationMeta"
+          />
+        </div>
+      </PageSection>
+
       <PageSection title="公共结论 / 完整原文" subtitle="如果角色切分不够完整，仍然可以回到完整 Markdown 原文。">
         <MarkdownBlock :content="fullMarkdown" />
       </PageSection>
@@ -55,6 +81,7 @@ import { useMutation, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
+import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchMultiRoleTask, fetchStocks, triggerMultiRoleTask } from '../../services/api/stocks'
 import { fetchAuthStatus } from '../../services/api/auth'
 
@@ -82,11 +109,40 @@ const activeRole = ref('')
 const usedModel = ref('')
 const attempts = ref<Array<Record<string, any>>>([])
 const resolvedStock = ref<{ ts_code: string; name: string }>({ ts_code: '', name: '' })
+const decisionConfidence = ref<Record<string, any>>({})
+const riskReview = ref<Record<string, any>>({})
+const portfolioView = ref<Record<string, any>>({})
+const usedContextDims = ref<string[]>([])
+const preTradeCheck = ref<Record<string, any>>({})
+const notification = ref<Record<string, any>>({})
 let timer = 0
 
 const selectedRoleSection = computed(() => roleSections.value.find((item) => item.role === activeRole.value) || null)
 const selectedRoleContent = computed(() => selectedRoleSection.value?.content || fullMarkdown.value)
 const attemptChain = computed(() => attempts.value.map((item) => `${item.model || '-'}${item.error ? '×' : '√'}`).join(' -> '))
+const riskCheckDescription = computed(() => {
+  if (!Object.keys(preTradeCheck.value).length) return '未启用或暂无风控校验结果。'
+  const reasons = Array.isArray(preTradeCheck.value.reasons) ? preTradeCheck.value.reasons : []
+  if (reasons.length) return reasons.join('；')
+  return preTradeCheck.value.allowed ? '通过校验，可进入后续模拟执行。' : '未通过校验，请先检查约束。'
+})
+const riskCheckMeta = computed(() => {
+  if (!Object.keys(preTradeCheck.value).length) return '-'
+  const checks = Array.isArray(preTradeCheck.value.checks) ? preTradeCheck.value.checks.length : 0
+  return `${preTradeCheck.value.allowed ? 'allowed' : 'blocked'} · checks ${checks}`
+})
+const notificationDescription = computed(() => {
+  if (!Object.keys(notification.value).length) return '未启用通知或本次未触发。'
+  if (notification.value.ok) return '通知已发送。'
+  if (notification.value.skipped) return `通知未发送：${notification.value.reason || 'skipped'}`
+  return `通知失败：${notification.value.error || 'unknown error'}`
+})
+const notificationMeta = computed(() => {
+  if (!Object.keys(notification.value).length) return '-'
+  if (notification.value.ok) return 'ok'
+  if (notification.value.skipped) return 'skipped'
+  return 'error'
+})
 const { data: authStatus, refetch: refetchAuthStatus } = useQuery({
   queryKey: ['auth-status-multi-role-page'],
   queryFn: () => fetchAuthStatus(true),
@@ -127,9 +183,15 @@ const mutation = useMutation({
         usedModel.value = String(res.used_model || res.model || '')
         attempts.value = Array.isArray(res.attempts) ? res.attempts : []
         actionMessage.value = `分析完成：${res.name || resolved.name || resolved.ts_code}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
-        fullMarkdown.value = res.analysis || res.analysis_markdown || res.result || '分析完成，但未返回正文。'
-        roleSections.value = Array.isArray(res.role_sections) ? res.role_sections : []
+        fullMarkdown.value = res.analysis_markdown || res.analysis || res.result || '分析完成，但未返回正文。'
+        roleSections.value = Array.isArray(res.role_outputs) ? res.role_outputs : (Array.isArray(res.role_sections) ? res.role_sections : [])
         activeRole.value = roleSections.value[0]?.role || ''
+        decisionConfidence.value = (res.decision_confidence || {}) as Record<string, any>
+        riskReview.value = (res.risk_review || {}) as Record<string, any>
+        portfolioView.value = (res.portfolio_view || {}) as Record<string, any>
+        usedContextDims.value = Array.isArray(res.used_context_dims) ? res.used_context_dims : []
+        preTradeCheck.value = (res.pre_trade_check || {}) as Record<string, any>
+        notification.value = (res.notification || {}) as Record<string, any>
         return
       }
       if (res.status === 'error') {
@@ -138,6 +200,12 @@ const mutation = useMutation({
         fullMarkdown.value = `分析失败：${res.error || res.message || '未知错误'}`
         roleSections.value = []
         activeRole.value = ''
+        decisionConfidence.value = {}
+        riskReview.value = {}
+        portfolioView.value = {}
+        usedContextDims.value = []
+        preTradeCheck.value = {}
+        notification.value = {}
         return
       }
       actionMessage.value = `任务运行中：${res.progress || 0}% · ${res.message || res.status || '运行中'}`
@@ -153,6 +221,12 @@ const mutation = useMutation({
     activeRole.value = ''
     usedModel.value = ''
     attempts.value = []
+    decisionConfidence.value = {}
+    riskReview.value = {}
+    portfolioView.value = {}
+    usedContextDims.value = []
+    preTradeCheck.value = {}
+    notification.value = {}
   },
 })
 

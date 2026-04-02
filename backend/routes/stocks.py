@@ -162,38 +162,18 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             )
             return True
         try:
-            features = deps["build_trend_features"](ts_code, lookback)
-            llm_result = deps["call_llm_trend"](ts_code, features, model=model, temperature=0.2)
-            analysis = llm_result["analysis"]
-            conn = deps["sqlite3"].connect(deps["DB_PATH"])
-            try:
-                logic_view = deps["get_or_build_cached_logic_view"](
-                    conn,
-                    entity_type="llm_trend",
-                    entity_key=f"{ts_code}|{lookback}|{llm_result.get('used_model') or model}",
-                    source_payload=analysis,
-                    builder=lambda text=analysis: deps["extract_logic_view_from_markdown"](text),
-                )
-            finally:
-                conn.close()
+            payload = deps["run_trend_analysis"](
+                deps,
+                ts_code=ts_code,
+                lookback=lookback,
+                model=model,
+                temperature=0.2,
+            )
         except Exception as exc:  # pragma: no cover
             handler._send_json({"error": f"分析失败: {exc}"}, status=500)
             return True
-        handler._send_json(
-            {
-                "ts_code": ts_code,
-                "name": features.get("name", ""),
-                "lookback": lookback,
-                "model": llm_result.get("used_model") or model,
-                "requested_model": llm_result.get("requested_model") or model,
-                "used_model": llm_result.get("used_model") or model,
-                "attempts": llm_result.get("attempts", []),
-                "quota": quota,
-                "features": features,
-                "analysis": analysis,
-                "logic_view": logic_view,
-            }
-        )
+        payload["quota"] = quota
+        handler._send_json(payload)
         return True
 
     if parsed.path == "/api/llm/multi-role":
@@ -222,42 +202,19 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             return True
         roles = deps["_resolve_roles"](roles_raw)
         try:
-            context = deps["build_multi_role_context"](ts_code, lookback)
-            llm_result = deps["call_llm_multi_role"](context, roles, model=model, temperature=0.2)
-            analysis = llm_result["analysis"]
-            split_payload = deps["split_multi_role_analysis"](analysis, roles)
-            conn = deps["sqlite3"].connect(deps["DB_PATH"])
-            try:
-                logic_view = deps["get_or_build_cached_logic_view"](
-                    conn,
-                    entity_type="llm_multi_role",
-                    entity_key=f"{ts_code}|{lookback}|{llm_result.get('used_model') or model}|{','.join(roles)}",
-                    source_payload=analysis,
-                    builder=lambda text=analysis: split_payload.get("logic_view", deps["extract_logic_view_from_markdown"](text)),
-                )
-            finally:
-                conn.close()
+            payload = deps["run_multi_role_analysis"](
+                deps,
+                ts_code=ts_code,
+                lookback=lookback,
+                roles=roles,
+                model=model,
+                temperature=0.2,
+            )
         except Exception as exc:  # pragma: no cover
             handler._send_json({"error": f"分析失败: {exc}"}, status=500)
             return True
-        handler._send_json(
-            {
-                "ts_code": ts_code,
-                "name": context.get("company_profile", {}).get("name", ""),
-                "lookback": lookback,
-                "model": llm_result.get("used_model") or model,
-                "requested_model": llm_result.get("requested_model") or model,
-                "used_model": llm_result.get("used_model") or model,
-                "attempts": llm_result.get("attempts", []),
-                "quota": quota,
-                "roles": roles,
-                "context": context,
-                "analysis": analysis,
-                "logic_view": logic_view,
-                "role_sections": split_payload.get("role_sections", []),
-                "common_sections_markdown": split_payload.get("common_sections_markdown", ""),
-            }
-        )
+        payload["quota"] = quota
+        handler._send_json(payload)
         return True
 
     if parsed.path == "/api/llm/multi-role/start":

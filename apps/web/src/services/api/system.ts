@@ -1,5 +1,84 @@
 import { http } from '../http'
 
+export type LlmProviderItem = {
+  provider_key: string
+  index: number
+  model: string
+  base_url: string
+  api_key_masked: string
+  has_api_key: boolean
+  api_key_source?: string
+  api_key_env?: string
+  default_temperature: number
+  enabled: boolean
+  status: 'active' | 'disabled' | string
+  rate_limit_enabled: boolean
+  rate_limit_per_minute: number
+  runtime_status?: 'ok' | 'rate_limited' | string
+  window_reset_at?: number
+  count_current_minute?: number
+  last_checked_at?: string
+  last_http_status?: number | null
+  last_latency_ms?: number | null
+  last_error?: string
+  health_status?: string
+  health_recommendation?: string
+  observability_7d?: {
+    source?: string
+    days?: number
+    total_calls?: number
+    success?: number
+    failed?: number
+    success_rate_pct?: number
+    p95_latency_ms?: number
+    rate_limited?: number
+    http_429?: number
+    switch_count?: number
+  }
+}
+
+type LlmMethod = 'get' | 'post'
+let llmProvidersEndpointBase = '/api/system/llm-providers'
+
+function _candidateBases(): string[] {
+  const bases = [llmProvidersEndpointBase, '/api/system/llm-providers', '/api/llm-providers']
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol || 'http:'
+    const host = window.location.hostname || '127.0.0.1'
+    bases.push(`${protocol}//${host}:8077/api/system/llm-providers`)
+    bases.push(`${protocol}//${host}:8077/api/llm-providers`)
+    bases.push(`${protocol}//${host}:8002/api/system/llm-providers`)
+    bases.push(`${protocol}//${host}:8002/api/llm-providers`)
+  }
+  return Array.from(new Set(bases))
+}
+
+async function _callLlmProvidersApi(method: LlmMethod, suffix = '', payload?: any) {
+  const candidates = _candidateBases().map((base) => `${base}${suffix}`)
+  let lastError: any = null
+  for (const url of candidates) {
+    try {
+      if (method === 'get') {
+        const { data } = await http.get(url)
+        llmProvidersEndpointBase = url.replace(new RegExp(`${suffix}$`), '')
+        return data
+      }
+      const { data } = await http.post(url, payload || {})
+      llmProvidersEndpointBase = url.replace(new RegExp(`${suffix}$`), '')
+      return data
+    } catch (error: any) {
+      lastError = error
+      const status = Number(error?.status || error?.response?.status || 0)
+      // 401/403 表示接口存在但权限问题，不继续换地址
+      if (status === 401 || status === 403) throw error
+      // 仅对 404 或网络错误继续尝试其他候选
+      if (status && status !== 404) throw error
+      continue
+    }
+  }
+  throw lastError || new Error('LLM providers API unavailable')
+}
+
 export async function fetchSignalQualityConfig() {
   const { data } = await http.get('/api/signal-quality/config')
   return data
@@ -113,4 +192,39 @@ export async function revokeAuthUserSessions(user_id: number) {
 export async function fetchAuthAuditLogs(params: Record<string, any>) {
   const { data } = await http.get('/api/auth/audit-logs', { params })
   return data
+}
+
+export async function fetchLlmProviders() {
+  const data = await _callLlmProvidersApi('get')
+  return data as {
+    ok: boolean
+    default_request_model: string
+    fallback_models: string[]
+    default_rate_limit_per_minute: number
+    items: LlmProviderItem[]
+  }
+}
+
+export async function createLlmProvider(payload: Record<string, any>) {
+  return _callLlmProvidersApi('post', '/create', payload)
+}
+
+export async function updateLlmProvider(payload: Record<string, any>) {
+  return _callLlmProvidersApi('post', '/update', payload)
+}
+
+export async function deleteLlmProvider(payload: { provider_key: string; index: number }) {
+  return _callLlmProvidersApi('post', '/delete', payload)
+}
+
+export async function testOneLlmProvider(payload: { provider_key: string; index: number; timeout_s?: number; probe_retries?: number; case_mode?: string }) {
+  return _callLlmProvidersApi('post', '/test-one', payload)
+}
+
+export async function testModelLlmProviders(payload: { provider_key?: string; model?: string; timeout_s?: number; probe_retries?: number; case_mode?: string }) {
+  return _callLlmProvidersApi('post', '/test-model', payload)
+}
+
+export async function updateDefaultLlmRateLimit(default_rate_limit_per_minute: number) {
+  return _callLlmProvidersApi('post', '/default-rate-limit', { default_rate_limit_per_minute })
 }

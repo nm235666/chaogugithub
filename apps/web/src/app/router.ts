@@ -36,6 +36,7 @@ export const router = createRouter({
     { path: '/signals/state-timeline', component: () => import('../pages/signals/SignalStateTimelinePage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
 
     { path: '/research/reports', component: () => import('../pages/research/ReportsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/research/quant-factors', component: () => import('../pages/research/QuantFactorsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/multi-role', component: () => import('../pages/research/MultiRoleResearchPage.vue'), meta: { auth: true, permission: 'multi_role_analyze' } as RouteMetaAuth },
     { path: '/research/trend', component: () => import('../pages/research/TrendAnalysisPage.vue'), meta: { auth: true, permission: 'trend_analyze' } as RouteMetaAuth },
 
@@ -45,6 +46,8 @@ export const router = createRouter({
     { path: '/chatrooms/investment', component: () => import('../pages/chatrooms/ChatroomInvestmentPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced' } as RouteMetaAuth },
 
     { path: '/system/source-monitor', component: () => import('../pages/system/SourceMonitorPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
+    { path: '/system/jobs-ops', component: () => import('../pages/system/JobsOpsPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
+    { path: '/system/llm-providers', component: () => import('../pages/system/LlmProvidersPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
     { path: '/system/database-audit', component: () => import('../pages/system/DatabaseAuditPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
     { path: '/system/invites', component: () => import('../pages/system/InviteAdminPage.vue'), meta: { auth: true, permission: 'admin_users' } as RouteMetaAuth },
     { path: '/system/users', component: () => import('../pages/system/UserAdminPage.vue'), meta: { auth: true, permission: 'admin_users' } as RouteMetaAuth },

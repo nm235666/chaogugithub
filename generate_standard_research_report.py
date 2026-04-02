@@ -8,6 +8,7 @@ from pathlib import Path
 
 import db_compat as sqlite3
 from backend.server import build_multi_role_context
+from services.reporting import build_report_payload
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "stock_codes.db"
 REPORT_TABLE = "research_reports"
@@ -413,17 +414,39 @@ def main() -> int:
             subject_name, markdown, context_json = build_theme_report(conn, args.subject_key.strip(), report_date)
         else:
             subject_name, markdown, context_json = build_market_report(conn, args.subject_key.strip(), report_date)
+        subject_name = args.subject_name.strip() or subject_name
+        report_doc = build_report_payload(
+            report_type=args.report_type,
+            subject_key=args.subject_key.strip(),
+            subject_name=subject_name,
+            report_date=report_date,
+            markdown_content=markdown,
+            context_json=context_json,
+        )
         report_id = save_report(
             conn,
             report_date=report_date,
             report_type=args.report_type,
             subject_key=args.subject_key.strip(),
-            subject_name=args.subject_name.strip() or subject_name,
+            subject_name=subject_name,
             model=args.model,
-            markdown=markdown,
-            context_json=context_json,
+            markdown=report_doc.markdown_content,
+            context_json={**context_json, "export_meta": report_doc.export_meta},
         )
-        print(f"完成: report_id={report_id}, report_type={args.report_type}, subject={subject_name}")
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "report_id": report_id,
+                    "report_type": args.report_type,
+                    "subject_key": args.subject_key.strip(),
+                    "subject_name": subject_name,
+                    "export_meta": report_doc.export_meta,
+                },
+                ensure_ascii=False,
+            )
+        )
+        print(report_doc.markdown_content)
     finally:
         conn.close()
     return 0

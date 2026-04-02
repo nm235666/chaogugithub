@@ -109,6 +109,8 @@ const fullNavGroups = [
     items: [
       { to: '/dashboard', label: '总控台', desc: '全局健康度、热点、任务与新鲜度', permission: 'admin_system' as AppPermission },
       { to: '/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板', permission: 'admin_system' as AppPermission },
+      { to: '/system/jobs-ops', label: '任务调度中心', desc: '任务列表、dry-run、触发与告警观测', permission: 'admin_system' as AppPermission },
+      { to: '/system/llm-providers', label: 'LLM 节点管理', desc: '模型节点 CRUD、限速配置与联通测试', permission: 'admin_system' as AppPermission },
       { to: '/system/database-audit', label: '数据库审计', desc: '缺口、重复、未评分、陈旧数据', permission: 'admin_system' as AppPermission },
       { to: '/system/invites', label: '邀请码管理', desc: '管理员邀请码与账号规模管理', permission: 'admin_users' as AppPermission },
       { to: '/system/users', label: '用户与会话', desc: '用户、会话、审计日志管理', permission: 'admin_users' as AppPermission },
@@ -143,6 +145,7 @@ const fullNavGroups = [
       { to: '/macro', label: '宏观看板', desc: '宏观指标查询与序列趋势', permission: 'macro_advanced' as AppPermission },
       { to: '/research/trend', label: '走势分析', desc: 'LLM 股票走势分析工作台', permission: 'trend_analyze' as AppPermission },
       { to: '/research/reports', label: '标准报告', desc: '统一投研报告列表', permission: 'research_advanced' as AppPermission },
+      { to: '/research/quant-factors', label: '因子挖掘', desc: 'QuantaAlpha 旁路因子挖掘与回测', permission: 'research_advanced' as AppPermission },
       { to: '/research/multi-role', label: '多角色分析', desc: 'LLM 多角色公司分析工作台', permission: 'multi_role_analyze' as AppPermission },
       { to: '/chatrooms/overview', label: '群聊总览', desc: '群聊标签、状态、拉取健康度', permission: 'chatrooms_advanced' as AppPermission },
       { to: '/chatrooms/chatlog', label: '聊天记录', desc: '消息正文、引用和筛选查询', permission: 'chatrooms_advanced' as AppPermission },

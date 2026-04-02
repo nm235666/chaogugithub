@@ -553,7 +553,7 @@ const trendMutation = useMutation({
   onSuccess: (payload: DetailRow) => {
     const actualModel = String(payload.used_model || payload.model || '')
     actionMessage.value = `走势分析完成：${resolvedName.value || resolvedTsCode.value || '-'}${actualModel ? ` · 实际模型 ${actualModel}` : ''}`
-    trendResult.value = payload.analysis || payload.result || payload.message || JSON.stringify(payload, null, 2)
+    trendResult.value = payload.analysis_markdown || payload.analysis || payload.result || payload.message || JSON.stringify(payload, null, 2)
   },
   onError: (mutationError: Error) => {
     actionMessage.value = `走势分析失败：${mutationError.message}`

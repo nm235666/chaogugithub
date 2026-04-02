@@ -10,6 +10,7 @@ from pathlib import Path
 
 from llm_gateway import chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
 from realtime_streams import publish_app_event
+from services.reporting import build_report_payload
 DEFAULT_IMPORTANCE = ("极高", "高", "中")
 
 
@@ -419,6 +420,19 @@ def main() -> int:
             prompt_version=prompt_version,
             summary_markdown=summary,
         )
+        report_doc = build_report_payload(
+            report_type="daily_news_summary",
+            subject_key=date_ymd,
+            subject_name=f"{date_ymd} 新闻日报",
+            report_date=date_ymd,
+            markdown_content=summary,
+            context_json={
+                "importance": importance,
+                "exclude_sources": exclude_sources,
+                "exclude_prefixes": exclude_prefixes,
+                "news_count": len(used_rows),
+            },
+        )
         print(f"已生成并入库 summary_id={sid}, date={date_ymd}, news_count={len(used_rows)}")
         emit_result_marker(
             {
@@ -427,6 +441,7 @@ def main() -> int:
                 "news_count": len(used_rows),
                 "requested_model": args.model,
                 "used_model": summary_result.used_model if summary_result else args.model,
+                "export_meta": report_doc.export_meta,
                 "attempts": [
                     {"model": item.model, "base_url": item.base_url, "error": item.error}
                     for item in (summary_result.attempts if summary_result else [])
@@ -445,7 +460,7 @@ def main() -> int:
             producer="llm_summarize_daily_important_news.py",
         )
         print("\n===== Summary =====\n")
-        print(summary)
+        print(report_doc.markdown_content)
     finally:
         conn.close()
 

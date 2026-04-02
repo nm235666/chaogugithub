@@ -37,12 +37,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="*/5 * * * *",
         description="抓取国际新闻、补评分、补情绪、做股票映射",
         commands=(
-            py_cmd(str(ROOT_DIR / "fetch_news_rss.py"), "--limit", "15", "--timeout", "30"),
-            py_cmd(str(ROOT_DIR / "fetch_news_marketscreener.py"), "--limit", "20", "--timeout", "30"),
-            py_cmd(str(ROOT_DIR / "fetch_news_marketscreener_live.py"), "--limit", "30", "--timeout", "30"),
-            py_cmd(str(ROOT_DIR / "llm_score_news.py"), "--limit", "20", "--retry", "1", "--sleep", "0.1"),
-            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--limit", "20", "--retry", "1", "--sleep", "0.1"),
-            py_cmd(str(ROOT_DIR / "map_news_items_to_stocks.py"), "--limit", "200", "--days", "7"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "intl_news_pipeline"),
         ),
     ),
     JobDefinition(
@@ -52,7 +47,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="*/2 * * * *",
         description="抓取新浪国内财经新闻并快速入库；评分与映射由独立任务补做",
         commands=(
-            py_cmd(str(ROOT_DIR / "fetch_cn_news_sina_7x24.py"), "--limit", "60", "--timeout", "30"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "cn_news_pipeline"),
         ),
     ),
     JobDefinition(
@@ -62,17 +57,17 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="*/5 * * * *",
         description="补做新闻到股票的映射",
         commands=(
-            py_cmd(str(ROOT_DIR / "map_news_items_to_stocks.py"), "--limit", "300", "--days", "7"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "news_stock_map_refresh"),
         ),
     ),
     JobDefinition(
         job_key="news_sentiment_refresh",
         name="新闻情绪刷新",
         category="news",
-        schedule_expr="12 * * * *",
-        description="为国际与国内新闻补统一情绪标签",
+        schedule_expr="*/5 * * * *",
+        description="小批次高频补做国际与国内新闻统一情绪标签",
         commands=(
-            py_cmd(str(ROOT_DIR / "llm_score_sentiment.py"), "--target", "news", "--limit", "60", "--retry", "1", "--sleep", "0.1"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "news_sentiment_refresh"),
         ),
     ),
     JobDefinition(
@@ -82,13 +77,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="30 3,15 * * *",
         description="生成当日重要新闻总结，默认 GPT-5.4 优先，失败自动降级",
         commands=(
-            bash_cmd(
-                "timeout 900s python3 -u "
-                f"{ROOT_DIR}/llm_summarize_daily_important_news.py "
-                "--date __CN_DATE__ --importance '极高,高,中' --max-news 30 --min-news 8 "
-                "--max-prompt-chars 9000 --request-timeout 180 --max-retries 2 --retry-backoff 2 "
-                ""
-            ),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "news_daily_summary_refresh"),
         ),
     ),
     JobDefinition(
@@ -126,11 +115,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="15 * * * *",
         description="群聊投资倾向、情绪、候选池与别名归一",
         commands=(
-            py_cmd(str(ROOT_DIR / "llm_analyze_chatroom_investment_bias.py"), "--days", "7", "--limit", "20", "--primary-category", "投资交易", "--retry", "2", "--sleep", "0.5"),
-            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--limit", "20", "--retry", "1", "--sleep", "0.1"),
-            py_cmd(str(ROOT_DIR / "build_chatroom_candidate_pool.py"), "--min-room-count", "1"),
-            py_cmd(str(ROOT_DIR / "llm_resolve_stock_aliases.py"), "--limit", "20", "--min-confidence", "0.88", "--retry", "2", "--sleep", "0.3"),
-            py_cmd(str(ROOT_DIR / "build_chatroom_candidate_pool.py"), "--min-room-count", "1"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_chatroom_job.py"), "--job-key", "chatroom_analysis_pipeline"),
         ),
     ),
     JobDefinition(
@@ -140,7 +125,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="18 * * * *",
         description="为群聊投资总结补统一情绪",
         commands=(
-            py_cmd(str(ROOT_DIR / "llm_score_chatroom_sentiment.py"), "--limit", "30", "--retry", "1", "--sleep", "0.1"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_chatroom_job.py"), "--job-key", "chatroom_sentiment_refresh"),
         ),
     ),
     JobDefinition(
@@ -149,7 +134,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         category="chatrooms",
         schedule_expr="*/3 * * * *",
         description="拉取处于监控中的群聊消息",
-        commands=((PYTHON_BIN, str(ROOT_DIR / "fetch_monitored_chatlogs_once.py")),),
+        commands=((PYTHON_BIN, str(ROOT_DIR / "jobs" / "run_chatroom_job.py"), "--job-key", "monitored_chatlog_fetch"),),
     ),
     JobDefinition(
         job_key="chatroom_list_refresh",
@@ -157,7 +142,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         category="chatrooms",
         schedule_expr="5 0 * * *",
         description="每日同步群聊列表",
-        commands=((PYTHON_BIN, str(ROOT_DIR / "fetch_chatroom_list_to_db.py"), "--once"),),
+        commands=((PYTHON_BIN, str(ROOT_DIR / "jobs" / "run_chatroom_job.py"), "--job-key", "chatroom_list_refresh"),),
     ),
     JobDefinition(
         job_key="stock_news_score_refresh",
@@ -166,21 +151,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="*/10 * * * *",
         description="为个股新闻补评分与摘要（GPT 批处理并发）",
         commands=(
-            py_cmd(
-                str(ROOT_DIR / "llm_score_stock_news.py"),
-                "--model",
-                "GPT-5.4",
-                "--limit",
-                "240",
-                "--workers",
-                "6",
-                "--batch-size",
-                "8",
-                "--retry",
-                "1",
-                "--sleep",
-                "0.02",
-            ),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_stock_news_job.py"), "--job-key", "stock_news_score_refresh"),
         ),
     ),
     JobDefinition(
@@ -190,7 +161,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="55 * * * *",
         description="补抓缺失个股新闻",
         commands=(
-            py_cmd(str(ROOT_DIR / "backfill_stock_news_items.py"), "--missing-only", "--limit-stocks", "200", "--page-size", "20", "--max-pages", "2", "--retry", "2", "--pause", "0.2"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_stock_news_job.py"), "--job-key", "stock_news_backfill_missing"),
         ),
     ),
     JobDefinition(
@@ -200,7 +171,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         schedule_expr="25 * * * *",
         description="围绕重点股票扩抓个股新闻并评分",
         commands=(
-            py_cmd(str(ROOT_DIR / "run_stock_news_expand_focus.py"), "--limit-scores", "100", "--limit-candidates", "50", "--max-targets", "120", "--page-size", "20", "--score-after-fetch"),
+            py_cmd(str(ROOT_DIR / "jobs" / "run_stock_news_job.py"), "--job-key", "stock_news_expand_focus"),
         ),
     ),
     JobDefinition(
@@ -209,7 +180,69 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         category="macro",
         schedule_expr="20 17 * * *",
         description="刷新宏观指标数据",
-        commands=((PYTHON_BIN, str(ROOT_DIR / "backfill_macro_series_akshare.py")),),
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_macro_job.py"), "--job-key", "macro_series_akshare_refresh"),
+        ),
+    ),
+    JobDefinition(
+        job_key="macro_context_refresh",
+        name="宏观上下文刷新",
+        category="macro",
+        schedule_expr="10 17 * * *",
+        description="刷新汇率、利率曲线与利差数据",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_macro_job.py"), "--job-key", "macro_context_refresh"),
+        ),
+    ),
+    JobDefinition(
+        job_key="market_expectations_refresh",
+        name="市场预期抓取刷新",
+        category="market",
+        schedule_expr="40 * * * *",
+        description="抓取市场预期数据并写入 market_expectation_items",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_market_job.py"), "--job-key", "market_expectations_refresh"),
+        ),
+    ),
+    JobDefinition(
+        job_key="market_news_refresh",
+        name="市场新闻抓取刷新",
+        category="market",
+        schedule_expr="15 * * * *",
+        description="抓取 marketscreener 市场新闻",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_market_job.py"), "--job-key", "market_news_refresh"),
+        ),
+    ),
+    JobDefinition(
+        job_key="quantaalpha_health_check",
+        name="QuantaAlpha 健康检查",
+        category="quant",
+        schedule_expr="*/30 * * * *",
+        description="旁路能力健康检查，不影响主链路",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_quantaalpha_job.py"), "--job-key", "quantaalpha_health_check"),
+        ),
+    ),
+    JobDefinition(
+        job_key="quantaalpha_mine_daily",
+        name="QuantaAlpha 因子挖掘",
+        category="quant",
+        schedule_expr="20 1 * * *",
+        description="A股因子挖掘旁路任务",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_quantaalpha_job.py"), "--job-key", "quantaalpha_mine_daily"),
+        ),
+    ),
+    JobDefinition(
+        job_key="quantaalpha_backtest_daily",
+        name="QuantaAlpha 回测",
+        category="quant",
+        schedule_expr="45 1 * * *",
+        description="A股回测旁路任务",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_quantaalpha_job.py"), "--job-key", "quantaalpha_backtest_daily"),
+        ),
     ),
     JobDefinition(
         job_key="news_archive_refresh",

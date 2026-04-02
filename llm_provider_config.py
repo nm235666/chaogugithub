@@ -14,6 +14,8 @@ class ProviderConfig:
     base_url: str
     api_key: str
     default_temperature: float = 0.2
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int | None = None
 
 
 def _env(name: str, default: str = "") -> str:
@@ -31,6 +33,25 @@ def _safe_float(value, default: float) -> float:
         return default
 
 
+def _safe_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _resolve_api_key_from_item(item: dict) -> str:
+    api_key = str(item.get("api_key") or "").strip()
+    api_key_env = str(item.get("api_key_env") or "").strip()
+    if api_key.startswith("env:"):
+        env_name = api_key[4:].strip()
+        if env_name:
+            return _env(env_name, "")
+    if api_key_env:
+        return _env(api_key_env, "")
+    return api_key
+
+
 DEFAULT_PROVIDER_FILE = "/home/zanbo/zanbotest/config/llm_providers.json"
 RELOAD_INTERVAL_SECONDS = 2.0
 
@@ -41,6 +62,7 @@ _LAST_PROVIDER_FILE_MTIME = -1.0
 
 DEFAULT_REQUEST_MODEL = "auto"
 DEFAULT_FALLBACK_MODELS: tuple[str, ...] = ("GPT-5.4", "kimi-k2.5", "deepseek-chat")
+DEFAULT_RATE_LIMIT_PER_MINUTE = 10
 PROVIDER_CONFIGS: dict[str, ProviderConfig] = {}
 PROVIDER_BACKUP_CONFIGS: dict[str, tuple[ProviderConfig, ...]] = {}
 
@@ -138,9 +160,10 @@ def _apply_external_overrides(
     external_cfg: dict,
     default_request_model: str,
     fallback_models: tuple[str, ...],
+    default_rate_limit_per_minute: int,
     provider_configs: dict[str, ProviderConfig],
     provider_backups: dict[str, tuple[ProviderConfig, ...]],
-) -> tuple[str, tuple[str, ...], dict[str, ProviderConfig], dict[str, tuple[ProviderConfig, ...]]]:
+) -> tuple[str, tuple[str, ...], int, dict[str, ProviderConfig], dict[str, tuple[ProviderConfig, ...]]]:
     external_default = str(external_cfg.get("default_request_model") or "").strip()
     if external_default:
         default_request_model = external_default
@@ -150,6 +173,7 @@ def _apply_external_overrides(
         parsed = tuple(str(x).strip() for x in external_fallback if str(x).strip())
         if parsed:
             fallback_models = parsed
+    default_rate_limit_per_minute = max(1, _safe_int(external_cfg.get("default_rate_limit_per_minute", 10), 10))
 
     providers = external_cfg.get("providers")
     if isinstance(providers, dict):
@@ -174,26 +198,36 @@ def _apply_external_overrides(
                 if enabled is False or status in {"disabled", "inactive", "down", "unavailable", "unhealthy"}:
                     continue
                 base_url = str(item.get("base_url") or "").strip()
-                api_key = str(item.get("api_key") or "").strip()
+                api_key = _resolve_api_key_from_item(item)
                 if not base_url or not api_key:
                     continue
+                rate_limit_enabled = bool(item.get("rate_limit_enabled", True))
+                node_limit = item.get("rate_limit_per_minute", None)
+                rate_limit_per_minute = (
+                    max(1, _safe_int(node_limit, default_rate_limit_per_minute))
+                    if node_limit is not None
+                    else default_rate_limit_per_minute
+                )
                 parsed.append(
                     ProviderConfig(
                         model=str(item.get("model") or model_key_raw).strip() or str(model_key_raw).strip(),
                         base_url=base_url,
                         api_key=api_key,
                         default_temperature=_safe_float(item.get("default_temperature", 0.2), 0.2),
+                        rate_limit_enabled=rate_limit_enabled,
+                        rate_limit_per_minute=rate_limit_per_minute,
                     )
                 )
             if parsed:
                 provider_configs[model_key] = parsed[0]
                 provider_backups[model_key] = tuple(parsed[1:])
-    return default_request_model, fallback_models, provider_configs, provider_backups
+    return default_request_model, fallback_models, default_rate_limit_per_minute, provider_configs, provider_backups
 
 
 def _refresh_runtime(force: bool = False) -> None:
     global _LAST_RELOAD_AT, _LAST_PROVIDER_FILE, _LAST_PROVIDER_FILE_MTIME
-    global DEFAULT_REQUEST_MODEL, DEFAULT_FALLBACK_MODELS, PROVIDER_CONFIGS, PROVIDER_BACKUP_CONFIGS
+    global DEFAULT_REQUEST_MODEL, DEFAULT_FALLBACK_MODELS, DEFAULT_RATE_LIMIT_PER_MINUTE
+    global PROVIDER_CONFIGS, PROVIDER_BACKUP_CONFIGS
 
     now = time.time()
     provider_file = _resolve_provider_file()
@@ -208,18 +242,21 @@ def _refresh_runtime(force: bool = False) -> None:
             return
 
         default_request_model, fallback_models = _build_env_defaults()
+        default_rate_limit_per_minute = 10
         provider_configs, provider_backups = _build_env_provider_configs()
         external_cfg = _load_external_provider_config(provider_file)
-        default_request_model, fallback_models, provider_configs, provider_backups = _apply_external_overrides(
+        default_request_model, fallback_models, default_rate_limit_per_minute, provider_configs, provider_backups = _apply_external_overrides(
             external_cfg,
             default_request_model,
             fallback_models,
+            default_rate_limit_per_minute,
             provider_configs,
             provider_backups,
         )
 
         DEFAULT_REQUEST_MODEL = default_request_model
         DEFAULT_FALLBACK_MODELS = fallback_models
+        DEFAULT_RATE_LIMIT_PER_MINUTE = default_rate_limit_per_minute
         PROVIDER_CONFIGS = provider_configs
         PROVIDER_BACKUP_CONFIGS = provider_backups
 
@@ -236,6 +273,11 @@ def get_default_request_model() -> str:
 def get_default_fallback_models() -> tuple[str, ...]:
     _refresh_runtime()
     return DEFAULT_FALLBACK_MODELS
+
+
+def get_default_rate_limit_per_minute() -> int:
+    _refresh_runtime()
+    return max(1, int(DEFAULT_RATE_LIMIT_PER_MINUTE or 10))
 
 
 def get_provider_config(model: str) -> ProviderConfig | None:
@@ -259,6 +301,10 @@ def get_provider_candidates(model: str) -> tuple[ProviderConfig, ...]:
         seen.add(signature)
         deduped.append(item)
     return tuple(deduped)
+
+
+def reload_provider_runtime() -> None:
+    _refresh_runtime(force=True)
 
 
 # load once at import so old callers reading module globals still get usable defaults

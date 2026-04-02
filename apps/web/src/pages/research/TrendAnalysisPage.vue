@@ -26,13 +26,36 @@
             <div v-if="dataDimensionTags.length" class="mb-3 flex flex-wrap gap-2">
               <span v-for="tag in dataDimensionTags" :key="tag" class="metric-chip">{{ tag }}</span>
             </div>
-            <MarkdownBlock :content="analysisText" />
+            <MarkdownBlock :content="analysisMarkdown" />
           </div>
         </PageSection>
         <PageSection title="特征摘要" subtitle="展示参与本次分析的核心日线特征。">
           <MetricGrid :items="featureItems" columns-class="xl:grid-cols-1 md:grid-cols-1" empty-text="尚未拿到特征数据" />
         </PageSection>
       </div>
+
+      <PageSection title="结构化研判" subtitle="统一展示置信度、风险复核和行动视图。">
+        <div class="grid gap-3 xl:grid-cols-3 md:grid-cols-1">
+          <InfoCard title="决策置信度" :description="decisionConfidence.summary || '暂无结构化置信度'" :meta="decisionConfidence.label || '-'" />
+          <InfoCard title="风险复核" :description="riskReview.summary || '暂无结构化风险复核'" :meta="riskReview.source || '-'" />
+          <InfoCard title="行动视图" :description="portfolioView.summary || '暂无结构化行动视图'" :meta="portfolioView.source || '-'" />
+        </div>
+      </PageSection>
+
+      <PageSection title="风控与通知" subtitle="展示 pre-trade 风控校验结果和通知发送状态。">
+        <div class="grid gap-3 xl:grid-cols-2 md:grid-cols-1">
+          <InfoCard
+            title="Pre-trade 风控"
+            :description="riskCheckDescription"
+            :meta="riskCheckMeta"
+          />
+          <InfoCard
+            title="通知发送"
+            :description="notificationDescription"
+            :meta="notificationMeta"
+          />
+        </div>
+      </PageSection>
 
       <PageSection title="逻辑链路" subtitle="如果后端返回了逻辑视图，就优先结构化展示。">
         <div v-if="logicViewItems.length" class="space-y-2">
@@ -79,7 +102,7 @@ const quotaBlocked = computed(() => {
   const quota = authStatus.value?.trend_quota
   return !!(quota && quota.limit != null && Number(quota.remaining || 0) <= 0)
 })
-const analysisText = computed(() => result.value?.analysis || '（点击“分析”开始）')
+const analysisMarkdown = computed(() => result.value?.analysis_markdown || result.value?.analysis || '（点击“分析”开始）')
 const actualModel = computed(() => result.value?.used_model || result.value?.model || '待执行')
 const attemptChain = computed(() =>
   Array.isArray(result.value?.attempts)
@@ -91,11 +114,39 @@ const attemptChain = computed(() =>
 const features = computed<Record<string, any>>(() => (result.value?.features || {}) as Record<string, any>)
 const trendMetrics = computed<Record<string, any>>(() => (features.value.trend_metrics || {}) as Record<string, any>)
 const latest = computed<Record<string, any>>(() => (features.value.latest || {}) as Record<string, any>)
+const decisionConfidence = computed<Record<string, any>>(() => (result.value?.decision_confidence || {}) as Record<string, any>)
+const riskReview = computed<Record<string, any>>(() => (result.value?.risk_review || {}) as Record<string, any>)
+const portfolioView = computed<Record<string, any>>(() => (result.value?.portfolio_view || {}) as Record<string, any>)
 const dataDimensionTags = computed(() => {
-  const tags = ['日线价格', '趋势指标', '均线结构', '波动率']
+  const tags = Array.isArray(result.value?.used_context_dims) ? [...result.value.used_context_dims] : ['日线价格', '趋势指标', '均线结构', '波动率']
   if (latest.value.trade_date) tags.push(`最新交易日 ${latest.value.trade_date}`)
   if (Number(features.value.samples || 0) > 0) tags.push(`样本 ${features.value.samples} 条`)
   return tags
+})
+const preTradeCheck = computed<Record<string, any>>(() => (result.value?.pre_trade_check || {}) as Record<string, any>)
+const notification = computed<Record<string, any>>(() => (result.value?.notification || {}) as Record<string, any>)
+const riskCheckDescription = computed(() => {
+  if (!Object.keys(preTradeCheck.value).length) return '未启用或暂无风控校验结果。'
+  const reasons = Array.isArray(preTradeCheck.value.reasons) ? preTradeCheck.value.reasons : []
+  if (reasons.length) return reasons.join('；')
+  return preTradeCheck.value.allowed ? '通过校验，可进入后续模拟执行。' : '未通过校验，请先检查约束。'
+})
+const riskCheckMeta = computed(() => {
+  if (!Object.keys(preTradeCheck.value).length) return '-'
+  const checks = Array.isArray(preTradeCheck.value.checks) ? preTradeCheck.value.checks.length : 0
+  return `${preTradeCheck.value.allowed ? 'allowed' : 'blocked'} · checks ${checks}`
+})
+const notificationDescription = computed(() => {
+  if (!Object.keys(notification.value).length) return '未启用通知或本次未触发。'
+  if (notification.value.ok) return '通知已发送。'
+  if (notification.value.skipped) return `通知未发送：${notification.value.reason || 'skipped'}`
+  return `通知失败：${notification.value.error || 'unknown error'}`
+})
+const notificationMeta = computed(() => {
+  if (!Object.keys(notification.value).length) return '-'
+  if (notification.value.ok) return 'ok'
+  if (notification.value.skipped) return 'skipped'
+  return 'error'
 })
 
 const featureItems = computed(() => [
@@ -148,7 +199,7 @@ function runAnalysis() {
 function downloadMarkdown() {
   if (!result.value) return
   const tsCode = form.ts_code.trim().toUpperCase() || 'stock'
-  downloadTextFile(analysisText.value, `${tsCode}_LLM走势分析.md`, 'text/markdown;charset=utf-8')
+  downloadTextFile(analysisMarkdown.value, `${tsCode}_LLM走势分析.md`, 'text/markdown;charset=utf-8')
 }
 
 async function downloadImage() {
