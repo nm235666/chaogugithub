@@ -3,8 +3,8 @@
     <div class="space-y-4">
       <PageSection title="口径切换" subtitle="支持近 7 天累计和最近 1 天两种审计视角。">
         <div class="flex flex-wrap gap-3">
-          <button class="rounded-2xl px-4 py-3 font-semibold text-white" :class="scope === '7d' ? 'bg-[var(--brand)]' : 'bg-stone-800'" @click="scope = '7d'">近 7 天累计</button>
-          <button class="rounded-2xl px-4 py-3 font-semibold text-white" :class="scope === '1d' ? 'bg-[var(--brand)]' : 'bg-stone-800'" @click="scope = '1d'">最近 1 天</button>
+          <button class="rounded-2xl px-4 py-3 font-semibold text-white" :class="scope === '7d' ? 'bg-[var(--brand)]' : 'bg-stone-800'" @click="changeScope('7d')">近 7 天累计</button>
+          <button class="rounded-2xl px-4 py-3 font-semibold text-white" :class="scope === '1d' ? 'bg-[var(--brand)]' : 'bg-stone-800'" @click="changeScope('1d')">最近 1 天</button>
         </div>
       </PageSection>
 
@@ -18,7 +18,24 @@
       </PageSection>
 
       <PageSection v-for="section in sections" :key="section.key" :title="section.title" :subtitle="section.desc">
-        <DataTable :columns="columns" :rows="section.items" row-key="signal_key" empty-text="当前没有这一类问题">
+        <div class="grid gap-3 lg:hidden">
+          <InfoCard
+            v-for="row in section.items"
+            :key="row.signal_key"
+            :title="row.display_name || row.subject_name || '-'"
+            :meta="`${row.ts_code || '-'} · ${row.latest_signal_date || '-'}`"
+            :description="`强度 ${Number(row.signal_strength || 0).toFixed(2)} · 置信 ${Number(row.confidence || 0).toFixed(2)}% · ${row.top_evidence || '-'}`"
+          >
+            <template #badge>
+              <StatusBadge :value="row.direction" :label="row.direction || '-'" />
+            </template>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 font-semibold text-[var(--brand)]" :to="`/signals/overview?keyword=${encodeURIComponent(row.ts_code || row.display_name || row.subject_name || '')}`">查看信号详情</RouterLink>
+              <RouterLink class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 font-semibold text-[var(--muted)]" :to="`/signals/timeline?entity_name=${encodeURIComponent(row.display_name || row.subject_name || '')}&scope=${scope}`">查看时间线</RouterLink>
+            </div>
+          </InfoCard>
+        </div>
+        <DataTable class="hidden lg:block" :columns="columns" :rows="section.items" row-key="signal_key" empty-text="当前没有这一类问题">
           <template #cell-display_name="{ row }">
             <div>
               <div class="font-semibold text-[var(--ink)]">{{ row.display_name || row.subject_name || '-' }}</div>
@@ -42,17 +59,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
+import { buildCleanQuery, readQueryString } from '../../shared/utils/urlState'
 import { fetchSignalAudit } from '../../services/api/signals'
 
-const scope = ref<'7d' | '1d'>('7d')
+const route = useRoute()
+const router = useRouter()
+const scope = ref<'7d' | '1d'>(readQueryString(route.query as Record<string, unknown>, 'scope', '7d') === '1d' ? '1d' : '7d')
 
 const { data: result } = useQuery({
   queryKey: ['signal-audit', scope],
@@ -83,4 +103,18 @@ const columns = [
   { key: 'top_evidence', label: '证据摘要' },
   { key: 'latest_signal_date', label: '最近时间' },
 ]
+
+function changeScope(next: '7d' | '1d') {
+  if (scope.value === next) return
+  scope.value = next
+  router.replace({ query: buildCleanQuery({ scope: next }) })
+}
+
+watch(
+  () => route.query,
+  (query) => {
+    const next = readQueryString(query as Record<string, unknown>, 'scope', '7d')
+    scope.value = next === '1d' ? '1d' : '7d'
+  },
+)
 </script>

@@ -18,6 +18,17 @@ class ProviderConfig:
     rate_limit_per_minute: int | None = None
 
 
+@dataclass(frozen=True)
+class EmbeddingProfile:
+    scene: str
+    model: str
+    fallback_models: tuple[str, ...]
+    dimensions: int = 1536
+    batch_size: int = 8
+    timeout_seconds: int = 25
+    max_retries: int = 1
+
+
 def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
@@ -99,6 +110,7 @@ DEFAULT_FALLBACK_MODELS: tuple[str, ...] = ("GPT-5.4", "kimi-k2.5", "deepseek-ch
 DEFAULT_RATE_LIMIT_PER_MINUTE = 10
 PROVIDER_CONFIGS: dict[str, ProviderConfig] = {}
 PROVIDER_BACKUP_CONFIGS: dict[str, tuple[ProviderConfig, ...]] = {}
+EMBEDDING_PROFILES: dict[str, EmbeddingProfile] = {}
 
 
 def _resolve_provider_file() -> str:
@@ -185,6 +197,72 @@ def _build_env_provider_configs() -> tuple[dict[str, ProviderConfig], dict[str, 
     return providers, backups
 
 
+def _build_default_embedding_profiles() -> dict[str, EmbeddingProfile]:
+    return {
+        "news": EmbeddingProfile(
+            scene="news",
+            model="gpt-5.4",
+            fallback_models=("kimi-k2.5", "deepseek-chat"),
+            dimensions=1536,
+            batch_size=8,
+            timeout_seconds=25,
+            max_retries=1,
+        ),
+        "report": EmbeddingProfile(
+            scene="report",
+            model="gpt-5.4",
+            fallback_models=("deepseek-chat",),
+            dimensions=1536,
+            batch_size=6,
+            timeout_seconds=25,
+            max_retries=1,
+        ),
+        "chatroom": EmbeddingProfile(
+            scene="chatroom",
+            model="gpt-5.4",
+            fallback_models=("kimi-k2.5",),
+            dimensions=1536,
+            batch_size=10,
+            timeout_seconds=20,
+            max_retries=1,
+        ),
+    }
+
+
+def _parse_embedding_profiles(raw: object, base_profiles: dict[str, EmbeddingProfile]) -> dict[str, EmbeddingProfile]:
+    out = dict(base_profiles)
+    if not isinstance(raw, dict):
+        return out
+    for scene_raw, payload in raw.items():
+        scene = str(scene_raw or "").strip().lower()
+        if scene not in {"news", "report", "chatroom"}:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        model = str(payload.get("model") or out.get(scene, EmbeddingProfile(scene=scene, model="", fallback_models=())).model or "").strip()
+        fallback_models_raw = payload.get("fallback_models")
+        if isinstance(fallback_models_raw, list):
+            fallback_models = tuple(str(x or "").strip() for x in fallback_models_raw if str(x or "").strip())
+        else:
+            fallback_models = tuple(out.get(scene, EmbeddingProfile(scene=scene, model="", fallback_models=())).fallback_models)
+        dimensions = max(8, _safe_int(payload.get("dimensions", out.get(scene, EmbeddingProfile(scene=scene, model="", fallback_models=())).dimensions), 1536))
+        batch_size = max(1, _safe_int(payload.get("batch_size", out.get(scene, EmbeddingProfile(scene=scene, model="", fallback_models=())).batch_size), 8))
+        timeout_seconds = max(5, _safe_int(payload.get("timeout_seconds", out.get(scene, EmbeddingProfile(scene=scene, model="", fallback_models=())).timeout_seconds), 25))
+        max_retries = max(0, _safe_int(payload.get("max_retries", out.get(scene, EmbeddingProfile(scene=scene, model="", fallback_models=())).max_retries), 1))
+        if not model:
+            continue
+        out[scene] = EmbeddingProfile(
+            scene=scene,
+            model=model,
+            fallback_models=fallback_models,
+            dimensions=dimensions,
+            batch_size=batch_size,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+    return out
+
+
 def _apply_external_overrides(
     external_cfg: dict,
     default_request_model: str,
@@ -192,7 +270,8 @@ def _apply_external_overrides(
     default_rate_limit_per_minute: int,
     provider_configs: dict[str, ProviderConfig],
     provider_backups: dict[str, tuple[ProviderConfig, ...]],
-) -> tuple[str, tuple[str, ...], int, dict[str, ProviderConfig], dict[str, tuple[ProviderConfig, ...]]]:
+    embedding_profiles: dict[str, EmbeddingProfile],
+) -> tuple[str, tuple[str, ...], int, dict[str, ProviderConfig], dict[str, tuple[ProviderConfig, ...]], dict[str, EmbeddingProfile]]:
     global _LAST_EMPTY_OVERRIDE_KEYS
     external_default = str(external_cfg.get("default_request_model") or "").strip()
     if external_default:
@@ -265,13 +344,14 @@ def _apply_external_overrides(
                 flush=True,
             )
         _LAST_EMPTY_OVERRIDE_KEYS = set(empty_override_keys)
-    return default_request_model, fallback_models, default_rate_limit_per_minute, provider_configs, provider_backups
+    embedding_profiles = _parse_embedding_profiles(external_cfg.get("embedding_profiles"), embedding_profiles)
+    return default_request_model, fallback_models, default_rate_limit_per_minute, provider_configs, provider_backups, embedding_profiles
 
 
 def _refresh_runtime(force: bool = False) -> None:
     global _LAST_RELOAD_AT, _LAST_PROVIDER_FILE, _LAST_PROVIDER_FILE_MTIME
     global DEFAULT_REQUEST_MODEL, DEFAULT_FALLBACK_MODELS, DEFAULT_RATE_LIMIT_PER_MINUTE
-    global PROVIDER_CONFIGS, PROVIDER_BACKUP_CONFIGS
+    global PROVIDER_CONFIGS, PROVIDER_BACKUP_CONFIGS, EMBEDDING_PROFILES
 
     now = time.time()
     provider_file = _resolve_provider_file()
@@ -288,14 +368,16 @@ def _refresh_runtime(force: bool = False) -> None:
         default_request_model, fallback_models = _build_env_defaults()
         default_rate_limit_per_minute = 10
         provider_configs, provider_backups = _build_env_provider_configs()
+        embedding_profiles = _build_default_embedding_profiles()
         external_cfg = _load_external_provider_config(provider_file)
-        default_request_model, fallback_models, default_rate_limit_per_minute, provider_configs, provider_backups = _apply_external_overrides(
+        default_request_model, fallback_models, default_rate_limit_per_minute, provider_configs, provider_backups, embedding_profiles = _apply_external_overrides(
             external_cfg,
             default_request_model,
             fallback_models,
             default_rate_limit_per_minute,
             provider_configs,
             provider_backups,
+            embedding_profiles,
         )
 
         DEFAULT_REQUEST_MODEL = default_request_model
@@ -303,6 +385,7 @@ def _refresh_runtime(force: bool = False) -> None:
         DEFAULT_RATE_LIMIT_PER_MINUTE = default_rate_limit_per_minute
         PROVIDER_CONFIGS = provider_configs
         PROVIDER_BACKUP_CONFIGS = provider_backups
+        EMBEDDING_PROFILES = embedding_profiles
 
         _LAST_PROVIDER_FILE = provider_file
         _LAST_PROVIDER_FILE_MTIME = mtime
@@ -355,6 +438,36 @@ def is_provider_declared_but_unavailable(model: str) -> bool:
 
 def reload_provider_runtime() -> None:
     _refresh_runtime(force=True)
+
+
+def get_embedding_profile(scene: str) -> dict:
+    _refresh_runtime()
+    key = str(scene or "").strip().lower()
+    profile = EMBEDDING_PROFILES.get(key) or EMBEDDING_PROFILES.get("news")
+    if not profile:
+        return {
+            "scene": key or "news",
+            "model": "gpt-5.4",
+            "fallback_models": ["kimi-k2.5", "deepseek-chat"],
+            "dimensions": 1536,
+            "batch_size": 8,
+            "timeout_seconds": 25,
+            "max_retries": 1,
+        }
+    return {
+        "scene": profile.scene,
+        "model": profile.model,
+        "fallback_models": list(profile.fallback_models),
+        "dimensions": int(profile.dimensions),
+        "batch_size": int(profile.batch_size),
+        "timeout_seconds": int(profile.timeout_seconds),
+        "max_retries": int(profile.max_retries),
+    }
+
+
+def get_embedding_profiles() -> dict[str, dict]:
+    _refresh_runtime()
+    return {scene: get_embedding_profile(scene) for scene in ("news", "report", "chatroom")}
 
 
 # load once at import so old callers reading module globals still get usable defaults

@@ -3,7 +3,7 @@
     <div class="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent_0%,rgba(15,97,122,0.26)_32%,rgba(214,134,72,0.22)_68%,transparent_100%)]" />
     <div v-if="title || subtitle || $slots.action" class="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <div v-if="eyebrow" class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">{{ eyebrow }}</div>
+        <div v-if="eyebrow" class="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">{{ eyebrow }}</div>
         <h2 v-if="title" class="mt-1 text-xl font-extrabold tracking-tight" style="font-family: var(--font-display)">{{ title }}</h2>
         <p v-if="subtitle" class="mt-1 text-sm text-[var(--muted)]">{{ subtitle }}</p>
       </div>

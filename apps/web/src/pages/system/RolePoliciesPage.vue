@@ -17,11 +17,20 @@
         <div class="mb-4 rounded-[18px] border border-[rgba(15,97,122,0.16)] bg-[rgba(15,97,122,0.06)] px-4 py-3 text-sm text-[var(--muted)]">
           admin 独占管理员权限与全量访问能力；pro、limited 只允许配置研究与阅读类权限，保存时会自动剔除越权项。
         </div>
+        <div class="mb-4 rounded-[18px] border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm text-[var(--muted)]">
+          <div class="font-semibold text-[var(--ink)]">分组与权限码映射</div>
+          <div class="mt-1 text-xs">映射版本：{{ mappingVersion }}</div>
+          <div class="mt-2 grid gap-2 md:grid-cols-2">
+            <div v-for="group in permissionGroups" :key="`mapping-${group.id}`" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2">
+              <div class="font-semibold text-[var(--ink)]">{{ group.label }}</div>
+              <div class="mt-1 text-xs">{{ group.permissions.join(' / ') }}</div>
+            </div>
+          </div>
+        </div>
         <div v-if="policyWarnings.length" class="mb-4 rounded-[18px] border border-[rgba(214,134,72,0.28)] bg-[rgba(214,134,72,0.08)] px-4 py-3 text-sm text-[var(--muted)]">
           <div class="font-semibold text-[var(--ink)]">发现越权权限</div>
-          <div class="mt-1">当前策略含越权权限，已在编辑视图中隔离展示，不会随保存再次写回。</div>
-          <div class="mt-2 space-y-1">
-            <div v-for="warning in policyWarnings" :key="warning">{{ warning }}</div>
+          <div class="mt-1">
+            当前策略含 {{ policyWarnings.length }} 项越权权限，已在编辑视图中隔离，不会随保存再次写回。
           </div>
         </div>
         <div class="space-y-4">
@@ -55,19 +64,41 @@
               </label>
             </div>
             <div class="mt-3 text-sm font-semibold">权限项</div>
-            <div class="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              <label v-for="perm in permissionsForRole(role)" :key="`${role}-${perm}`" class="flex items-center gap-2 rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
-                <input
-                  type="checkbox"
-                  :checked="drafts[role].permissions.has(perm)"
-                  :disabled="role === 'admin' && perm !== '*'"
-                  @change="togglePermission(role, perm)"
-                />
-                <span>{{ perm }}</span>
-              </label>
+            <div v-if="role === 'admin'" class="mt-2 rounded-xl border border-[var(--line)] px-3 py-3 text-sm">
+              <div class="flex items-center gap-2">
+                <input type="checkbox" :checked="true" disabled />
+                <span class="font-semibold">*</span>
+                <span class="text-[var(--muted)]">admin 全量权限（只读）</span>
+              </div>
+            </div>
+            <div v-else class="mt-2 space-y-3">
+              <div
+                v-for="group in permissionGroupsForRole(role)"
+                :key="`${role}-${group.id}`"
+                class="rounded-xl border border-[var(--line)] px-3 py-3"
+              >
+                <div class="mb-2">
+                  <div class="text-sm font-semibold text-[var(--ink)]">{{ group.label }}</div>
+                  <div class="text-xs text-[var(--muted)]">{{ group.description }}</div>
+                </div>
+                <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  <label
+                    v-for="perm in group.permissions"
+                    :key="`${role}-${group.id}-${perm}`"
+                    class="flex items-center gap-2 rounded-xl border border-[var(--line)] px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="drafts[role].permissions.has(perm)"
+                      @change="togglePermission(role, perm)"
+                    />
+                    <span>{{ perm }}</span>
+                  </label>
+                </div>
+              </div>
             </div>
             <div v-if="invalidPermissionsByRole[role]?.length" class="mt-3 rounded-[16px] border border-[rgba(214,134,72,0.28)] bg-[rgba(214,134,72,0.06)] px-3 py-3 text-sm text-[var(--muted)]">
-              已隔离的越权权限：{{ invalidPermissionsByRole[role].join('、') }}
+              已隔离的越权权限：{{ invalidPermissionsByRole[role].length }} 项
             </div>
           </div>
         </div>
@@ -81,11 +112,15 @@ import { computed, reactive, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
-import { fetchAuthRolePolicies, resetAuthRolePoliciesToDefault, updateAuthRolePolicy, type AuthRolePolicy } from '../../services/api/system'
+import { fetchAuthRolePolicies, fetchNavigationGroups, resetAuthRolePoliciesToDefault, updateAuthRolePolicy, type AuthRolePolicy } from '../../services/api/system'
+import { useAuthStore } from '../../stores/auth'
 
 const message = ref('')
 const roleOrder = ['admin', 'pro', 'limited']
-const allPermissions = [
+const auth = useAuthStore()
+const permissionGroups = ref<Array<{ id: string; label: string; description: string; permissions: string[] }>>([])
+const mappingVersion = ref('server:unknown')
+const allPermissions = ref<string[]>([
   '*',
   'news_read',
   'stock_news_read',
@@ -99,34 +134,12 @@ const allPermissions = [
   'macro_advanced',
   'admin_users',
   'admin_system',
-]
-const rolePermissionAllowlist: Record<string, string[]> = {
+])
+const rolePermissionAllowlist = reactive<Record<string, string[]>>({
   admin: ['*'],
-  pro: [
-    'news_read',
-    'stock_news_read',
-    'daily_summary_read',
-    'trend_analyze',
-    'multi_role_analyze',
-    'research_advanced',
-    'signals_advanced',
-    'chatrooms_advanced',
-    'stocks_advanced',
-    'macro_advanced',
-  ],
-  limited: [
-    'news_read',
-    'stock_news_read',
-    'daily_summary_read',
-    'trend_analyze',
-    'multi_role_analyze',
-    'research_advanced',
-    'signals_advanced',
-    'chatrooms_advanced',
-    'stocks_advanced',
-    'macro_advanced',
-  ],
-}
+  pro: [],
+  limited: [],
+})
 
 type RoleDraft = {
   permissions: Set<string>
@@ -146,13 +159,21 @@ const invalidPermissionsByRole = reactive<Record<string, string[]>>({
 })
 
 const policyWarnings = computed(() =>
-  roleOrder.flatMap((role) =>
-    (invalidPermissionsByRole[role] || []).map((perm) => `${role}：${perm}`),
-  ),
+  roleOrder.flatMap((role) => (invalidPermissionsByRole[role] || []).map((perm) => `${role}：${perm}`)),
 )
 
 function permissionsForRole(role: string) {
-  return rolePermissionAllowlist[role] || allPermissions
+  return rolePermissionAllowlist[role] || allPermissions.value
+}
+
+function permissionGroupsForRole(role: string) {
+  const allowlist = new Set(permissionsForRole(role))
+  return permissionGroups.value
+    .map((group) => ({
+      ...group,
+      permissions: group.permissions.filter((perm) => allowlist.has(perm)),
+    }))
+    .filter((group) => group.permissions.length > 0)
 }
 
 function applyRolePolicy(item: AuthRolePolicy) {
@@ -199,15 +220,62 @@ function togglePermission(role: string, perm: string) {
 const { refetch } = useQuery({
   queryKey: ['auth-role-policies'],
   queryFn: async () => {
-    const data = await fetchAuthRolePolicies()
+    const authData = await fetchAuthRolePolicies()
+    await auth.refresh(true)
+    const dynamic = auth.status?.dynamic_rbac || {}
+    const catalog = Array.isArray(dynamic.permission_catalog) ? dynamic.permission_catalog : []
+    const catalogCodes = catalog
+      .map((item) => String(item?.code || '').trim())
+      .filter(Boolean)
+    const systemReserved = new Set(
+      catalog
+        .filter((item: any) => Boolean(item?.system_reserved))
+        .map((item: any) => String(item?.code || '').trim())
+        .filter(Boolean),
+    )
+    if (catalogCodes.length) {
+      allPermissions.value = ['*', ...catalogCodes]
+    }
+    const matrix = auth.status?.permission_matrix || {}
+    rolePermissionAllowlist.admin = ['*']
+    rolePermissionAllowlist.pro = Array.isArray(matrix.pro)
+      ? matrix.pro.filter((perm) => perm !== '*' && !systemReserved.has(perm))
+      : catalogCodes.filter((perm) => !systemReserved.has(perm))
+    rolePermissionAllowlist.limited = Array.isArray(matrix.limited)
+      ? matrix.limited.filter((perm) => perm !== '*' && !systemReserved.has(perm))
+      : catalogCodes.filter((perm) => !systemReserved.has(perm))
+    const navigationGroups = Array.isArray(dynamic.navigation_groups) ? dynamic.navigation_groups : []
+    const nextGroups: Array<{ id: string; label: string; description: string; permissions: string[] }> = navigationGroups
+      .map((group: any) => {
+        const items = Array.isArray(group?.items) ? group.items : []
+        const permissions = Array.from(
+          new Set(items.map((item: any) => String(item?.permission || '').trim()).filter(Boolean)),
+        ) as string[]
+        return {
+          id: String(group?.id || '').trim(),
+          label: String(group?.title || '').trim(),
+          description: `${String(group?.title || '').trim()}相关权限`,
+          permissions,
+        }
+      })
+      .filter((group: any) => group.id && group.label && group.permissions.length > 0)
+    if (nextGroups.length) {
+      permissionGroups.value = nextGroups
+    }
+    try {
+      const navPayload = await fetchNavigationGroups()
+      mappingVersion.value = `${String(navPayload?.source || 'server')}:${String(navPayload?.version || '-')}`
+    } catch {
+      mappingVersion.value = `${String(dynamic.source || 'server')}:${String(dynamic.version || '-')}`
+    }
     for (const role of roleOrder) {
       if (!drafts[role]) {
         drafts[role] = { permissions: new Set(), trend_daily_limit_text: '', multi_role_daily_limit_text: '' }
       }
     }
-    for (const item of data.roles || []) applyRolePolicy(item)
-    message.value = `策略来源：${data.effective_source || 'db'}`
-    return data
+    for (const item of authData.roles || []) applyRolePolicy(item)
+    message.value = `策略来源：${authData.effective_source || 'db'}`
+    return authData
   },
 })
 

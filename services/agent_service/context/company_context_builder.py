@@ -19,6 +19,7 @@ def summarize_context_dimensions(context: dict) -> list[str]:
         "governance_summary": "公司治理",
         "risk_summary": "风险情景",
         "stock_news_summary": "股票新闻",
+        "retrieval_context": "语义检索",
     }
     dims: list[str] = []
     for key, label in mapping.items():

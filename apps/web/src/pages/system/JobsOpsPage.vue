@@ -2,7 +2,7 @@
   <AppShell title="任务调度与观测中心" subtitle="统一查看 job 定义、运行记录、告警和 dry-run/触发结果。">
     <div class="space-y-4">
       <PageSection title="任务筛选与操作" subtitle="先按域/关键字定位任务，再做 dry-run 或手动触发。">
-        <div class="grid gap-3 xl:grid-cols-[1fr_180px_180px_120px] md:grid-cols-2">
+        <div class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
           <input v-model="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="筛选 job_key / 名称" />
           <select v-model="filters.category" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部域</option>
@@ -30,7 +30,7 @@
         </div>
       </PageSection>
 
-      <div class="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <div class="grid gap-4 xl:grid-cols-2">
         <PageSection :title="`任务定义 (${filteredJobs.length})`" subtitle="点击某条任务后，右侧可直接 dry-run/触发。">
           <div class="space-y-2">
             <InfoCard
@@ -73,7 +73,7 @@
         </PageSection>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div class="grid gap-4 xl:grid-cols-2">
         <PageSection :title="`最近运行 (${runsRows.length})`" subtitle="用于排查耗时、失败与运行态。">
           <div class="space-y-2">
             <InfoCard
@@ -133,19 +133,19 @@ const actionMessage = ref('')
 const jobsQuery = useQuery({
   queryKey: ['jobs-definitions'],
   queryFn: fetchJobs,
-  refetchInterval: 60_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
 })
 
 const runsQuery = useQuery({
   queryKey: ['jobs-runs', runLimit],
   queryFn: () => fetchJobRuns({ limit: runLimit.value }),
-  refetchInterval: 30_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 30_000 : 120_000),
 })
 
 const alertsQuery = useQuery({
   queryKey: ['jobs-alerts'],
   queryFn: () => fetchJobAlerts({ unresolved_only: 1, limit: 50 }),
-  refetchInterval: 30_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 30_000 : 120_000),
 })
 
 const dryRunMutation = useMutation({

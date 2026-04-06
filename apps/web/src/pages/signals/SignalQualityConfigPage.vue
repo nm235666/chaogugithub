@@ -17,7 +17,48 @@
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-white" :disabled="isSaving" @click="saveAll">保存全部</button>
           </div>
         </template>
-        <DataTable :columns="ruleColumns" :rows="rules" row-key="rule_key" empty-text="暂无规则">
+        <div class="space-y-3 lg:hidden">
+          <InfoCard
+            v-for="(row, idx) in rules"
+            :key="`${row.rule_key || 'rule'}-${idx}`"
+            :title="row.rule_key || '未命名规则'"
+            :meta="`分类 ${row.category || '-'} · 类型 ${row.value_type || '-'}`"
+          >
+            <div class="grid gap-2">
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                规则键
+                <input v-model="row.rule_key" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                规则值
+                <input v-model="row.rule_value" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                值类型
+                <select v-model="row.value_type" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2">
+                  <option value="number">数值</option>
+                  <option value="bool">布尔</option>
+                  <option value="text">文本</option>
+                </select>
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                分类
+                <input v-model="row.category" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                说明
+                <textarea v-model="row.description" class="mt-1 min-h-[72px] w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" />
+              </label>
+              <label class="inline-flex items-center gap-2 text-sm text-[var(--muted)]">
+                <input v-model="row.enabled" type="checkbox" />
+                启用规则
+              </label>
+              <button class="rounded-xl bg-[rgba(178,77,84,0.1)] px-3 py-2 text-sm font-semibold text-[var(--danger)]" @click="removeRule(row)">移除规则</button>
+            </div>
+          </InfoCard>
+        </div>
+
+        <DataTable class="hidden lg:block" :columns="ruleColumns" :rows="rules" row-key="rule_key" empty-text="暂无规则">
           <template #cell-enabled="{ row }"><input v-model="row.enabled" type="checkbox" /></template>
           <template #cell-rule_key="{ row }"><input v-model="row.rule_key" class="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" /></template>
           <template #cell-rule_value="{ row }"><input v-model="row.rule_value" class="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" /></template>
@@ -38,7 +79,52 @@
         <template #action>
           <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white" @click="addBlock">新增黑名单</button>
         </template>
-        <DataTable :columns="blockColumns" :rows="blocklist" row-key="id" empty-text="暂无黑名单">
+        <div class="space-y-3 lg:hidden">
+          <InfoCard
+            v-for="(row, idx) in blocklist"
+            :key="`${row.id || 'block'}-${idx}`"
+            :title="row.term || '未命名词项'"
+            :meta="`${row.target_type || '-'} · ${row.match_type || '-'}`"
+          >
+            <div class="grid gap-2">
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                词项
+                <input v-model="row.term" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                目标类型
+                <select v-model="row.target_type" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2">
+                  <option value="stock">股票</option>
+                  <option value="theme">主题</option>
+                  <option value="all">全部</option>
+                </select>
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                匹配方式
+                <select v-model="row.match_type" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2">
+                  <option value="exact">精确</option>
+                  <option value="contains">包含</option>
+                  <option value="prefix">前缀</option>
+                </select>
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                来源
+                <input v-model="row.source" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                原因
+                <textarea v-model="row.reason" class="mt-1 min-h-[72px] w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" />
+              </label>
+              <label class="inline-flex items-center gap-2 text-sm text-[var(--muted)]">
+                <input v-model="row.enabled" type="checkbox" />
+                启用词项
+              </label>
+              <button class="rounded-xl bg-[rgba(178,77,84,0.1)] px-3 py-2 text-sm font-semibold text-[var(--danger)]" @click="removeBlock(row)">移除黑名单项</button>
+            </div>
+          </InfoCard>
+        </div>
+
+        <DataTable class="hidden lg:block" :columns="blockColumns" :rows="blocklist" row-key="id" empty-text="暂无黑名单">
           <template #cell-enabled="{ row }"><input v-model="row.enabled" type="checkbox" /></template>
           <template #cell-term="{ row }"><input v-model="row.term" class="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2" /></template>
           <template #cell-target_type="{ row }">
@@ -71,7 +157,9 @@ import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
+import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchSignalQualityConfig, saveSignalQualityBlocklist, saveSignalQualityRules } from '../../services/api/system'
+import { confirmDangerAction } from '../../shared/utils/confirm'
 
 const rules = ref<Array<Record<string, any>>>([])
 const blocklist = ref<Array<Record<string, any>>>([])
@@ -159,7 +247,8 @@ function addRule() {
   rules.value.push(normalizeRule({ category: 'manual', enabled: 1 }))
 }
 
-function removeRule(row: Record<string, any>) {
+async function removeRule(row: Record<string, any>) {
+  if (!await confirmDangerAction('移除规则', row.rule_key || '未命名规则')) return
   rules.value = rules.value.filter((item) => item !== row)
 }
 
@@ -167,7 +256,8 @@ function addBlock() {
   blocklist.value.push(normalizeBlock({ enabled: 1 }))
 }
 
-function removeBlock(row: Record<string, any>) {
+async function removeBlock(row: Record<string, any>) {
+  if (!await confirmDangerAction('移除黑名单项', row.term || '未命名词项')) return
   blocklist.value = blocklist.value.filter((item) => item !== row)
 }
 

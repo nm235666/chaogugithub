@@ -1,10 +1,13 @@
 <template>
-  <div ref="chartEl" class="w-full" :style="{ height: `${height}px` }" />
+  <div class="w-full" role="img" :aria-label="ariaLabel" :aria-describedby="summaryId">
+    <div ref="chartEl" class="w-full" :style="{ height: `${height}px` }" />
+    <p :id="summaryId" class="sr-only">{{ summaryText }}</p>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { useResizeObserver } from '@vueuse/core'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, GraphicComponent, TooltipComponent } from 'echarts/components'
 import { init, use, graphic, type EChartsType } from 'echarts/core'
@@ -31,6 +34,30 @@ const props = withDefaults(defineProps<{
 
 const chartEl = ref<HTMLElement | null>(null)
 let chart: EChartsType | null = null
+let renderTimer: ReturnType<typeof setTimeout> | null = null
+const summaryId = `trend-chart-summary-${Math.random().toString(36).slice(2, 10)}`
+
+function sampleByStep<T>(items: T[], max = 500): T[] {
+  if (items.length <= max) return items
+  const step = Math.max(1, Math.ceil(items.length / max))
+  const sampled: T[] = []
+  for (let index = 0; index < items.length; index += step) {
+    sampled.push(items[index])
+  }
+  const last = items[items.length - 1]
+  if (sampled[sampled.length - 1] !== last) sampled.push(last)
+  return sampled
+}
+
+const summaryText = computed(() => {
+  const sample = props.labels.length
+  const names = props.series.map((item) => item.name).filter(Boolean).join('、') || '趋势序列'
+  if (!sample) return `${props.emptyText}。`
+  const start = props.labels[0] || '-'
+  const end = props.labels[sample - 1] || '-'
+  return `图表包含 ${names}，样本 ${sample} 个，范围 ${start} 到 ${end}。`
+})
+const ariaLabel = computed(() => `${props.series.map((item) => item.name).filter(Boolean).join(' / ') || '趋势图'}图表`)
 
 function ensureChart() {
   if (!chartEl.value) return null
@@ -43,8 +70,16 @@ function ensureChart() {
 function render() {
   const instance = ensureChart()
   if (!instance) return
+  const sampledLabels = sampleByStep(props.labels, 500)
+  const sampledSeries = props.series.map((series) => {
+    const sampledData = sampleByStep(series.data, 500)
+    return {
+      ...series,
+      data: sampledData,
+    }
+  })
 
-  const hasData = props.labels.length > 0 && props.series.some((item) => item.data.some((value) => value != null))
+  const hasData = sampledLabels.length > 0 && sampledSeries.some((item) => item.data.some((value) => value != null))
   if (!hasData) {
     instance.setOption({
       animation: false,
@@ -81,7 +116,7 @@ function render() {
     },
     xAxis: {
       type: 'category',
-      data: props.labels,
+      data: sampledLabels,
       boundaryGap: false,
       axisLine: { lineStyle: { color: '#c8d7df' } },
       axisLabel: { color: '#607689', hideOverlap: true },
@@ -98,7 +133,7 @@ function render() {
         formatter: (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 2 }),
       },
     },
-    series: props.series.map((item) => {
+    series: sampledSeries.map((item) => {
       const color = item.color || '#0f617a'
       return {
         name: item.name,
@@ -123,21 +158,30 @@ function render() {
   }, true)
 }
 
+function scheduleRender() {
+  if (renderTimer) clearTimeout(renderTimer)
+  renderTimer = setTimeout(() => {
+    render()
+    renderTimer = null
+  }, 120)
+}
+
 useResizeObserver(chartEl, () => {
   chart?.resize()
 })
 
 watch(
   () => [props.labels, props.series] as const,
-  () => render(),
+  () => scheduleRender(),
   { deep: true, immediate: true },
 )
 
 onMounted(() => {
-  render()
+  scheduleRender()
 })
 
 onBeforeUnmount(() => {
+  if (renderTimer) clearTimeout(renderTimer)
   chart?.dispose()
   chart = null
 })

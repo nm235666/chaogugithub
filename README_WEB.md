@@ -77,6 +77,23 @@ nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8006 python3 backen
 ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 ```
 
+### 因子挖掘运行环境（QuantaAlpha）
+
+首次部署或迁移机器时，先初始化 QuantaAlpha 专用运行环境：
+
+```bash
+cd /home/zanbo/zanbotest
+bash scripts/setup_quantaalpha_runtime.sh
+```
+
+`runtime_env.sh` 会自动优先使用 `runtime/quantaalpha_venv/bin/python` 作为 `QUANTAALPHA_PYTHON_BIN`。  
+可手工自检：
+
+```bash
+. /home/zanbo/zanbotest/runtime_env.sh
+"$QUANTAALPHA_PYTHON_BIN" -c "import dotenv; import quantaalpha; print('ok')"
+```
+
 ## SQLite 退役
 
 dry-run 预览：
@@ -151,3 +168,21 @@ python3 /home/zanbo/zanbotest/migrate_sqlite_to_postgres.py --database-url postg
 - `status`：`L`(上市) / `D`(退市) / `P`(暂停)
 - `page`：页码，默认 1
 - `page_size`：每页条数，默认 20，最大 200
+
+## 定时任务调度（统一口径）
+
+- 任务排期单一真源：`job_definitions`（由 `job_registry.py` 同步）
+- cron 安装入口：`bash /home/zanbo/zanbotest/install_all_crons.sh`
+- 安装脚本会自动：
+  - 同步 `job_definitions`
+  - 生成“cron -> job_orchestrator job_key”触发行
+  - 对 `market_data` 分类任务启用交易日门禁（非交易日写入 `skipped_non_trading_day`）
+  - 输出一致性检查与下次触发时间（UTC/CST）
+
+常用检查命令：
+
+```bash
+python3 /home/zanbo/zanbotest/scripts/scheduler/check_cron_sync.py
+python3 /home/zanbo/zanbotest/job_orchestrator.py list
+python3 /home/zanbo/zanbotest/job_orchestrator.py runs --limit 50
+```

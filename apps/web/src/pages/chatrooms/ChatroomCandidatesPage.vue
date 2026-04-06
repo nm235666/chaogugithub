@@ -2,20 +2,32 @@
   <AppShell title="股票候选池" subtitle="按群聊观点聚合出来的股票 / 主题候选池统一查看。">
     <div class="space-y-4">
       <PageSection title="候选池结果" subtitle="这是群聊信息转投资线索的统一入口。">
-        <div class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
-          <input v-model="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="关键词" />
-          <select v-model="filters.candidate_type" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部类型</option>
-            <option value="股票">股票</option>
-            <option value="主题">主题</option>
-          </select>
-          <select v-model="filters.dominant_bias" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部方向</option>
-            <option value="看多">看多</option>
-            <option value="看空">看空</option>
-          </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="reload">刷新</button>
-        </div>
+        <fieldset class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
+          <legend class="sr-only">候选池筛选条件</legend>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            关键词
+            <input v-model="filters.keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="关键词" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            类型
+            <select v-model="filters.candidate_type" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部类型</option>
+              <option value="股票">股票</option>
+              <option value="主题">主题</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            方向
+            <select v-model="filters.dominant_bias" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部方向</option>
+              <option value="看多">看多</option>
+              <option value="看空">看空</option>
+            </select>
+          </label>
+          <div class="flex items-end">
+            <button class="w-full rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="reload">刷新</button>
+          </div>
+        </fieldset>
         <div class="mt-4 grid gap-3 xl:grid-cols-4 md:grid-cols-2">
           <InfoCard title="全部候选" :meta="`当前命中 ${result?.total ?? 0}`" :description="`累计候选 ${summary.candidate_total ?? 0}`" />
           <InfoCard title="看多 / 看空" :meta="`看多 ${summary.bullish_total ?? 0}`" :description="`看空 ${summary.bearish_total ?? 0}`" />
@@ -65,10 +77,10 @@
           </InfoCard>
         </div>
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-          <div>第 {{ filters.page }} / {{ result?.total_pages || 1 }} 页</div>
+          <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="prevPage">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (result?.total_pages || 1)" @click="nextPage">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="prevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="nextPage">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -77,39 +89,50 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
-import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, reactive, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchCandidatePool } from '../../services/api/chatrooms'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
 const router = useRouter()
+const route = useRoute()
 const filters = reactive({ keyword: '', candidate_type: '', dominant_bias: '', page: 1, page_size: 30 })
-const { data: result, refetch, isFetching, error } = useQuery({
-  queryKey: computed(() => ['candidate-pool', { ...filters }]),
-  queryFn: () => fetchCandidatePool({ ...filters }),
+const queryFilters = reactive({ keyword: '', candidate_type: '', dominant_bias: '', page: 1, page_size: 30 })
+const { data: result, isFetching, error } = useQuery({
+  queryKey: computed(() => ['candidate-pool', { ...queryFilters }]),
+  queryFn: () => fetchCandidatePool({ ...queryFilters }),
+  placeholderData: keepPreviousData,
 })
 const summary = computed(() => result.value?.summary || {})
 const queryError = computed(() => error.value?.message || '')
 const filterMeta = computed(() => {
-  const parts = [filters.keyword ? `关键词 ${filters.keyword}` : '', filters.candidate_type || '', filters.dominant_bias || '']
+  const parts = [queryFilters.keyword ? `关键词 ${queryFilters.keyword}` : '', queryFilters.candidate_type || '', queryFilters.dominant_bias || '']
     .filter(Boolean)
   return parts.join(' · ') || '未启用筛选'
 })
-const filterHint = computed(() => (filters.keyword || filters.candidate_type || filters.dominant_bias ? '当前视图已经收窄。' : '当前是全量候选池视图。'))
+const filterHint = computed(() => (queryFilters.keyword || queryFilters.candidate_type || queryFilters.dominant_bias ? '当前视图已经收窄。' : '当前是全量候选池视图。'))
 
 function reload() {
-  filters.page = 1
-  refetch()
+  Object.assign(queryFilters, {
+    keyword: filters.keyword,
+    candidate_type: filters.candidate_type,
+    dominant_bias: filters.dominant_bias,
+    page: 1,
+    page_size: Number(filters.page_size) || 30,
+  })
+  syncRouteFromFilters()
 }
 
 function resetFilters() {
   Object.assign(filters, { keyword: '', candidate_type: '', dominant_bias: '', page: 1, page_size: 30 })
-  refetch()
+  Object.assign(queryFilters, { ...filters })
+  syncRouteFromFilters()
 }
 
 function openCandidate(item: Record<string, any>) {
@@ -127,15 +150,48 @@ function openCandidate(item: Record<string, any>) {
 }
 
 function prevPage() {
-  if (filters.page <= 1) return
-  filters.page -= 1
-  refetch()
+  if (queryFilters.page <= 1) return
+  queryFilters.page -= 1
+  syncRouteFromFilters()
 }
 
 function nextPage() {
   const totalPages = Number(result.value?.total_pages || 1)
-  if (filters.page >= totalPages) return
-  filters.page += 1
-  refetch()
+  if (queryFilters.page >= totalPages) return
+  queryFilters.page += 1
+  syncRouteFromFilters()
 }
+
+function syncRouteFromFilters() {
+  router.replace({
+    query: buildCleanQuery({
+      keyword: queryFilters.keyword,
+      candidate_type: queryFilters.candidate_type,
+      dominant_bias: queryFilters.dominant_bias,
+      page: queryFilters.page,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteFilters() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    keyword: readQueryString(q, 'keyword', ''),
+    candidate_type: readQueryString(q, 'candidate_type', ''),
+    dominant_bias: readQueryString(q, 'dominant_bias', ''),
+    page: Math.max(1, readQueryNumber(q, 'page', 1)),
+    page_size: Math.max(30, readQueryNumber(q, 'page_size', 30)),
+  }
+  Object.assign(filters, next)
+  Object.assign(queryFilters, next)
+}
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteFilters()
+  },
+  { immediate: true },
+)
 </script>

@@ -84,9 +84,10 @@ def fetch_price_rows(conn: sqlite3.Connection, codes: list[str], lookback_bars: 
     if not codes:
         return {}
     placeholders = ",".join(["?"] * len(codes))
+    # Use CTE form for cross-DB compatibility (PostgreSQL requires explicit aliases
+    # for derived tables and has stricter parser behavior than SQLite).
     sql = f"""
-    SELECT ts_code, trade_date, close
-    FROM (
+    WITH ranked_prices AS (
       SELECT
         ts_code,
         trade_date,
@@ -94,7 +95,9 @@ def fetch_price_rows(conn: sqlite3.Connection, codes: list[str], lookback_bars: 
         ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
       FROM stock_daily_prices
       WHERE ts_code IN ({placeholders})
-    ) ranked_prices
+    )
+    SELECT ts_code, trade_date, close
+    FROM ranked_prices
     WHERE rn <= ?
     ORDER BY ts_code, trade_date
     """

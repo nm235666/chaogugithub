@@ -19,9 +19,33 @@
           <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="applyFilters">
             {{ isFetching ? '查询中...' : '查询' }}
           </button>
+          <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="semanticSearching" @click="runSemanticSearch">
+            {{ semanticSearching ? '语义检索中...' : '语义检索' }}
+          </button>
         </div>
         <div v-if="protocolMetaText" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
           {{ protocolMetaText }}
+        </div>
+        <div v-if="semanticError" class="mt-3 rounded-[16px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {{ semanticError }}
+        </div>
+        <div v-if="semanticHits.length" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+          <div class="mb-2 text-sm font-semibold text-[var(--ink)]">语义检索命中（{{ semanticHits.length }}）</div>
+          <div class="space-y-2">
+            <button
+              v-for="(hit, index) in semanticHits"
+              :key="`${hit.source_type}-${hit.source_id}-${index}`"
+              class="w-full rounded-2xl border border-[var(--line)] bg-white px-3 py-3 text-left transition hover:border-[var(--brand)]"
+              @click="openSemanticHit(hit)"
+            >
+              <div class="text-sm font-semibold text-[var(--ink)]">{{ hit.title || '-' }}</div>
+              <div class="mt-1 text-xs text-[var(--muted)]">
+                {{ hit.source_type || '-' }} · 相似度 {{ Number(hit.rerank_score || 0).toFixed(3) }} · {{ hit.published_at || '-' }}
+              </div>
+              <div class="mt-2 text-sm text-[var(--muted)]">{{ hit.snippet || '' }}</div>
+            </button>
+          </div>
+          <div v-if="semanticTraceText" class="mt-2 text-xs text-[var(--muted)]">{{ semanticTraceText }}</div>
         </div>
         <StatePanel
           v-if="queryError"
@@ -70,8 +94,8 @@
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
           <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="queryFilters.page -= 1">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="queryFilters.page += 1">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="goPrevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -140,9 +164,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
@@ -150,10 +174,12 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import DetailDrawer from '../../shared/ui/DetailDrawer.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
-import { fetchResearchReports } from '../../services/api/research'
+import { fetchResearchReports, searchAiRetrieval } from '../../services/api/research'
 import { downloadElementAsImage, downloadTextFile } from '../../shared/utils/export'
 import { parseJsonArray, parseJsonObject } from '../../shared/utils/finance'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
+const route = useRoute()
 const router = useRouter()
 
 const queryFilters = reactive({ keyword: '', report_type: '', report_date: '', page: 1, page_size: 20 })
@@ -161,8 +187,16 @@ const draftFilters = reactive({ ...queryFilters })
 const selectedItem = ref<Record<string, any> | null>(null)
 const detailExportRef = ref<HTMLElement | null>(null)
 const downloadStatus = ref('')
+const semanticSearching = ref(false)
+const semanticHits = ref<Array<Record<string, any>>>([])
+const semanticError = ref('')
+const semanticTrace = ref<Record<string, any>>({})
 
-const { data: result, isFetching, error, refetch } = useQuery({ queryKey: ['research-reports', queryFilters], queryFn: () => fetchResearchReports(queryFilters) })
+const { data: result, isFetching, error, refetch } = useQuery({
+  queryKey: ['research-reports', queryFilters],
+  queryFn: () => fetchResearchReports(queryFilters),
+  placeholderData: keepPreviousData,
+})
 
 watch(
   () => result.value?.items,
@@ -200,6 +234,14 @@ const protocolMetaText = computed(() => {
   return `协议版本 ${version || '-'} · 主字段 ${primary || '-'} · 兼容字段 ${compat || '-'} · 兼容退场时间 ${retireAfter || '-'}`
 })
 const queryError = computed(() => error.value?.message || '')
+const semanticTraceText = computed(() => {
+  const trace = semanticTrace.value || {}
+  const keywordCandidates = Number(trace.keyword_candidates || 0)
+  const vectorCandidates = Number(trace.vector_candidates || 0)
+  const mergedCandidates = Number(trace.merged_candidates || 0)
+  if (!keywordCandidates && !vectorCandidates && !mergedCandidates) return ''
+  return `关键词召回 ${keywordCandidates} · 向量召回 ${vectorCandidates} · 重排后 ${mergedCandidates}`
+})
 
 function reportTypeLabel(value: unknown) {
   const raw = String(value || '').trim()
@@ -297,6 +339,7 @@ async function downloadImage() {
 
 function applyFilters() {
   Object.assign(queryFilters, { ...draftFilters, page: 1 })
+  syncRouteFromQuery()
 }
 
 function resetFilters() {
@@ -307,4 +350,94 @@ function resetFilters() {
 function reloadList() {
   refetch()
 }
+
+async function runSemanticSearch() {
+  const keyword = String(draftFilters.keyword || '').trim()
+  if (!keyword) {
+    semanticError.value = '请先输入关键词，再执行语义检索。'
+    semanticHits.value = []
+    return
+  }
+  semanticSearching.value = true
+  semanticError.value = ''
+  try {
+    const res = await searchAiRetrieval({
+      query: keyword,
+      scene: 'report',
+      top_k: 8,
+    })
+    semanticHits.value = Array.isArray(res?.hits) ? res.hits : []
+    semanticTrace.value = (res?.trace || {}) as Record<string, any>
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err || '未知错误')
+    semanticError.value = `语义检索失败：${message}`
+    semanticHits.value = []
+    semanticTrace.value = {}
+  } finally {
+    semanticSearching.value = false
+  }
+}
+
+function openSemanticHit(hit: Record<string, any>) {
+  const sourceType = String(hit.source_type || '').trim().toLowerCase()
+  const sourceId = String(hit.source_id || '').trim()
+  if (sourceType === 'report' && sourceId) {
+    const matched = (result.value?.items || []).find((item: Record<string, any>) => String(item.id || '') === sourceId)
+    if (matched) {
+      openDetail(matched)
+      return
+    }
+  }
+  draftFilters.keyword = String(hit.title || draftFilters.keyword || '')
+  applyFilters()
+}
+
+function syncRouteFromQuery() {
+  router.replace({
+    query: buildCleanQuery({
+      keyword: queryFilters.keyword,
+      report_type: queryFilters.report_type,
+      report_date: queryFilters.report_date,
+      page: queryFilters.page,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteQuery() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    keyword: readQueryString(q, 'keyword', ''),
+    report_type: readQueryString(q, 'report_type', ''),
+    report_date: readQueryString(q, 'report_date', ''),
+    page: Math.max(1, readQueryNumber(q, 'page', 1)),
+    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+  }
+  Object.assign(draftFilters, next)
+  Object.assign(queryFilters, next)
+}
+
+function goPrevPage() {
+  if (queryFilters.page <= 1) return
+  queryFilters.page -= 1
+  syncRouteFromQuery()
+}
+
+function goNextPage() {
+  const totalPages = Number(result.value?.total_pages || 1)
+  if (queryFilters.page >= totalPages) return
+  queryFilters.page += 1
+  syncRouteFromQuery()
+}
+
+onMounted(() => {
+  applyRouteQuery()
+})
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
 </script>

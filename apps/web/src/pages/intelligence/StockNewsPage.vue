@@ -125,8 +125,8 @@
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
           <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="queryFilters.page -= 1">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="queryFilters.page += 1">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="goPrevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -135,9 +135,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
@@ -146,7 +146,9 @@ import { fetchStockNews, fetchStockNewsSources, triggerStockNewsScore } from '..
 import { triggerStockNewsFetch } from '../../services/api/stocks'
 import { formatDateTime } from '../../shared/utils/format'
 import { importanceOptions, parseImpactTags, sourceLabel } from '../../shared/utils/finance'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
+const route = useRoute()
 const router = useRouter()
 const queryClient = useQueryClient()
 
@@ -188,7 +190,11 @@ watch(
 const { data: sourceData } = useQuery({ queryKey: ['stock-news-sources'], queryFn: fetchStockNewsSources })
 const sourceOptions = computed(() => sourceData.value?.items || [])
 
-const { data: result, refetch, isFetching } = useQuery({ queryKey: ['stock-news', queryFilters], queryFn: () => fetchStockNews(queryFilters) })
+const { data: result, refetch, isFetching } = useQuery({
+  queryKey: ['stock-news', queryFilters],
+  queryFn: () => fetchStockNews(queryFilters),
+  placeholderData: keepPreviousData,
+})
 
 const fetchMutation = useMutation({
   mutationFn: () => triggerStockNewsFetch({ ...draftFilters, score: 1 }),
@@ -256,6 +262,7 @@ function runScoreCurrent() {
 
 function applyFilters() {
   Object.assign(queryFilters, { ...draftFilters, page: 1 })
+  syncRouteFromQuery()
 }
 
 async function rescoreRow(item: Record<string, any>) {
@@ -284,4 +291,67 @@ function goSignal(tsCode: string, companyName: string) {
   }
   router.push({ path: '/signals/overview', query: { keyword: companyName, entity_type: '股票' } })
 }
+
+function syncRouteFromQuery() {
+  router.replace({
+    query: buildCleanQuery({
+      ts_code: queryFilters.ts_code,
+      company_name: queryFilters.company_name,
+      keyword: queryFilters.keyword,
+      source: queryFilters.source,
+      finance_levels: queryFilters.finance_levels,
+      date_from: queryFilters.date_from,
+      date_to: queryFilters.date_to,
+      scored: queryFilters.scored,
+      page: queryFilters.page,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteQuery() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    ts_code: readQueryString(q, 'ts_code', ''),
+    company_name: readQueryString(q, 'company_name', ''),
+    keyword: readQueryString(q, 'keyword', ''),
+    source: readQueryString(q, 'source', ''),
+    finance_levels: readQueryString(q, 'finance_levels', '极高,高,中'),
+    date_from: readQueryString(q, 'date_from', ''),
+    date_to: readQueryString(q, 'date_to', ''),
+    scored: readQueryString(q, 'scored', ''),
+    page: Math.max(1, readQueryNumber(q, 'page', 1)),
+    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+  }
+  Object.assign(draftFilters, next)
+  Object.assign(queryFilters, next)
+  selectedFinanceLevels.value = String(next.finance_levels || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function goPrevPage() {
+  if (queryFilters.page <= 1) return
+  queryFilters.page -= 1
+  syncRouteFromQuery()
+}
+
+function goNextPage() {
+  const totalPages = Number(result.value?.total_pages || 1)
+  if (queryFilters.page >= totalPages) return
+  queryFilters.page += 1
+  syncRouteFromQuery()
+}
+
+onMounted(() => {
+  applyRouteQuery()
+})
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
 </script>

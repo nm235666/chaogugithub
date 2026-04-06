@@ -192,6 +192,7 @@ import {
   updateLlmProvider,
   type LlmProviderItem,
 } from '../../services/api/system'
+import { confirmDangerAction } from '../../shared/utils/confirm'
 
 const rows = ref<LlmProviderItem[]>([])
 const defaultRateLimit = ref(10)
@@ -352,6 +353,7 @@ async function saveEdit() {
 }
 
 async function removeNode(item: LlmProviderItem) {
+  if (!await confirmDangerAction('删除 LLM 节点', `${item.provider_key}#${item.index}`, '删除后需要重新配置节点信息。')) return
   await deleteLlmProvider({ provider_key: item.provider_key, index: item.index })
   await refreshAll()
 }
@@ -401,6 +403,8 @@ function setCurrentPreview(item: LlmProviderItem) {
 }
 
 async function toggleNodeStatus(item: LlmProviderItem) {
+  const action = item.status === 'active' ? '关闭节点' : '开启节点'
+  if (!await confirmDangerAction(action, `${item.provider_key}#${item.index}`)) return
   await updateLlmProvider({
     provider_key: item.provider_key,
     index: item.index,

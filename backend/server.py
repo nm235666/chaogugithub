@@ -107,6 +107,15 @@ from services.stock_news_service import (
     query_stock_news_sources as stock_news_query_sources,
     score_stock_news_now as stock_news_score_now,
 )
+from services.ai_retrieval_service import (
+    AI_RETRIEVAL_ENABLED,
+    AI_RETRIEVAL_SHADOW_MODE,
+    build_context_packet as ai_retrieval_build_context_packet,
+    ensure_retrieval_tables as ai_retrieval_ensure_tables,
+    query_retrieval_metrics as ai_retrieval_query_metrics,
+    search as ai_retrieval_search_service,
+    sync_scene_index as ai_retrieval_sync_scene_index,
+)
 from services.system.llm_providers_admin import (
     create_llm_provider,
     delete_llm_provider,
@@ -121,6 +130,7 @@ from services.system.llm_providers_admin import (
 )
 from skills.strategies import load_strategy_template_text
 from backend.routes import chatrooms as chatroom_routes
+from backend.routes import ai_retrieval as ai_retrieval_routes
 from backend.routes import news as news_routes
 from backend.routes import quant_factors as quant_factor_routes
 from backend.routes import signals as signal_routes
@@ -203,6 +213,7 @@ ENABLE_AGENT_NOTIFICATIONS = str(os.getenv("ENABLE_AGENT_NOTIFICATIONS", "0")).s
 ENABLE_REPORTING_NOTIFICATIONS = str(os.getenv("ENABLE_REPORTING_NOTIFICATIONS", "0")).strip().lower() in {"1", "true", "yes", "on"}
 ENABLE_SKILLS_TEMPLATE_PROMPTS = str(os.getenv("ENABLE_SKILLS_TEMPLATE_PROMPTS", "1")).strip().lower() in {"1", "true", "yes", "on"}
 ENABLE_QUANT_FACTORS = str(os.getenv("ENABLE_QUANT_FACTORS", "1")).strip().lower() in {"1", "true", "yes", "on"}
+RBAC_DYNAMIC_ENFORCED = str(os.getenv("RBAC_DYNAMIC_ENFORCED", "1")).strip().lower() in {"1", "true", "yes", "on"}
 WECOM_WEBHOOK_URL = str(os.getenv("WECOM_BOT_WEBHOOK", "")).strip()
 ASYNC_JOB_TTL_SECONDS = 3600
 ASYNC_MULTI_ROLE_JOBS: dict[str, dict] = {}
@@ -314,6 +325,278 @@ ROLE_PERMISSIONS = {
     },
     "limited": {"news_read", "stock_news_read", "daily_summary_read", "trend_analyze", "multi_role_analyze"},
 }
+PERMISSION_CATALOG_FALLBACK: list[dict[str, object]] = [
+    {"code": "public", "label": "公开访问", "group": "workspace", "system_reserved": False},
+    {"code": "news_read", "label": "资讯阅读", "group": "news", "system_reserved": False},
+    {"code": "stock_news_read", "label": "个股新闻阅读", "group": "news", "system_reserved": False},
+    {"code": "daily_summary_read", "label": "新闻日报总结阅读", "group": "news", "system_reserved": False},
+    {"code": "trend_analyze", "label": "走势分析", "group": "research", "system_reserved": False},
+    {"code": "multi_role_analyze", "label": "多角色分析", "group": "research", "system_reserved": False},
+    {"code": "research_advanced", "label": "深度研究高级功能", "group": "research", "system_reserved": False},
+    {"code": "signals_advanced", "label": "信号高级功能", "group": "signals", "system_reserved": False},
+    {"code": "chatrooms_advanced", "label": "舆情高级功能", "group": "sentiment", "system_reserved": False},
+    {"code": "stocks_advanced", "label": "市场数据高级功能", "group": "market", "system_reserved": False},
+    {"code": "macro_advanced", "label": "宏观高级功能", "group": "research", "system_reserved": False},
+    {"code": "admin_users", "label": "用户管理", "group": "system", "system_reserved": True},
+    {"code": "admin_system", "label": "系统管理", "group": "system", "system_reserved": True},
+]
+ROUTE_PERMISSIONS_FALLBACK: dict[str, str] = {
+    "/dashboard": "admin_system",
+    "/stocks/list": "stocks_advanced",
+    "/stocks/scores": "stocks_advanced",
+    "/stocks/detail/:tsCode?": "stocks_advanced",
+    "/stocks/prices": "stocks_advanced",
+    "/macro": "macro_advanced",
+    "/intelligence/global-news": "news_read",
+    "/intelligence/cn-news": "news_read",
+    "/intelligence/stock-news": "stock_news_read",
+    "/intelligence/daily-summaries": "daily_summary_read",
+    "/signals/overview": "signals_advanced",
+    "/signals/themes": "signals_advanced",
+    "/signals/timeline": "signals_advanced",
+    "/signals/audit": "signals_advanced",
+    "/signals/quality-config": "signals_advanced",
+    "/signals/state-timeline": "signals_advanced",
+    "/research/reports": "research_advanced",
+    "/research/quant-factors": "research_advanced",
+    "/research/multi-role": "multi_role_analyze",
+    "/research/trend": "trend_analyze",
+    "/chatrooms/overview": "chatrooms_advanced",
+    "/chatrooms/candidates": "chatrooms_advanced",
+    "/chatrooms/chatlog": "chatrooms_advanced",
+    "/chatrooms/investment": "chatrooms_advanced",
+    "/system/source-monitor": "admin_system",
+    "/system/jobs-ops": "admin_system",
+    "/system/llm-providers": "admin_system",
+    "/system/permissions": "admin_system",
+    "/system/database-audit": "admin_system",
+    "/system/invites": "admin_users",
+    "/system/users": "admin_users",
+}
+NAVIGATION_GROUPS_FALLBACK: list[dict[str, object]] = [
+    {
+        "id": "workspace",
+        "title": "工作台",
+        "order": 1,
+        "items": [
+            {"to": "/dashboard", "label": "总控台", "desc": "全局健康度、热点、任务与新鲜度", "permission": "admin_system"},
+        ],
+    },
+    {
+        "id": "market",
+        "title": "市场数据",
+        "order": 2,
+        "items": [
+            {"to": "/stocks/list", "label": "股票列表", "desc": "代码、简称、市场、地区快速检索", "permission": "stocks_advanced"},
+            {"to": "/stocks/scores", "label": "综合评分", "desc": "行业内评分与核心指标排序", "permission": "stocks_advanced"},
+            {"to": "/stocks/detail/000001.SZ", "label": "股票详情", "desc": "统一聚合价格、新闻、群聊与分析", "permission": "stocks_advanced"},
+            {"to": "/stocks/prices", "label": "价格中心", "desc": "日线 + 分钟线统一查询与图表", "permission": "stocks_advanced"},
+        ],
+    },
+    {
+        "id": "news",
+        "title": "资讯中心",
+        "order": 3,
+        "items": [
+            {"to": "/intelligence/global-news", "label": "国际资讯", "desc": "全球财经新闻、评分与映射", "permission": "news_read"},
+            {"to": "/intelligence/cn-news", "label": "国内资讯", "desc": "新浪 / 东财资讯统一看", "permission": "news_read"},
+            {"to": "/intelligence/stock-news", "label": "个股新闻", "desc": "聚焦单股新闻与立即采集", "permission": "stock_news_read"},
+            {"to": "/intelligence/daily-summaries", "label": "新闻日报总结", "desc": "日报生成、历史查询与双格式导出", "permission": "daily_summary_read"},
+        ],
+    },
+    {
+        "id": "signals",
+        "title": "信号研究",
+        "order": 4,
+        "items": [
+            {"to": "/signals/overview", "label": "投资信号", "desc": "股票与主题信号总览", "permission": "signals_advanced"},
+            {"to": "/signals/themes", "label": "主题热点", "desc": "主题强度、方向、预期与证据链", "permission": "signals_advanced"},
+            {"to": "/signals/audit", "label": "信号质量审计", "desc": "误映射、弱信号与质量问题", "permission": "signals_advanced"},
+            {"to": "/signals/quality-config", "label": "信号质量配置", "desc": "规则参数与映射黑名单", "permission": "signals_advanced"},
+            {"to": "/signals/state-timeline", "label": "状态时间线", "desc": "状态机迁移与市场预期层", "permission": "signals_advanced"},
+        ],
+    },
+    {
+        "id": "research",
+        "title": "深度研究",
+        "order": 5,
+        "items": [
+            {"to": "/macro", "label": "宏观看板", "desc": "宏观指标查询与序列趋势", "permission": "macro_advanced"},
+            {"to": "/research/trend", "label": "走势分析", "desc": "LLM 股票走势分析工作台", "permission": "trend_analyze"},
+            {"to": "/research/reports", "label": "标准报告", "desc": "统一投研报告列表", "permission": "research_advanced"},
+            {"to": "/research/quant-factors", "label": "因子挖掘", "desc": "QuantaAlpha 旁路因子挖掘与回测", "permission": "research_advanced"},
+            {"to": "/research/multi-role", "label": "多角色分析", "desc": "LLM 多角色公司分析工作台", "permission": "multi_role_analyze"},
+        ],
+    },
+    {
+        "id": "sentiment",
+        "title": "舆情监控",
+        "order": 6,
+        "items": [
+            {"to": "/chatrooms/overview", "label": "群聊总览", "desc": "群聊标签、状态、拉取健康度", "permission": "chatrooms_advanced"},
+            {"to": "/chatrooms/chatlog", "label": "聊天记录", "desc": "消息正文、引用和筛选查询", "permission": "chatrooms_advanced"},
+            {"to": "/chatrooms/investment", "label": "投资倾向", "desc": "群聊结论、情绪和标的清单", "permission": "chatrooms_advanced"},
+            {"to": "/chatrooms/candidates", "label": "股票候选池", "desc": "群聊汇总候选池与偏向", "permission": "chatrooms_advanced"},
+        ],
+    },
+    {
+        "id": "system",
+        "title": "系统管理",
+        "order": 7,
+        "items": [
+            {"to": "/system/source-monitor", "label": "数据源监控", "desc": "数据源、进程、实时链路统一看板", "permission": "admin_system"},
+            {"to": "/system/jobs-ops", "label": "任务调度中心", "desc": "任务列表、dry-run、触发与告警观测", "permission": "admin_system"},
+            {"to": "/system/llm-providers", "label": "LLM 节点管理", "desc": "模型节点 CRUD、限速配置与联通测试", "permission": "admin_system"},
+            {"to": "/system/permissions", "label": "角色权限策略", "desc": "配置 pro/limited/admin 的权限与日配额", "permission": "admin_system"},
+            {"to": "/system/database-audit", "label": "数据库审计", "desc": "缺口、重复、未评分、陈旧数据", "permission": "admin_system"},
+            {"to": "/system/invites", "label": "邀请码管理", "desc": "管理员邀请码与账号规模管理", "permission": "admin_users"},
+            {"to": "/system/users", "label": "用户与会话", "desc": "用户、会话、审计日志管理", "permission": "admin_users"},
+        ],
+    },
+]
+RBAC_DYNAMIC_CONFIG_PATH = ROOT_DIR / "config" / "rbac_dynamic.config.json"
+RBAC_DYNAMIC_SCHEMA_VERSION = "2026-04-05.dynamic-rbac.v1"
+
+
+def _normalize_permission_catalog(raw_catalog: object) -> tuple[list[dict[str, object]], int]:
+    catalog_raw = raw_catalog if isinstance(raw_catalog, list) else []
+    normalized: list[dict[str, object]] = []
+    invalid = 0
+    seen: set[str] = set()
+    for item in catalog_raw:
+        if not isinstance(item, dict):
+            invalid += 1
+            continue
+        code = str(item.get("code") or "").strip()
+        label = str(item.get("label") or code).strip() or code
+        group = str(item.get("group") or "default").strip() or "default"
+        if not code or code in seen:
+            invalid += 1
+            continue
+        seen.add(code)
+        normalized.append(
+            {
+                "code": code,
+                "label": label,
+                "group": group,
+                "system_reserved": bool(item.get("system_reserved")),
+            }
+        )
+    return normalized, invalid
+
+
+def _normalize_route_permissions(raw_map: object, permission_allowlist: set[str]) -> tuple[dict[str, str], int]:
+    if not isinstance(raw_map, dict):
+        return {}, 0
+    normalized: dict[str, str] = {}
+    invalid = 0
+    for k, v in raw_map.items():
+        path = str(k or "").strip()
+        permission = str(v or "").strip()
+        if not path or not permission or permission not in permission_allowlist:
+            invalid += 1
+            continue
+        normalized[path] = permission
+    return normalized, invalid
+
+
+def _normalize_navigation_groups(raw_groups: object, permission_allowlist: set[str]) -> tuple[list[dict[str, object]], int, int]:
+    groups_raw = raw_groups if isinstance(raw_groups, list) else []
+    normalized: list[dict[str, object]] = []
+    invalid_groups = 0
+    invalid_items = 0
+    for group in groups_raw:
+        if not isinstance(group, dict):
+            invalid_groups += 1
+            continue
+        gid = str(group.get("id") or "").strip()
+        title = str(group.get("title") or "").strip()
+        try:
+            order = int(group.get("order") or 0)
+        except Exception:
+            order = 0
+        if not gid or not title:
+            invalid_groups += 1
+            continue
+        items_raw = group.get("items")
+        if not isinstance(items_raw, list):
+            invalid_groups += 1
+            continue
+        items: list[dict[str, object]] = []
+        for item in items_raw:
+            if not isinstance(item, dict):
+                invalid_items += 1
+                continue
+            to = str(item.get("to") or "").strip()
+            label = str(item.get("label") or "").strip()
+            desc = str(item.get("desc") or "").strip()
+            permission = str(item.get("permission") or "").strip()
+            if not to or not label or not permission or permission not in permission_allowlist:
+                invalid_items += 1
+                continue
+            items.append({"to": to, "label": label, "desc": desc, "permission": permission})
+        if not items:
+            invalid_groups += 1
+            continue
+        normalized.append({"id": gid, "title": title, "order": order, "items": items})
+    normalized.sort(key=lambda item: int(item.get("order") or 0))
+    return normalized, invalid_groups, invalid_items
+
+
+def _build_fallback_dynamic_rbac() -> dict[str, object]:
+    return {
+        "schema_version": RBAC_DYNAMIC_SCHEMA_VERSION,
+        "version": "fallback",
+        "source": "server_fallback",
+        "permission_catalog": PERMISSION_CATALOG_FALLBACK,
+        "route_permissions": ROUTE_PERMISSIONS_FALLBACK,
+        "navigation_groups": NAVIGATION_GROUPS_FALLBACK,
+        "validation": {
+            "invalid_catalog_items": 0,
+            "invalid_route_items": 0,
+            "invalid_nav_groups": 0,
+            "invalid_nav_items": 0,
+        },
+    }
+
+
+def _load_dynamic_rbac_config() -> dict[str, object]:
+    fallback = _build_fallback_dynamic_rbac()
+    try:
+        payload = json.loads(RBAC_DYNAMIC_CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[rbac-dynamic] load failed from {RBAC_DYNAMIC_CONFIG_PATH}: {exc}")
+        return fallback
+    if not isinstance(payload, dict):
+        print("[rbac-dynamic] config payload is not an object; use fallback")
+        return fallback
+    catalog, invalid_catalog = _normalize_permission_catalog(payload.get("permission_catalog"))
+    if not catalog:
+        print("[rbac-dynamic] no valid permission_catalog; use fallback")
+        return fallback
+    allowlist = {str(item.get("code") or "").strip() for item in catalog if str(item.get("code") or "").strip()}
+    route_permissions, invalid_route_items = _normalize_route_permissions(payload.get("route_permissions"), allowlist)
+    nav_groups, invalid_nav_groups, invalid_nav_items = _normalize_navigation_groups(payload.get("navigation_groups"), allowlist)
+    if not route_permissions or not nav_groups:
+        print("[rbac-dynamic] route_permissions/navigation_groups invalid; use fallback")
+        return fallback
+    return {
+        "schema_version": str(payload.get("schema_version") or RBAC_DYNAMIC_SCHEMA_VERSION),
+        "version": str(payload.get("version") or "unknown"),
+        "source": str(payload.get("source") or "repo_dynamic_config"),
+        "permission_catalog": catalog,
+        "route_permissions": route_permissions,
+        "navigation_groups": nav_groups,
+        "validation": {
+            "invalid_catalog_items": invalid_catalog,
+            "invalid_route_items": invalid_route_items,
+            "invalid_nav_groups": invalid_nav_groups,
+            "invalid_nav_items": invalid_nav_items,
+        },
+    }
+
+
+RBAC_DYNAMIC_CONFIG = _load_dynamic_rbac_config()
 TREND_DAILY_LIMIT_BY_ROLE = {
     "pro": 200,
     "limited": 30,
@@ -454,10 +737,37 @@ def _build_info_payload() -> dict:
         "started_at": SERVER_STARTED_AT_UTC,
     }
 
+
+def _get_navigation_groups() -> dict:
+    groups = RBAC_DYNAMIC_CONFIG.get("navigation_groups") if isinstance(RBAC_DYNAMIC_CONFIG, dict) else []
+    if not isinstance(groups, list):
+        groups = []
+    return {
+        "ok": True,
+        "groups": groups,
+        "version": str(RBAC_DYNAMIC_CONFIG.get("version") or "unknown"),
+        "source": str(RBAC_DYNAMIC_CONFIG.get("source") or "unknown"),
+        "schema_version": str(RBAC_DYNAMIC_CONFIG.get("schema_version") or RBAC_DYNAMIC_SCHEMA_VERSION),
+        "validation": dict(RBAC_DYNAMIC_CONFIG.get("validation") or {}),
+    }
+
+
+def _get_dynamic_rbac_payload() -> dict:
+    return {
+        "schema_version": str(RBAC_DYNAMIC_CONFIG.get("schema_version") or RBAC_DYNAMIC_SCHEMA_VERSION),
+        "version": str(RBAC_DYNAMIC_CONFIG.get("version") or "unknown"),
+        "source": str(RBAC_DYNAMIC_CONFIG.get("source") or "unknown"),
+        "permission_catalog": list(RBAC_DYNAMIC_CONFIG.get("permission_catalog") or []),
+        "route_permissions": dict(RBAC_DYNAMIC_CONFIG.get("route_permissions") or {}),
+        "navigation_groups": list(RBAC_DYNAMIC_CONFIG.get("navigation_groups") or []),
+        "validation": dict(RBAC_DYNAMIC_CONFIG.get("validation") or {}),
+    }
+
 API_ENDPOINTS_CATALOG = {
     "health": "/api/health",
     "auth_status": "/api/auth/status",
     "auth_permissions": "/api/auth/permissions",
+    "navigation_groups": "/api/navigation-groups",
     "auth_register": "/api/auth/register",
     "auth_verify_email": "/api/auth/verify-email",
     "auth_send_verify_code": "/api/auth/send-verify-code",
@@ -505,6 +815,10 @@ API_ENDPOINTS_CATALOG = {
     "news_daily_summaries": "/api/news/daily-summaries?summary_date=2026-03-25&source_filter=cn_sina_&model=GPT-5.4&page=1&page_size=20",
     "news_daily_summaries_generate": "/api/news/daily-summaries/generate",
     "news_daily_summaries_task": "/api/news/daily-summaries/task?job_id=<job_id>",
+    "ai_retrieval_search": "/api/ai-retrieval/search",
+    "ai_retrieval_context": "/api/ai-retrieval/context",
+    "ai_retrieval_sync": "/api/ai-retrieval/sync",
+    "ai_retrieval_metrics": "/api/ai-retrieval/metrics?days=1",
     "prices": "/api/prices?ts_code=000001.SZ&start_date=20260223&end_date=20260325&page=1&page_size=20",
     "minline": "/api/minline?ts_code=600114.SH&trade_date=20260325&page=1&page_size=240",
     "llm_trend": "/api/llm/trend?ts_code=000001.SZ&lookback=120",
@@ -564,6 +878,46 @@ def _request_is_protected(path: str, method: str, params: dict[str, list[str]] |
         refresh_raw = ((params or {}).get("refresh", ["0"])[0] or "").strip().lower()
         return refresh_raw in {"1", "true", "yes", "y", "on"}
     return False
+
+
+def ai_retrieval_search(*, query: str, scene: str, top_k: int = 8, requested_model: str = "") -> dict:
+    return ai_retrieval_search_service(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        query=query,
+        scene=scene,
+        top_k=top_k,
+        requested_model=requested_model,
+    )
+
+
+def ai_retrieval_context(*, query: str, scene: str, top_k: int = 6, max_chars: int = 2400, requested_model: str = "") -> dict:
+    return ai_retrieval_build_context_packet(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        query=query,
+        scene=scene,
+        top_k=top_k,
+        max_chars=max_chars,
+        requested_model=requested_model,
+    )
+
+
+def ai_retrieval_sync(*, scene: str, limit: int = 300) -> dict:
+    return ai_retrieval_sync_scene_index(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        scene=scene,
+        limit=limit,
+    )
+
+
+def ai_retrieval_metrics(*, days: int = 1) -> dict:
+    return ai_retrieval_query_metrics(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        days=days,
+    )
 
 
 def _origin_matches_current_host(origin: str, host_header: str) -> bool:
@@ -2383,8 +2737,50 @@ def _status_by_age(age_seconds: float | None, ok_within: float, warn_within: flo
     return "error"
 
 
+def _status_by_lag(lag: int | None, ok_within: int, warn_within: int):
+    if lag is None:
+        return "error"
+    if lag <= ok_within:
+        return "ok"
+    if lag <= warn_within:
+        return "warn"
+    return "error"
+
+
+def _trading_day_lag(conn: sqlite3.Connection, table_name: str, base_trade_date: str, latest_trade_date: str):
+    base = str(base_trade_date or "").strip()
+    latest = str(latest_trade_date or "").strip()
+    if not base or not latest:
+        return None
+    if len(base) != 8 or len(latest) != 8:
+        return None
+    if base >= latest:
+        return 0
+    try:
+        row = conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT trade_date)
+            FROM {table_name}
+            WHERE trade_date > ? AND trade_date <= ?
+            """,
+            (base, latest),
+        ).fetchone()
+        return int(row[0] or 0) if row else 0
+    except Exception:
+        return None
+
+
 def _status_text(status: str):
     return {"ok": "正常", "warn": "延迟", "error": "异常"}.get(status, status)
+
+
+def _max_iso_datetime(*values: str):
+    parsed = [_parse_iso_datetime(v) for v in values if str(v or "").strip()]
+    parsed = [x for x in parsed if x is not None]
+    if not parsed:
+        return ""
+    latest = max(parsed)
+    return latest.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _combine_process_data_status(
@@ -2477,6 +2873,10 @@ def query_source_monitor():
             conn,
             "SELECT MAX(pub_date) FROM news_feed_items WHERE source = 'marketscreener_live_news'",
         )
+        latest_marketscreener_family_news = _max_iso_datetime(
+            latest_marketscreener_news or "",
+            latest_marketscreener_live_news or "",
+        )
         latest_sina_news = _table_max(
             conn,
             "SELECT MAX(pub_date) FROM news_feed_items WHERE source = 'cn_sina_7x24'",
@@ -2504,6 +2904,7 @@ def query_source_monitor():
         latest_valuation = _table_max(conn, "SELECT MAX(trade_date) FROM stock_valuation_daily")
         latest_cf_stock = _table_max(conn, "SELECT MAX(trade_date) FROM capital_flow_stock")
         latest_cf_market = _table_max(conn, "SELECT MAX(trade_date) FROM capital_flow_market")
+        minline_trade_lag = _trading_day_lag(conn, "stock_daily_prices", latest_minline or "", latest_stock_price or "")
     finally:
         conn.close()
 
@@ -2545,9 +2946,12 @@ def query_source_monitor():
             "key": "marketscreener_byd_news",
             "name": "国际新闻-MarketScreener(BYD)",
             "category": "新闻",
-            "status": _status_by_age(_age_seconds_from_dt(_parse_iso_datetime(latest_marketscreener_news)), 86400, 3 * 86400),
+            "status": _status_by_age(_age_seconds_from_dt(_parse_iso_datetime(latest_marketscreener_family_news)), 86400, 3 * 86400),
             "last_update": latest_marketscreener_news or "",
-            "detail": "5分钟定时抓取 BYD Company Limited 新闻页",
+            "detail": (
+                "5分钟定时抓取 BYD Company Limited 新闻页"
+                f"（家族最新={latest_marketscreener_family_news or '-'}，BYD与Live跨源去重）"
+            ),
             "rows": None,
         },
         {
@@ -2622,9 +3026,17 @@ def query_source_monitor():
             "key": "stock_minline",
             "name": "股票分钟线",
             "category": "行情",
-            "status": _status_by_age(_age_seconds_from_dt(_parse_yyyymmdd(latest_minline)), 2 * 86400, 5 * 86400),
+            "status": (
+                _status_by_lag(minline_trade_lag, 0, 1)
+                if minline_trade_lag is not None
+                else _status_by_age(_age_seconds_from_dt(_parse_yyyymmdd(latest_minline)), 3 * 86400, 7 * 86400)
+            ),
             "last_update": latest_minline or "",
-            "detail": "分钟线主表",
+            "detail": (
+                f"分钟线主表 · 交易日落后 {minline_trade_lag} 天"
+                if minline_trade_lag is not None
+                else "分钟线主表"
+            ),
             "rows": None,
         },
         {
@@ -4792,7 +5204,7 @@ def _resolve_roles(raw: str) -> list[str]:
 
 
 def build_multi_role_context(ts_code: str, lookback: int):
-    return agent_build_multi_role_context(
+    context = agent_build_multi_role_context(
         sqlite3_module=sqlite3,
         db_path=DB_PATH,
         default_llm_model=DEFAULT_LLM_MODEL,
@@ -4811,6 +5223,25 @@ def build_multi_role_context(ts_code: str, lookback: int):
         ts_code=ts_code,
         lookback=lookback,
     )
+    if AI_RETRIEVAL_ENABLED and not AI_RETRIEVAL_SHADOW_MODE:
+        try:
+            company_name = str((context.get("company_profile") or {}).get("name") or "").strip()
+            retrieval_query = f"{ts_code} {company_name}".strip()
+            if retrieval_query:
+                report_ctx = ai_retrieval_context(query=retrieval_query, scene="report", top_k=4, max_chars=1200)
+                news_ctx = ai_retrieval_context(query=retrieval_query, scene="news", top_k=4, max_chars=1200)
+                context["retrieval_context"] = {
+                    "query": retrieval_query,
+                    "report_context": report_ctx.get("context") or {},
+                    "news_context": news_ctx.get("context") or {},
+                    "trace": {
+                        "report": report_ctx.get("trace") or {},
+                        "news": news_ctx.get("trace") or {},
+                    },
+                }
+        except Exception as exc:
+            context["retrieval_context"] = {"error": str(exc), "query": ts_code}
+    return context
 
 
 def build_multi_role_prompt(context: dict, roles: list[str]) -> str:
@@ -7424,6 +7855,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return True
         if path in AUTH_PUBLIC_API_PATHS:
             return True
+        if path == "/api/navigation-groups":
+            return True
         if auth_ctx.get("is_admin"):
             return True
         user = auth_ctx.get("user") or {}
@@ -7477,6 +7910,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return _has("chatrooms_advanced")
         if path in {"/api/reports", "/api/research-reports"} or path.startswith("/api/research/"):
             return _has("research_advanced")
+        if path.startswith("/api/ai-retrieval"):
+            return _has("research_advanced") or _has("multi_role_analyze") or _has("daily_summary_read")
         if path == "/api/source-monitor" or path == "/api/database-audit":
             return _has("admin_system")
         if path.startswith("/api/quant-factors"):
@@ -7620,6 +8055,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             "build_info": _build_info_payload,
             "permission_matrix": _role_permission_matrix,
             "effective_permissions_for_user": _effective_permissions_for_user,
+            "get_navigation_groups": _get_navigation_groups,
+            "get_dynamic_rbac_payload": _get_dynamic_rbac_payload,
+            "rbac_dynamic_enforced": RBAC_DYNAMIC_ENFORCED,
             "list_llm_providers": list_llm_providers,
             "create_llm_provider": create_llm_provider,
             "update_llm_provider": update_llm_provider,
@@ -7629,6 +8067,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             "update_default_rate_limit": update_default_rate_limit,
             "get_multi_role_v2_policies": get_multi_role_v2_policies,
             "update_multi_role_v2_policies": update_multi_role_v2_policies,
+            "ai_retrieval_enabled": AI_RETRIEVAL_ENABLED,
+            "ai_retrieval_shadow_mode": AI_RETRIEVAL_SHADOW_MODE,
+            "ai_retrieval_search": ai_retrieval_search,
+            "ai_retrieval_context": ai_retrieval_context,
+            "ai_retrieval_sync": ai_retrieval_sync,
+            "ai_retrieval_metrics": ai_retrieval_metrics,
         }
 
     def do_POST(self):
@@ -7669,6 +8113,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if quant_factor_routes.dispatch_post(self, parsed, payload, deps):
             return
+        if ai_retrieval_routes.dispatch_post(self, parsed, payload, deps):
+            return
 
         self._send_json({"error": "Not Found"}, status=404)
 
@@ -7707,6 +8153,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if signal_routes.dispatch_get(self, parsed, deps):
             return
+        if ai_retrieval_routes.dispatch_get(self, parsed, deps):
+            return
 
         self._send_json({"error": "Not Found"}, status=404)
 
@@ -7719,6 +8167,7 @@ if __name__ == "__main__":
         ensure_multi_role_v3_tables(conn)
     finally:
         conn.close()
+    ai_retrieval_ensure_tables(sqlite3_module=sqlite3, db_path=DB_PATH)
 
     server = ThreadingHTTPServer((HOST, PORT), ApiHandler)
     print(f"Backend API running on http://{HOST}:{PORT}")

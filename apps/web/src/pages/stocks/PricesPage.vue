@@ -61,8 +61,8 @@
         </div>
 
         <div class="mt-3 flex flex-wrap gap-2 lg:hidden">
-          <button class="rounded-full px-4 py-2 text-sm font-semibold" :class="mobilePanel === 'daily' ? 'bg-[var(--brand)] text-white' : 'border border-[var(--line)] bg-white text-[var(--muted)]'" @click="mobilePanel = 'daily'">日线视图</button>
-          <button class="rounded-full px-4 py-2 text-sm font-semibold" :class="mobilePanel === 'minute' ? 'bg-[var(--brand)] text-white' : 'border border-[var(--line)] bg-white text-[var(--muted)]'" @click="mobilePanel = 'minute'">分钟线视图</button>
+          <button class="rounded-full px-4 py-2 text-sm font-semibold" :class="mobilePanel === 'daily' ? 'bg-[var(--brand)] text-white' : 'border border-[var(--line)] bg-white text-[var(--muted)]'" @click="showDailyPanel">日线视图</button>
+          <button class="rounded-full px-4 py-2 text-sm font-semibold" :class="mobilePanel === 'minute' ? 'bg-[var(--brand)] text-white' : 'border border-[var(--line)] bg-white text-[var(--muted)]'" @click="showMinutePanel">分钟线视图</button>
         </div>
 
         <div class="mt-3 text-sm text-[var(--muted)]" role="status" aria-live="polite">
@@ -168,18 +168,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, reactive, ref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
-import { RouterLink } from 'vue-router'
+import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchStockMinline, fetchStockPrices } from '../../services/api/stocks'
 import { formatDate, formatNumber, formatPercent } from '../../shared/utils/format'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
 const TrendAreaChart = defineAsyncComponent(() => import('../../shared/charts/TrendAreaChart.vue'))
 const MinuteKlineChart = defineAsyncComponent(() => import('../../shared/charts/MinuteKlineChart.vue'))
+const route = useRoute()
+const router = useRouter()
 
 const filters = reactive({
   ts_code: '',
@@ -236,11 +239,13 @@ const { data: result } = useQuery({
   queryKey: computed(() => ['stock-prices', { ...queryParams }]),
   queryFn: () => fetchStockPrices({ ...queryParams }),
   enabled: computed(() => hasSearched.value),
+  placeholderData: keepPreviousData,
 })
 const { data: minuteResult } = useQuery({
   queryKey: computed(() => ['stock-minline-on-prices-page', { ...minuteQueryParams }]),
   queryFn: () => fetchStockMinline({ ...minuteQueryParams }),
   enabled: computed(() => hasMinuteSearched.value),
+  placeholderData: keepPreviousData,
 })
 
 const chart = computed(() => {
@@ -268,17 +273,20 @@ function submitSearch() {
   queryParams.page = 1
   hasSearched.value = true
   mobilePanel.value = 'daily'
+  syncRouteFromState()
 }
 
 function goPrevPage() {
   if (queryParams.page <= 1) return
   queryParams.page -= 1
+  syncRouteFromState()
 }
 
 function goNextPage() {
   const totalPages = Number(result.value?.total_pages || 1)
   if (queryParams.page >= totalPages) return
   queryParams.page += 1
+  syncRouteFromState()
 }
 
 function submitMinuteSearch() {
@@ -288,5 +296,79 @@ function submitMinuteSearch() {
   minuteQueryParams.page = 1
   hasMinuteSearched.value = true
   mobilePanel.value = 'minute'
+  syncRouteFromState()
 }
+
+function showDailyPanel() {
+  mobilePanel.value = 'daily'
+  syncRouteFromState()
+}
+
+function showMinutePanel() {
+  mobilePanel.value = 'minute'
+  syncRouteFromState()
+}
+
+function syncRouteFromState() {
+  router.replace({
+    query: buildCleanQuery({
+      panel: mobilePanel.value,
+      daily: hasSearched.value ? '1' : '',
+      ts_code: hasSearched.value ? queryParams.ts_code : '',
+      start_date: hasSearched.value ? queryParams.start_date : '',
+      end_date: hasSearched.value ? queryParams.end_date : '',
+      page: hasSearched.value ? queryParams.page : '',
+      page_size: hasSearched.value ? queryParams.page_size : '',
+      minute: hasMinuteSearched.value ? '1' : '',
+      m_ts_code: hasMinuteSearched.value ? minuteQueryParams.ts_code : '',
+      m_trade_date: hasMinuteSearched.value ? minuteQueryParams.trade_date : '',
+      m_page_size: hasMinuteSearched.value ? minuteQueryParams.page_size : '',
+    }),
+  })
+}
+
+function applyRouteState() {
+  const q = route.query as Record<string, unknown>
+  const panel = readQueryString(q, 'panel', 'daily')
+  mobilePanel.value = panel === 'minute' ? 'minute' : 'daily'
+
+  const dailyEnabled = readQueryString(q, 'daily', '') === '1'
+    || !!readQueryString(q, 'ts_code', '')
+    || !!readQueryString(q, 'start_date', '')
+    || !!readQueryString(q, 'end_date', '')
+  if (dailyEnabled) {
+    const tsCode = readQueryString(q, 'ts_code', '').toUpperCase()
+    const startDate = readQueryString(q, 'start_date', '')
+    const endDate = readQueryString(q, 'end_date', '')
+    const page = Math.max(1, readQueryNumber(q, 'page', 1))
+    const pageSize = Math.max(20, readQueryNumber(q, 'page_size', 20))
+    Object.assign(filters, { ts_code: tsCode, start_date: startDate, end_date: endDate, page_size: pageSize })
+    Object.assign(queryParams, { ts_code: tsCode, start_date: startDate, end_date: endDate, page, page_size: pageSize })
+    hasSearched.value = true
+  } else {
+    hasSearched.value = false
+  }
+
+  const minuteEnabled = readQueryString(q, 'minute', '') === '1'
+    || !!readQueryString(q, 'm_ts_code', '')
+    || !!readQueryString(q, 'm_trade_date', '')
+  if (minuteEnabled) {
+    const tsCode = readQueryString(q, 'm_ts_code', minuteFilters.ts_code).toUpperCase()
+    const tradeDate = readQueryString(q, 'm_trade_date', '')
+    const pageSize = Math.max(240, readQueryNumber(q, 'm_page_size', 500))
+    Object.assign(minuteFilters, { ts_code: tsCode, trade_date: tradeDate, page_size: pageSize })
+    Object.assign(minuteQueryParams, { ts_code: tsCode, trade_date: tradeDate, page: 1, page_size: pageSize })
+    hasMinuteSearched.value = true
+  } else {
+    hasMinuteSearched.value = false
+  }
+}
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteState()
+  },
+  { immediate: true },
+)
 </script>

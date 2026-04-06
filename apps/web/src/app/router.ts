@@ -12,7 +12,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: () => import('../pages/auth/LoginPage.vue'), meta: { guest: true } as RouteMetaAuth },
-    { path: '/upgrade', component: () => import('../pages/auth/UpgradePage.vue'), meta: { auth: true } as RouteMetaAuth },
+    { path: '/upgrade', component: () => import('../pages/auth/UpgradePage.vue'), meta: { auth: true, permission: 'public' } as RouteMetaAuth },
     { path: '/', redirect: '/dashboard' },
 
     { path: '/dashboard', component: () => import('../pages/dashboard/DashboardPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
@@ -78,8 +78,20 @@ router.beforeEach(async (to) => {
   if (!auth.isAuthenticated) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
+  const matchedPattern = String(to.matched[to.matched.length - 1]?.path || to.path || '').trim()
+  const routePermissionMap = auth.dynamicRoutePermissions || {}
+  const requiredPermission = String(routePermissionMap[matchedPattern] || routePermissionMap[to.path] || '').trim()
+  if (!requiredPermission && auth.rbacDynamicEnforced) {
+    console.warn(`[rbac-dynamic] missing route permission mapping for path=${to.path}, pattern=${matchedPattern}`)
+    return { path: '/upgrade', query: { from: to.fullPath } }
+  }
+  const resolvedPermission = String(requiredPermission || meta.permission || '').trim()
+  if (!resolvedPermission) {
+    console.warn(`[rbac] missing permission mapping for protected route path=${to.path}, pattern=${matchedPattern}`)
+    return { path: '/upgrade', query: { from: to.fullPath } }
+  }
   const role = auth.role
-  if (!hasPermissionByEffective(auth.effectivePermissions, role, meta.permission)) {
+  if (!hasPermissionByEffective(auth.effectivePermissions, role, resolvedPermission)) {
     return { path: '/upgrade', query: { from: to.fullPath } }
   }
   return true

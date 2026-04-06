@@ -12,6 +12,7 @@ from llm_gateway import LLMCallError, chat_completion_with_fallback, normalize_m
 from llm_provider_config import get_default_fallback_models
 from realtime_streams import publish_app_event
 from services.reporting import build_report_payload
+from services.ai_retrieval_service import build_context_packet as build_ai_retrieval_context
 DEFAULT_IMPORTANCE = ("极高", "高", "中")
 
 
@@ -42,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-retries", type=int, default=4, help="请求失败最大重试次数")
     parser.add_argument("--retry-backoff", type=float, default=2.0, help="重试退避基数秒")
     parser.add_argument("--dry-run", action="store_true", help="仅打印入参和新闻列表，不调用模型")
+    parser.add_argument("--use-retrieval", type=int, default=1, help="是否启用语义检索补充上下文（1启用，0关闭）")
     return parser.parse_args()
 
 
@@ -137,7 +139,7 @@ def fetch_news_rows(
     return conn.execute(sql, params).fetchall()
 
 
-def build_prompt(date_ymd: str, cleaned_rows: list[dict]) -> str:
+def build_prompt(date_ymd: str, cleaned_rows: list[dict], retrieval_context: str = "") -> str:
     # 保留用户目标结构，但压缩为更稳定的执行指令
     prompt = (
         "你是一名资深金融市场分析师。请基于输入新闻，输出一份可用于投资参考的结构化日报总结。\n\n"
@@ -165,6 +167,11 @@ def build_prompt(date_ymd: str, cleaned_rows: list[dict]) -> str:
         f"新闻日期（UTC）：{date_ymd}\n"
         f"新闻列表JSON：\n{json.dumps(cleaned_rows, ensure_ascii=False)}"
     )
+    if retrieval_context.strip():
+        prompt += (
+            "\n\n补充语义检索上下文（可用于去重与关联主题，但优先以新闻列表JSON为准）：\n"
+            f"{retrieval_context.strip()}"
+        )
     return prompt
 
 
@@ -252,6 +259,7 @@ def call_llm(
                     temperature=temperature,
                     timeout_s=max(request_timeout, 30),
                     max_retries=1,
+                    stream=True,
                     messages=[
                         {"role": "system", "content": "你是专业、克制、面向交易与风控的金融分析助手。"},
                         {"role": "user", "content": prompt},
@@ -421,7 +429,24 @@ def main() -> int:
             print("可用于模型输入的新闻为空（被预算裁剪），请调大 --max-prompt-chars")
             return 2
         print(f"清洗后用于提示词的新闻数: {len(compact_rows)}")
-        prompt = build_prompt(date_ymd=date_ymd, cleaned_rows=compact_rows)
+        retrieval_context_text = ""
+        if int(args.use_retrieval or 0) == 1:
+            try:
+                retrieval_query = f"{date_ymd} A股 财经新闻 高重要度"
+                retrieval_packet = build_ai_retrieval_context(
+                    sqlite3_module=sqlite3,
+                    db_path=db_path,
+                    query=retrieval_query,
+                    scene="news",
+                    top_k=8,
+                    max_chars=1800,
+                    requested_model="",
+                )
+                retrieval_context_text = str((retrieval_packet.get("context") or {}).get("text") or "").strip()
+            except Exception as exc:
+                retrieval_context_text = f"[retrieval_unavailable] {exc}"
+
+        prompt = build_prompt(date_ymd=date_ymd, cleaned_rows=compact_rows, retrieval_context=retrieval_context_text)
 
         if args.dry_run:
             print("dry-run 模式，不调用模型。")
@@ -438,7 +463,7 @@ def main() -> int:
         all_attempts: list[dict] = []
         for n in fallback_sizes:
             used_rows = compact_rows[:n]
-            prompt = build_prompt(date_ymd=date_ymd, cleaned_rows=used_rows)
+            prompt = build_prompt(date_ymd=date_ymd, cleaned_rows=used_rows, retrieval_context=retrieval_context_text)
             try:
                 summary_result, call_attempts = call_llm(
                     model=args.model,

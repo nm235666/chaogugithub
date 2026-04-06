@@ -652,6 +652,7 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
         multi_role_quota = deps["get_multi_role_daily_quota_status"](user)
         permission_matrix = deps["permission_matrix"]()
         effective_permissions = deps["effective_permissions_for_user"](user)
+        dynamic_rbac = deps["get_dynamic_rbac_payload"]()
         handler._send_json(
             {
                 "ok": True,
@@ -664,6 +665,11 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
                 "multi_role_quota": multi_role_quota,
                 "permission_matrix": permission_matrix,
                 "effective_permissions": effective_permissions,
+                "rbac_dynamic_enforced": bool(deps.get("rbac_dynamic_enforced")),
+                "rbac_dynamic_version": str(dynamic_rbac.get("version") or "unknown"),
+                "rbac_dynamic_source": str(dynamic_rbac.get("source") or "unknown"),
+                "rbac_schema_version": str(dynamic_rbac.get("schema_version") or ""),
+                "dynamic_rbac": dynamic_rbac,
             }
         )
         return True
@@ -671,14 +677,32 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
     if parsed.path == "/api/auth/permissions":
         auth_ctx = deps.get("auth_context") or {}
         user = auth_ctx.get("user")
+        dynamic_rbac = deps["get_dynamic_rbac_payload"]()
         handler._send_json(
             {
                 "ok": True,
                 "permission_matrix": deps["permission_matrix"](),
                 "effective_permissions": deps["effective_permissions_for_user"](user),
                 "role": str((user or {}).get("role") or (user or {}).get("tier") or ""),
+                "permission_catalog": dynamic_rbac.get("permission_catalog") or [],
+                "route_permissions": dynamic_rbac.get("route_permissions") or {},
+                "navigation_groups": dynamic_rbac.get("navigation_groups") or [],
+                "schema_version": dynamic_rbac.get("schema_version") or "",
+                "version": dynamic_rbac.get("version") or "unknown",
+                "source": dynamic_rbac.get("source") or "unknown",
+                "rbac_dynamic_enforced": bool(deps.get("rbac_dynamic_enforced")),
+                "validation": dynamic_rbac.get("validation") or {},
             }
         )
+        return True
+
+    if parsed.path == "/api/navigation-groups":
+        try:
+            payload = deps["get_navigation_groups"]()
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"导航分组查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
         return True
 
     if parsed.path == "/api/auth/role-policies":

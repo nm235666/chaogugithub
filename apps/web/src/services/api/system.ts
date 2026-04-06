@@ -1,4 +1,5 @@
 import { http } from '../http'
+import type { AppPermission } from '../../app/permissions'
 
 export type LlmProviderItem = {
   provider_key: string
@@ -201,9 +202,35 @@ export type AuthRolePolicy = {
   multi_role_daily_limit: number | null
 }
 
+export type NavigationGroupItem = {
+  to: string
+  label: string
+  desc: string
+  permission: AppPermission | string
+}
+
+export type NavigationGroupPayload = {
+  id: string
+  title: string
+  order: number
+  items: NavigationGroupItem[]
+}
+
 export async function fetchAuthRolePolicies() {
   const { data } = await http.get('/api/auth/role-policies')
   return data as { ok: boolean; roles: AuthRolePolicy[]; effective_source?: string }
+}
+
+export async function fetchNavigationGroups() {
+  const { data } = await http.get('/api/navigation-groups')
+  return data as {
+    ok: boolean
+    groups: NavigationGroupPayload[]
+    version?: string
+    source?: string
+    schema_version?: string
+    validation?: { invalid_groups?: number; invalid_items?: number }
+  }
 }
 
 export async function updateAuthRolePolicy(payload: {

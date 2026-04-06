@@ -155,8 +155,30 @@ def generate_daily_summary(*, root_dir: Path, extract_llm_result_marker, model: 
         "90",
         "--max-retries",
         "1",
+        "--use-retrieval",
+        "1",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired as exc:
+        stdout_text = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr_text = exc.stderr if isinstance(exc.stderr, str) else ""
+        meta = extract_llm_result_marker(stdout_text)
+        timeout_meta = {
+            **(meta or {}),
+            "final_error_code": "timeout",
+            "attempts": list((meta or {}).get("attempts") or []),
+        }
+        timeout_message = (
+            "日报总结生成失败: 子进程超时（600秒），"
+            "请检查模型响应速度或尝试缩短输出内容。"
+        )
+        detail = (stderr_text or stdout_text or "").strip()
+        if detail:
+            timeout_message = f"{timeout_message} 详情: {detail[:400]}"
+        error = RuntimeError(timeout_message)
+        setattr(error, "meta", timeout_meta)
+        raise error from exc
     meta = extract_llm_result_marker(proc.stdout)
     if proc.returncode != 0:
         error = RuntimeError(f"日报总结生成失败: {proc.stderr.strip() or proc.stdout.strip()}")

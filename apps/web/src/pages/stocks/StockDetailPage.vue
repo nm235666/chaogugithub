@@ -47,9 +47,14 @@
             <button class="rounded-2xl bg-blue-700 px-4 py-3 font-semibold text-white" :disabled="isMultiRolePending" @click="runMultiRole">
               {{ isMultiRolePending ? '任务创建中...' : '发起多角色分析' }}
             </button>
+            <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)] disabled:opacity-40" :disabled="!activeMultiRoleJobId && !multiRoleResult" @click="clearMultiRoleTaskTracking">
+              清除当前任务跟踪
+            </button>
             <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]" role="status" aria-live="polite">
               {{ actionMessage }}
             </div>
+            <div v-if="restoredMultiRoleHint" class="text-xs text-[var(--muted)]">已从会话恢复任务跟踪（{{ restoredMultiRoleHint }}）</div>
+            <div v-if="multiRolePersistenceNotice" class="text-xs text-[var(--muted)]">{{ multiRolePersistenceNotice }}</div>
             <div class="grid gap-3 md:grid-cols-3">
               <InfoCard
                 v-for="item in actionStatusCards"
@@ -274,7 +279,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
@@ -291,6 +296,8 @@ import {
   triggerTrendAnalysis,
 } from '../../services/api/stocks'
 import { formatDate, formatDateTime, formatNumber, formatPercent, listStatusLabel } from '../../shared/utils/format'
+import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
+import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
 
 const TrendAreaChart = defineAsyncComponent(() => import('../../shared/charts/TrendAreaChart.vue'))
 
@@ -355,6 +362,8 @@ const actionMessage = ref('准备就绪')
 const fetchNewsState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 const trendState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 const multiRoleState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const multiRoleAttempts = ref<Array<Record<string, any>>>([])
+const activeMultiRoleJobId = ref('')
 const chartsReady = ref(false)
 const detailTabs = [
   { key: 'score', label: '评分结构' },
@@ -366,6 +375,14 @@ const detailTabs = [
 ] as const
 const activeDetailTab = ref<(typeof detailTabs)[number]['key']>('score')
 let multiRoleTimer = 0
+const multiRoleTaskScopeKey = computed(() => buildTaskScopeKey(String(route.name || 'stock-detail'), resolvedTsCode.value || activeTsCode.value || 'default'))
+const {
+  restoredHint: restoredMultiRoleHint,
+  noticeMessage: multiRolePersistenceNotice,
+  restoreTaskSnapshot: restoreMultiRoleTaskSnapshot,
+  persistTaskSnapshot: persistMultiRoleTaskSnapshot,
+  clearPersistedTaskSnapshot: clearMultiRoleTaskSnapshot,
+} = usePersistedTaskRunner(() => multiRoleTaskScopeKey.value)
 const sectionAnchors = [
   { href: '#price-trend', label: '价格走势' },
   { href: '#company-panels', label: '公司面板' },
@@ -663,32 +680,23 @@ const multiRoleMutation = useMutation({
       return
     }
     multiRoleState.value = 'pending'
+    activeMultiRoleJobId.value = jobId
     actionMessage.value = `多角色分析任务已创建：${resolvedName.value || resolvedTsCode.value || '-'}`
-    window.clearTimeout(multiRoleTimer)
-    const poll = async () => {
-      const result = await fetchMultiRoleTask({ job_id: jobId })
-      if (result.status === 'done') {
-        multiRoleState.value = 'success'
-        const actualModel = String(result.used_model || result.model || '')
-        actionMessage.value = `多角色分析完成：${resolvedName.value || resolvedTsCode.value || '-'}${actualModel ? ` · 实际模型 ${actualModel}` : ''}`
-        multiRoleResult.value = result.analysis_markdown || result.analysis || result.result || '分析完成，但未返回正文。'
-        return
-      }
-      if (result.status === 'error') {
-        multiRoleState.value = 'error'
-        actionMessage.value = `多角色分析失败：${result.error || result.message || '未知错误'}`
-        multiRoleResult.value = `分析失败：${result.error || result.message || '未知错误'}`
-        return
-      }
-      multiRoleResult.value = `任务状态：${result.message || result.status || '运行中'}\n进度：${result.progress || 0}%`
-      multiRoleTimer = window.setTimeout(poll, 3000)
-    }
-    poll()
+    persistCurrentMultiRoleTask({
+      status: 'queued',
+      stage: 'queued',
+      progress: 5,
+      requested_model: String(payload.requested_model || payload.model || ''),
+      updated_at: new Date().toISOString(),
+    })
+    startMultiRolePolling(jobId)
   },
   onError: (mutationError: Error) => {
     multiRoleState.value = 'error'
     actionMessage.value = `多角色分析失败：${mutationError.message}`
     multiRoleResult.value = `分析失败：${mutationError.message}`
+    activeMultiRoleJobId.value = ''
+    clearMultiRoleTaskSnapshot()
   },
 })
 
@@ -722,8 +730,112 @@ function runMultiRole() {
   multiRoleState.value = 'pending'
   actionMessage.value = `正在创建 ${resolvedName.value || resolvedTsCode.value || '-'} 的多角色分析任务...`
   multiRoleResult.value = '任务已创建，正在后台生成分析...'
+  multiRoleAttempts.value = []
   multiRoleMutation.mutate()
 }
+
+function persistCurrentMultiRoleTask(result: Record<string, any>) {
+  if (!activeMultiRoleJobId.value) return
+  persistMultiRoleTaskSnapshot({
+    jobId: activeMultiRoleJobId.value,
+    status: String(result.status || multiRoleState.value || ''),
+    stage: String(result.stage || ''),
+    progress: Number(result.progress || 0),
+    requestedModel: String(result.requested_model || ''),
+    usedModel: String(result.used_model || result.model || ''),
+    attempts: multiRoleAttempts.value,
+    actionMessage: actionMessage.value,
+    error: String(result.error || ''),
+    updatedAt: String(result.updated_at || new Date().toISOString()),
+    data: {
+      multiRoleResult: multiRoleResult.value,
+      multiRoleState: multiRoleState.value,
+    },
+  })
+}
+
+function startMultiRolePolling(jobId: string) {
+  activeMultiRoleJobId.value = jobId
+  window.clearTimeout(multiRoleTimer)
+  const poll = async () => {
+    try {
+      const result = await fetchMultiRoleTask({ job_id: jobId })
+      multiRoleAttempts.value = Array.isArray(result.attempts) ? result.attempts : multiRoleAttempts.value
+      if (result.status === 'done') {
+        multiRoleState.value = 'success'
+        const actualModel = String(result.used_model || result.model || '')
+        actionMessage.value = `多角色分析完成：${resolvedName.value || resolvedTsCode.value || '-'}${actualModel ? ` · 实际模型 ${actualModel}` : ''}`
+        multiRoleResult.value = result.analysis_markdown || result.analysis || result.result || '分析完成，但未返回正文。'
+        persistCurrentMultiRoleTask(result as Record<string, any>)
+        return
+      }
+      if (result.status === 'error' || result.status === 'aborted') {
+        multiRoleState.value = 'error'
+        actionMessage.value = `多角色分析失败：${result.error || result.message || '未知错误'}`
+        multiRoleResult.value = `分析失败：${result.error || result.message || '未知错误'}`
+        persistCurrentMultiRoleTask(result as Record<string, any>)
+        return
+      }
+      multiRoleResult.value = `任务状态：${result.message || result.status || '运行中'}\n进度：${result.progress || 0}%`
+      persistCurrentMultiRoleTask(result as Record<string, any>)
+      multiRoleTimer = window.setTimeout(poll, 3000)
+    } catch (e: any) {
+      multiRoleState.value = 'error'
+      actionMessage.value = `多角色分析轮询失败：${e?.message || String(e)}`
+      multiRoleResult.value = actionMessage.value
+      persistCurrentMultiRoleTask({ status: 'error', progress: 100, error: String(e?.message || e) })
+    }
+  }
+  poll()
+}
+
+function clearMultiRoleTaskTracking() {
+  window.clearTimeout(multiRoleTimer)
+  activeMultiRoleJobId.value = ''
+  multiRoleAttempts.value = []
+  multiRoleState.value = 'idle'
+  multiRoleResult.value = ''
+  actionMessage.value = '已清除当前任务跟踪。'
+  clearMultiRoleTaskSnapshot()
+}
+
+function restoreMultiRoleTask() {
+  const restored = restoreMultiRoleTaskSnapshot()
+  if (!restored) {
+    window.clearTimeout(multiRoleTimer)
+    activeMultiRoleJobId.value = ''
+    multiRoleAttempts.value = []
+    multiRoleState.value = 'idle'
+    return
+  }
+  activeMultiRoleJobId.value = String(restored.jobId || '')
+  multiRoleAttempts.value = Array.isArray(restored.attempts) ? restored.attempts : []
+  actionMessage.value = restored.actionMessage || '已恢复历史任务跟踪。'
+  multiRoleResult.value = String(restored.data?.multiRoleResult || multiRoleResult.value || '任务跟踪已恢复，正在同步最新状态...')
+  const restoredState = String(restored.data?.multiRoleState || restored.status || '').toLowerCase()
+  if (restoredState === 'done' || restoredState === 'success') {
+    multiRoleState.value = 'success'
+  } else if (restoredState === 'error' || restoredState === 'aborted') {
+    multiRoleState.value = 'error'
+  } else {
+    multiRoleState.value = 'pending'
+  }
+  if (activeMultiRoleJobId.value && multiRoleState.value === 'pending') {
+    startMultiRolePolling(activeMultiRoleJobId.value)
+  }
+}
+
+onMounted(() => {
+  restoreMultiRoleTask()
+})
+
+watch(
+  () => multiRoleTaskScopeKey.value,
+  () => {
+    window.clearTimeout(multiRoleTimer)
+    restoreMultiRoleTask()
+  },
+)
 
 onBeforeUnmount(() => {
   window.clearTimeout(multiRoleTimer)

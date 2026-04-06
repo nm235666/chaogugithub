@@ -22,10 +22,15 @@
           <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2" :disabled="!activeTaskId" @click="refreshTask">
             刷新任务
           </button>
+          <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)] disabled:opacity-40" :disabled="!activeTaskId && !taskView" @click="clearCurrentTaskTracking">
+            清除当前任务跟踪
+          </button>
         </div>
         <div v-if="message" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
           {{ message }}
         </div>
+        <div v-if="restoredTaskHint" class="mt-2 text-sm text-[var(--muted)]">已从会话恢复任务跟踪（{{ restoredTaskHint }}）</div>
+        <div v-if="taskPersistenceNotice" class="mt-2 text-sm text-[var(--muted)]">{{ taskPersistenceNotice }}</div>
       </PageSection>
 
       <div class="grid gap-4 xl:grid-cols-[1fr_1fr]">
@@ -64,13 +69,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { fetchQuantResults, fetchQuantTask, startQuantBacktest, startQuantMine } from '../../services/api/quantFactors'
+import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
+import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
 
 const form = reactive({
   direction: '',
@@ -83,6 +90,14 @@ const message = ref('')
 const activeTaskId = ref('')
 const taskView = ref<Record<string, any> | null>(null)
 let pollTimer: number | null = null
+const taskScopeKey = buildTaskScopeKey('quant-factors', 'active-task')
+const {
+  restoredHint: restoredTaskHint,
+  noticeMessage: taskPersistenceNotice,
+  restoreTaskSnapshot,
+  persistTaskSnapshot,
+  clearPersistedTaskSnapshot,
+} = usePersistedTaskRunner(() => taskScopeKey)
 
 const resultsQuery = useQuery({
   queryKey: ['quant-factor-results'],
@@ -95,6 +110,14 @@ const mineMutation = useMutation({
   onSuccess: async (payload) => {
     activeTaskId.value = String(payload?.task_id || '')
     message.value = `因子挖掘任务已启动：${activeTaskId.value || '-'}`
+    persistTaskSnapshot({
+      jobId: activeTaskId.value,
+      status: String(payload?.status || 'queued'),
+      stage: 'queued',
+      progress: 0,
+      actionMessage: message.value,
+      updatedAt: new Date().toISOString(),
+    })
     await refreshTask()
     startPolling()
     resultsQuery.refetch()
@@ -109,6 +132,14 @@ const backtestMutation = useMutation({
   onSuccess: async (payload) => {
     activeTaskId.value = String(payload?.task_id || '')
     message.value = `回测任务已启动：${activeTaskId.value || '-'}`
+    persistTaskSnapshot({
+      jobId: activeTaskId.value,
+      status: String(payload?.status || 'queued'),
+      stage: 'queued',
+      progress: 0,
+      actionMessage: message.value,
+      updatedAt: new Date().toISOString(),
+    })
     await refreshTask()
     startPolling()
     resultsQuery.refetch()
@@ -122,7 +153,13 @@ const results = computed<Array<Record<string, any>>>(() => (resultsQuery.data.va
 const taskErrorText = computed(() => {
   const item = taskView.value
   if (!item) return ''
-  return String(item.error_message || item.error_code || '任务运行中')
+  const code = String(item.error_code || '')
+  const messageText = String(item.error_message || '').trim()
+  if (code === 'RUNNER_CONFIG_INVALID') {
+    if (messageText) return `运行环境未就绪（依赖或配置缺失）：${messageText}`
+    return '运行环境未就绪（依赖或配置缺失），请检查 QuantaAlpha 运行环境。'
+  }
+  return String(messageText || code || '任务运行中')
 })
 const taskMetricsText = computed(() => {
   const item = taskView.value
@@ -155,6 +192,18 @@ async function refreshTask() {
     const payload = await fetchQuantTask(taskId)
     taskView.value = payload
     const status = String(payload?.status || '')
+    persistTaskSnapshot({
+      jobId: taskId,
+      status,
+      stage: status,
+      progress: status === 'done' || status === 'error' ? 100 : 50,
+      actionMessage: message.value,
+      error: String(payload?.error_message || payload?.error_code || ''),
+      updatedAt: String(payload?.update_time || new Date().toISOString()),
+      data: {
+        taskView: payload,
+      },
+    })
     if (status === 'done' || status === 'error') {
       stopPolling()
       resultsQuery.refetch()
@@ -185,6 +234,28 @@ function runMine() {
 function runBacktest() {
   backtestMutation.mutate()
 }
+
+function clearCurrentTaskTracking() {
+  stopPolling()
+  activeTaskId.value = ''
+  taskView.value = null
+  message.value = '已清除当前任务跟踪。'
+  clearPersistedTaskSnapshot()
+}
+
+onMounted(async () => {
+  const restored = restoreTaskSnapshot()
+  if (!restored) return
+  activeTaskId.value = String(restored.jobId || '')
+  message.value = restored.actionMessage || '已恢复历史任务跟踪。'
+  taskView.value = (restored.data?.taskView || null) as Record<string, any> | null
+  if (!activeTaskId.value) return
+  await refreshTask()
+  const status = String(taskView.value?.status || restored.status || '').toLowerCase()
+  if (status && status !== 'done' && status !== 'error' && status !== 'aborted') {
+    startPolling()
+  }
+})
 
 onBeforeUnmount(() => {
   stopPolling()

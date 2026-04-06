@@ -1,11 +1,19 @@
 <template>
-  <div ref="chartEl" class="w-full" :style="{ height: `${height}px` }" />
+  <div class="w-full" role="img" :aria-label="ariaLabel" :aria-describedby="summaryId">
+    <div ref="chartEl" class="w-full" :style="{ height: `${height}px` }" />
+    <p :id="summaryId" class="sr-only">{{ summaryText }}</p>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { useResizeObserver } from '@vueuse/core'
-import * as echarts from 'echarts'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { BarChart, CandlestickChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { init, use, type EChartsType } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+
+use([CandlestickChart, LineChart, BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
 interface MinlineRow {
   trade_date?: string
@@ -25,7 +33,9 @@ const props = withDefaults(defineProps<{
 })
 
 const chartEl = ref<HTMLElement | null>(null)
-let chart: echarts.EChartsType | null = null
+let chart: EChartsType | null = null
+let renderTimer: ReturnType<typeof setTimeout> | null = null
+const summaryId = `minute-chart-summary-${Math.random().toString(36).slice(2, 10)}`
 
 function toNumberOrNull(value: unknown): number | null {
   const num = Number(value)
@@ -33,12 +43,15 @@ function toNumberOrNull(value: unknown): number | null {
 }
 
 const normalized = computed(() => {
-  const rows = [...props.items].sort((a, b) => {
+  const sorted = [...props.items].sort((a, b) => {
     const ad = String(a.trade_date || '')
     const bd = String(b.trade_date || '')
     if (ad !== bd) return ad.localeCompare(bd)
     return String(a.minute_time || '').localeCompare(String(b.minute_time || ''))
   })
+  const rows = sorted.length > 1400
+    ? sorted.filter((_, index) => index % Math.ceil(sorted.length / 1400) === 0)
+    : sorted
   const categories: string[] = []
   const candles: Array<[number, number, number, number]> = []
   const avgLine: Array<number | null> = []
@@ -67,9 +80,18 @@ const normalized = computed(() => {
   return { categories, candles, avgLine, volumeBars }
 })
 
+const summaryText = computed(() => {
+  const sample = normalized.value.categories.length
+  if (!sample) return `${props.emptyText}。`
+  const start = normalized.value.categories[0] || '-'
+  const end = normalized.value.categories[sample - 1] || '-'
+  return `分钟K线图包含 ${sample} 个时间点，区间 ${start} 到 ${end}。`
+})
+const ariaLabel = computed(() => '分钟K线与成交量图表')
+
 function ensureChart() {
   if (!chartEl.value) return null
-  if (!chart) chart = echarts.init(chartEl.value)
+  if (!chart) chart = init(chartEl.value)
   return chart
 }
 
@@ -190,17 +212,26 @@ function render() {
   }, true)
 }
 
+function scheduleRender() {
+  if (renderTimer) clearTimeout(renderTimer)
+  renderTimer = setTimeout(() => {
+    render()
+    renderTimer = null
+  }, 120)
+}
+
 useResizeObserver(chartEl, () => chart?.resize())
 
 watch(
   () => props.items,
-  () => render(),
+  () => scheduleRender(),
   { deep: true, immediate: true },
 )
 
-onMounted(() => render())
+onMounted(() => scheduleRender())
 
 onBeforeUnmount(() => {
+  if (renderTimer) clearTimeout(renderTimer)
   chart?.dispose()
   chart = null
 })

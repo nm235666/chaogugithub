@@ -9,3 +9,10 @@ export LLM_PROVIDER_CONFIG_FILE="${LLM_PROVIDER_CONFIG_FILE:-/home/zanbo/zanbote
 export TUSHARE_TOKEN="${TUSHARE_TOKEN:-}"
 export BACKEND_ADMIN_TOKEN="${BACKEND_ADMIN_TOKEN:-}"
 export BACKEND_ALLOWED_ORIGINS="${BACKEND_ALLOWED_ORIGINS:-http://127.0.0.1:8077,http://localhost:8077,http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:4173,http://localhost:4173,http://tianbo.asia:6273,https://tianbo.asia:6273}"
+
+QUANTAALPHA_VENV_PY="/home/zanbo/zanbotest/runtime/quantaalpha_venv/bin/python"
+if [ -x "${QUANTAALPHA_VENV_PY}" ]; then
+  export QUANTAALPHA_PYTHON_BIN="${QUANTAALPHA_PYTHON_BIN:-${QUANTAALPHA_VENV_PY}}"
+else
+  export QUANTAALPHA_PYTHON_BIN="${QUANTAALPHA_PYTHON_BIN:-python3}"
+fi

@@ -21,10 +21,19 @@
           <button class="rounded-2xl bg-blue-700 px-4 py-3 font-semibold text-white disabled:opacity-50" :disabled="isGenerating || !canGenerate" @click="generateTodaySummary">
             {{ isGenerating ? '生成中...' : '生成今日总结' }}
           </button>
+          <button
+            class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-40"
+            :disabled="!activeJobId && !attempts.length"
+            @click="clearCurrentTaskTracking"
+          >
+            清除当前任务跟踪
+          </button>
           <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]">
             {{ actionMessage }}
           </div>
         </div>
+        <div v-if="restoredTaskHint" class="mt-2 text-sm text-[var(--muted)]">已从会话恢复任务跟踪（{{ restoredTaskHint }}）</div>
+        <div v-if="taskPersistenceNotice" class="mt-2 text-sm text-[var(--muted)]">{{ taskPersistenceNotice }}</div>
         <div v-if="attemptChain" class="mt-2 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
         <div v-if="lastAttemptError" class="mt-2 text-sm text-[var(--muted)]">最后错误：{{ lastAttemptError }}</div>
         <div v-if="protocolMetaText" class="mt-2 text-sm text-[var(--muted)]">{{ protocolMetaText }}</div>
@@ -71,14 +80,14 @@
               </template>
             </InfoCard>
           </div>
-          <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-            <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
-            <div class="flex gap-2">
-              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="queryFilters.page -= 1">上一页</button>
-              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="queryFilters.page += 1">下一页</button>
-            </div>
+        <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
+          <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
+          <div class="flex gap-2">
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="goPrevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
           </div>
-        </PageSection>
+        </div>
+      </PageSection>
 
         <PageSection title="总结详情" subtitle="保留 Markdown 原文，并支持直接下载。">
           <template #action>
@@ -97,8 +106,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { useMutation, useQuery } from '@tanstack/vue-query'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/vue-query'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
@@ -109,6 +119,12 @@ import { fetchDailySummaries, fetchDailySummaryTask, triggerDailySummaryGenerate
 import { fetchAuthStatus } from '../../services/api/auth'
 import { formatDateTime } from '../../shared/utils/format'
 import { downloadElementAsImage, downloadTextFile } from '../../shared/utils/export'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
+import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
+import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
+
+const route = useRoute()
+const router = useRouter()
 
 const queryFilters = reactive({
   summary_date: '',
@@ -122,13 +138,23 @@ const draftFilters = reactive({ ...queryFilters })
 const selectedItem = ref<Record<string, any> | null>(null)
 const actionMessage = ref('准备就绪')
 const attempts = ref<Array<Record<string, any>>>([])
+const activeJobId = ref('')
 const detailExportRef = ref<HTMLElement | null>(null)
 const latestTaskNotification = ref<Record<string, any>>({})
 let pollTimer = 0
+const taskScopeKey = computed(() => buildTaskScopeKey(String(route.name || 'daily-summaries'), 'generate'))
+const {
+  restoredHint: restoredTaskHint,
+  noticeMessage: taskPersistenceNotice,
+  restoreTaskSnapshot,
+  persistTaskSnapshot,
+  clearPersistedTaskSnapshot,
+} = usePersistedTaskRunner(() => taskScopeKey.value)
 
 const { data: result, refetch, isFetching, error } = useQuery({
   queryKey: ['daily-summaries', queryFilters],
   queryFn: () => fetchDailySummaries(queryFilters),
+  placeholderData: keepPreviousData,
 })
 
 watch(
@@ -148,10 +174,22 @@ watch(
   { immediate: true },
 )
 
+function normalizeMarkdownForDisplay(raw: string) {
+  let text = String(raw || '')
+  if (!text.includes('\n') && text.includes('\\n')) {
+    text = text.replace(/\\n/g, '\n')
+  }
+  text = text.replace(/\r\n/g, '\n')
+  text = text.replace(/(^|\n)(#{1,6})(?=\S)/g, '$1$2 ')
+  text = text.replace(/([。；：.!?])\s*(#{1,6}\s)/g, '$1\n\n$2')
+  return text
+}
+
 const selectedContent = computed(() => {
   const primary = String(selectedItem.value?.analysis_markdown || '').trim()
-  if (primary) return primary
-  return selectedItem.value?.summary_markdown || selectedItem.value?.summary_text || '请选择左侧一条日报总结查看内容。'
+  if (primary) return normalizeMarkdownForDisplay(primary)
+  const fallback = selectedItem.value?.summary_markdown || selectedItem.value?.summary_text || '请选择左侧一条日报总结查看内容。'
+  return normalizeMarkdownForDisplay(String(fallback))
 })
 const attemptChain = computed(() => attempts.value.map((item) => `${item.model || '-'}${item.error ? '×' : '√'}`).join(' -> '))
 const lastAttemptError = computed(() => {
@@ -181,15 +219,30 @@ const notificationMeta = computed(() => {
   return 'error'
 })
 
-const generateMutation = useMutation({
-  mutationFn: () => triggerDailySummaryGenerate({ model: 'auto' }),
-  onSuccess: (payload: Record<string, any>) => {
-    const jobId = String(payload.job_id || '')
-    attempts.value = Array.isArray(payload.attempts) ? payload.attempts : []
-    actionMessage.value = `日报总结任务已创建：${payload.summary_date || ''} · 正在尝试日报模型链路`
-    if (!jobId) return
-    window.clearTimeout(pollTimer)
-    const poll = async () => {
+function persistDailyTask(task: Record<string, any>, messageOverride = '') {
+  if (!activeJobId.value) return
+  persistTaskSnapshot({
+    jobId: activeJobId.value,
+    status: String(task.status || ''),
+    stage: String(task.stage || ''),
+    progress: Number(task.progress || 0),
+    requestedModel: String(task.requested_model || ''),
+    usedModel: String(task.used_model || ''),
+    attempts: Array.isArray(attempts.value) ? attempts.value : [],
+    actionMessage: messageOverride || actionMessage.value,
+    error: String(task.error || ''),
+    updatedAt: String(task.updated_at || new Date().toISOString()),
+    data: {
+      notification: latestTaskNotification.value,
+    },
+  })
+}
+
+function startTaskPolling(jobId: string) {
+  activeJobId.value = jobId
+  window.clearTimeout(pollTimer)
+  const poll = async () => {
+    try {
       const task = await fetchDailySummaryTask({ job_id: jobId })
       attempts.value = Array.isArray(task.attempts) ? task.attempts : attempts.value
       if (task.status === 'done') {
@@ -197,29 +250,58 @@ const generateMutation = useMutation({
           ? `日报总结生成完成 · 已自动降级到可用模型 ${task.used_model || '-'}`
           : `日报总结生成完成${task.used_model ? ` · 实际模型 ${task.used_model}` : ''}`
         latestTaskNotification.value = (task.notification || {}) as Record<string, any>
+        persistDailyTask(task, actionMessage.value)
         await refetch()
         if (task.item) selectedItem.value = task.item
         return
       }
-      if (task.status === 'error') {
+      if (task.status === 'error' || task.status === 'aborted') {
         const errorDetail = task.error || task.message || '未知错误'
         actionMessage.value = task.final_error_code === 'rate_limited' || errorDetail.includes('rate_limited')
           ? `日报总结生成失败：专用通道限流后仍未找到可用模型 · ${errorDetail}`
           : `日报总结生成失败：${errorDetail}`
         latestTaskNotification.value = (task.notification || {}) as Record<string, any>
+        persistDailyTask(task, actionMessage.value)
         return
       }
       actionMessage.value = attempts.value.length
         ? `日报总结生成中：${task.progress || 0}% · 正在尝试可用模型链路`
         : `日报总结生成中：${task.progress || 0}% · ${task.message || task.stage || '运行中'}`
+      persistDailyTask(task, actionMessage.value)
       pollTimer = window.setTimeout(poll, 3000)
+    } catch (e: any) {
+      actionMessage.value = `任务轮询失败：${e?.message || String(e)}`
+      persistDailyTask({ status: 'error', stage: 'error', progress: 100, error: String(e?.message || e) }, actionMessage.value)
     }
-    poll()
+  }
+  poll()
+}
+
+const generateMutation = useMutation({
+  mutationFn: () => triggerDailySummaryGenerate({ model: 'auto' }),
+  onSuccess: (payload: Record<string, any>) => {
+    const jobId = String(payload.job_id || '')
+    attempts.value = Array.isArray(payload.attempts) ? payload.attempts : []
+    actionMessage.value = `日报总结任务已创建：${payload.summary_date || ''} · 正在尝试日报模型链路`
+    if (!jobId) return
+    activeJobId.value = jobId
+    latestTaskNotification.value = {}
+    persistDailyTask({
+      status: String(payload.status || 'queued'),
+      stage: String(payload.stage || 'queued'),
+      progress: Number(payload.progress || 0),
+      requested_model: String(payload.requested_model || payload.model || ''),
+      used_model: String(payload.used_model || ''),
+      updated_at: String(payload.updated_at || new Date().toISOString()),
+    })
+    startTaskPolling(jobId)
   },
   onError: (error: Error) => {
     actionMessage.value = `生成失败：${error.message}`
     attempts.value = []
     latestTaskNotification.value = {}
+    activeJobId.value = ''
+    clearPersistedTaskSnapshot()
   },
 })
 
@@ -241,7 +323,15 @@ function downloadMarkdown() {
   if (!selectedItem.value) return
   const date = selectedItem.value.summary_date || 'daily_summary'
   const model = selectedItem.value.model || 'model'
-  downloadTextFile(selectedContent.value, `${date}_新闻日报总结_${model}.md`, 'text/markdown;charset=utf-8')
+  const content = [
+    `# 新闻日报总结`,
+    '',
+    `- 所选日期: ${date}`,
+    `- 实际模型: ${model}`,
+    '',
+    selectedContent.value,
+  ].join('\n')
+  downloadTextFile(content, `${date}_新闻日报总结_${model}.md`, 'text/markdown;charset=utf-8')
 }
 
 async function downloadImage() {
@@ -255,8 +345,18 @@ function generateTodaySummary() {
   generateMutation.mutate()
 }
 
+function clearCurrentTaskTracking() {
+  activeJobId.value = ''
+  attempts.value = []
+  latestTaskNotification.value = {}
+  actionMessage.value = '已清除当前任务跟踪。'
+  window.clearTimeout(pollTimer)
+  clearPersistedTaskSnapshot()
+}
+
 function applyFilters() {
   Object.assign(queryFilters, { ...draftFilters, page: 1 })
+  syncRouteFromQuery()
 }
 
 function resetFilters() {
@@ -267,4 +367,67 @@ function resetFilters() {
 function reloadList() {
   refetch()
 }
+
+function syncRouteFromQuery() {
+  router.replace({
+    query: buildCleanQuery({
+      summary_date: queryFilters.summary_date,
+      source_filter: queryFilters.source_filter,
+      model: queryFilters.model,
+      page: queryFilters.page,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteQuery() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    summary_date: readQueryString(q, 'summary_date', ''),
+    source_filter: readQueryString(q, 'source_filter', ''),
+    model: readQueryString(q, 'model', ''),
+    page: Math.max(1, readQueryNumber(q, 'page', 1)),
+    page_size: Math.max(10, readQueryNumber(q, 'page_size', 10)),
+  }
+  Object.assign(draftFilters, next)
+  Object.assign(queryFilters, next)
+}
+
+function goPrevPage() {
+  if (queryFilters.page <= 1) return
+  queryFilters.page -= 1
+  syncRouteFromQuery()
+}
+
+function goNextPage() {
+  const totalPages = Number(result.value?.total_pages || 1)
+  if (queryFilters.page >= totalPages) return
+  queryFilters.page += 1
+  syncRouteFromQuery()
+}
+
+onMounted(() => {
+  applyRouteQuery()
+  const restored = restoreTaskSnapshot()
+  if (!restored) return
+  activeJobId.value = String(restored.jobId || '')
+  attempts.value = Array.isArray(restored.attempts) ? restored.attempts : []
+  actionMessage.value = restored.actionMessage || '已恢复历史任务跟踪。'
+  latestTaskNotification.value = (restored.data?.notification || {}) as Record<string, any>
+  const terminalStatus = ['done', 'error', 'aborted']
+  if (activeJobId.value && !terminalStatus.includes(String(restored.status || '').toLowerCase())) {
+    startTaskPolling(activeJobId.value)
+  }
+})
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
+
+onBeforeUnmount(() => {
+  window.clearTimeout(pollTimer)
+})
 </script>

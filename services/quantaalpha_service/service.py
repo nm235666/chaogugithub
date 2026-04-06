@@ -155,6 +155,85 @@ def _parse_metrics(stdout: str) -> dict[str, float]:
     return out
 
 
+def _check_python_dependency(python_bin: str, module_name: str) -> tuple[bool, str]:
+    try:
+        proc = subprocess.run(
+            [python_bin, "-c", f"import {module_name}"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+    except Exception as exc:
+        return False, f"依赖预检失败: {exc}"
+    if proc.returncode == 0:
+        return True, ""
+    detail = (proc.stderr or proc.stdout or "").strip()
+    return False, detail
+
+
+def _classify_cli_failure(return_code: int, stdout: str, stderr: str) -> tuple[str, str]:
+    merged = f"{stdout}\n{stderr}"
+    missing_mod = re.search(r"ModuleNotFoundError:\s+No module named ['\"]([^'\"]+)['\"]", merged)
+    if missing_mod:
+        mod = str(missing_mod.group(1) or "").strip() or "unknown"
+        if mod == "dotenv":
+            return (
+                ERR_RUNNER_CONFIG_INVALID,
+                "QuantaAlpha 运行依赖缺失：python-dotenv 未安装（模块 dotenv）。请在任务运行环境安装后重试。",
+            )
+        return (
+            ERR_RUNNER_CONFIG_INVALID,
+            f"QuantaAlpha 运行依赖缺失：模块 {mod} 未安装。请在任务运行环境安装后重试。",
+        )
+    if ".env file not found" in merged:
+        return (
+            ERR_RUNNER_CONFIG_INVALID,
+            "QuantaAlpha 配置缺失：external/quantaalpha/.env 不存在，请先完成配置再重试。",
+        )
+    if "QLIB_DATA_DIR" in merged and ("not set" in merged or "does not exist" in merged):
+        return (
+            ERR_RUNNER_CONFIG_INVALID,
+            "QuantaAlpha 数据目录未就绪：请配置有效 QLIB_DATA_DIR（需包含 calendars/features/instruments）。",
+        )
+    return ERR_UNKNOWN, f"exit_code={return_code}"
+
+
+def _resolve_python_bin() -> str:
+    explicit = str(os.getenv("QUANTAALPHA_PYTHON_BIN", "") or "").strip()
+    if explicit:
+        return explicit
+    fallback = str(os.getenv("PYTHON_BIN", "") or "").strip()
+    if fallback:
+        return fallback
+    return "python3"
+
+
+def _ensure_quantaalpha_dotenv(
+    *,
+    qa_root: Path,
+    llm: dict[str, str],
+    data_dir: Path,
+    out_dir: Path,
+) -> Path:
+    dotenv_path = qa_root / ".env"
+    if dotenv_path.exists():
+        return dotenv_path
+    qlib_dir = str(os.getenv("QLIB_DATA_DIR", "") or "").strip() or str(data_dir)
+    lines = [
+        f"QLIB_DATA_DIR={qlib_dir}",
+        f"QLIB_PROVIDER_URI={qlib_dir}",
+        f"DATA_RESULTS_DIR={out_dir}",
+        f"OPENAI_API_KEY={llm.get('api_key') or ''}",
+        f"OPENAI_BASE_URL={llm.get('base_url') or ''}",
+        f"CHAT_MODEL={llm.get('model') or 'gpt-5.4'}",
+        f"REASONING_MODEL={llm.get('model') or 'gpt-5.4'}",
+        "USE_LOCAL=True",
+    ]
+    dotenv_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return dotenv_path
+
+
 def _run_cli(task_type: str, payload: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     qa_root = Path(str(payload.get("qa_root") or DEFAULT_QUANTAALPHA_ROOT)).resolve()
     launcher = qa_root / "launcher.py"
@@ -178,7 +257,25 @@ def _run_cli(task_type: str, payload: dict[str, Any]) -> tuple[bool, dict[str, A
         "QUANTAALPHA_LLM_API_KEY": llm["api_key"],
     }
     _write_quantaalpha_env(env_file, env_payload)
-    command = [os.getenv("PYTHON_BIN", "python3"), str(launcher)]
+    dotenv_path = _ensure_quantaalpha_dotenv(
+        qa_root=qa_root,
+        llm=llm,
+        data_dir=data_dir,
+        out_dir=out_dir,
+    )
+    python_bin = _resolve_python_bin()
+    dep_ok, dep_detail = _check_python_dependency(python_bin, "dotenv")
+    if not dep_ok:
+        print(f"[quantaalpha] dependency_check_failed python_bin={python_bin}")
+        return False, {
+            "error_code": ERR_RUNNER_CONFIG_INVALID,
+            "error_message": "QuantaAlpha 运行依赖缺失：python-dotenv 未安装（模块 dotenv）。请在任务运行环境安装后重试。",
+            "stdout": "",
+            "stderr": dep_detail[-12000:],
+            "artifacts": {"results_dir": str(out_dir), "env_file": str(env_file), "qa_root": str(qa_root), "python_bin": python_bin, "dotenv_file": str(dotenv_path)},
+        }
+
+    command = [python_bin, str(launcher)]
     if task_type == "mine":
         command.append("mine")
     elif task_type == "backtest":
@@ -194,6 +291,7 @@ def _run_cli(task_type: str, payload: dict[str, Any]) -> tuple[bool, dict[str, A
     env = os.environ.copy()
     env.update(env_payload)
     started = time.time()
+    print(f"[quantaalpha] run task_type={task_type} python_bin={python_bin} cwd={qa_root}")
     try:
         proc = subprocess.run(
             command,
@@ -220,20 +318,22 @@ def _run_cli(task_type: str, payload: dict[str, Any]) -> tuple[bool, dict[str, A
     metrics = _parse_metrics(stdout)
     ok = proc.returncode == 0
     if not ok:
+        print(f"[quantaalpha] run_failed task_type={task_type} python_bin={python_bin} exit_code={proc.returncode}")
+        error_code, error_message = _classify_cli_failure(proc.returncode, stdout, stderr)
         return False, {
-            "error_code": ERR_UNKNOWN,
-            "error_message": f"exit_code={proc.returncode}",
+            "error_code": error_code,
+            "error_message": error_message,
             "stdout": stdout[-12000:],
             "stderr": stderr[-12000:],
             "metrics": metrics,
-            "artifacts": {"results_dir": str(out_dir), "env_file": str(env_file)},
+            "artifacts": {"results_dir": str(out_dir), "env_file": str(env_file), "python_bin": python_bin, "dotenv_file": str(dotenv_path)},
             "duration_seconds": round(time.time() - started, 3),
         }
     return True, {
         "stdout": stdout[-12000:],
         "stderr": stderr[-12000:],
         "metrics": metrics,
-        "artifacts": {"results_dir": str(out_dir), "env_file": str(env_file), "qa_root": str(qa_root)},
+        "artifacts": {"results_dir": str(out_dir), "env_file": str(env_file), "qa_root": str(qa_root), "python_bin": python_bin, "dotenv_file": str(dotenv_path)},
         "duration_seconds": round(time.time() - started, 3),
     }
 

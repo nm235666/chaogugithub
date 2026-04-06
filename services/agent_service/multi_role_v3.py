@@ -628,6 +628,8 @@ def reclaim_stale_multi_role_v3_jobs(*, sqlite3_module, db_path, stale_after_sec
                 stale_reason = "invalid_worker_id"
             elif (not worker_id) and age_seconds >= threshold:
                 stale_reason = "missing_worker_id"
+            elif age_seconds >= threshold and stage in {"research_debate", "risk_debate"}:
+                stale_reason = "stage_timeout"
             if not stale_reason:
                 continue
 
@@ -707,6 +709,41 @@ def _stage_progress(stage: str) -> int:
         "pending_user_decision": 88,
     }
     return int(mapping.get(stage, 0))
+
+
+def _persist_stage_checkpoint(
+    conn,
+    *,
+    job_id: str,
+    stage: str,
+    state: dict[str, Any],
+    result: dict,
+    decision_state: dict,
+    metrics: dict,
+    worker_id: str = "",
+    message: str = "",
+    progress: int | None = None,
+) -> None:
+    if message:
+        metrics["message"] = message
+    if progress is None:
+        progress = _stage_progress(stage)
+    metrics["progress"] = max(0, min(99, int(progress)))
+    _update_job_row(
+        conn,
+        job_id=job_id,
+        status="running",
+        stage=stage,
+        state=state,
+        result=result,
+        decision_state=decision_state,
+        metrics=metrics,
+        error="",
+        finished=False,
+        worker_id=worker_id,
+        lease_until=_now_iso() if worker_id else "",
+    )
+    conn.commit()
 
 
 def _update_timeline(state: dict[str, Any], stage: str, status: str) -> None:
@@ -1127,6 +1164,18 @@ def _run_pipeline_legacy(conn, row: dict[str, Any], runtime: dict[str, Any], wor
             rounds.append({"round": idx, "bull": bull, "bear": bear})
             _add_node_run(state, stage="research_debate", node=f"bull_r{idx}", output=bull)
             _add_node_run(state, stage="research_debate", node=f"bear_r{idx}", output=bear)
+            _persist_stage_checkpoint(
+                conn,
+                job_id=job_id,
+                stage="research_debate",
+                state=state,
+                result=result,
+                decision_state=decision_state,
+                metrics=metrics,
+                worker_id=worker_id,
+                message=f"研究辩论第 {idx}/{max_rounds} 轮已完成",
+                progress=min(65, 48 + idx * 8),
+            )
             if early_stop:
                 bull_conflicts = len(_to_list(bull.get("conflicts")))
                 bear_conflicts = len(_to_list(bear.get("conflicts")))
@@ -1161,6 +1210,18 @@ def _run_pipeline_legacy(conn, row: dict[str, Any], runtime: dict[str, Any], wor
         research_debate["summary"] = summary
         state["research_debate"] = research_debate
         _set_stage_done(state, "research_debate")
+        _persist_stage_checkpoint(
+            conn,
+            job_id=job_id,
+            stage="research_debate",
+            state=state,
+            result=result,
+            decision_state=decision_state,
+            metrics=metrics,
+            worker_id=worker_id,
+            message="研究辩论总结完成，进入研究经理裁决",
+            progress=68,
+        )
         _append_event(conn, job_id=job_id, stage="research_debate", event_type="stage_done", payload={"rounds": len(rounds)})
         save("research_manager", "running", "Research Manager 裁决中")
 
@@ -1280,6 +1341,18 @@ def _run_pipeline_legacy(conn, row: dict[str, Any], runtime: dict[str, Any], wor
             _add_node_run(state, stage="risk_debate", node=f"aggressive_r{idx}", output=aggressive)
             _add_node_run(state, stage="risk_debate", node=f"conservative_r{idx}", output=conservative)
             _add_node_run(state, stage="risk_debate", node=f"neutral_r{idx}", output=neutral)
+            _persist_stage_checkpoint(
+                conn,
+                job_id=job_id,
+                stage="risk_debate",
+                state=state,
+                result=result,
+                decision_state=decision_state,
+                metrics=metrics,
+                worker_id=worker_id,
+                message=f"风险辩论第 {idx}/{max_rounds} 轮已完成",
+                progress=min(88, 80 + idx * 4),
+            )
         summary_payload = {
             "trader_plan": trader_plan,
             "research_summary": research_summary,
@@ -1313,6 +1386,18 @@ def _run_pipeline_legacy(conn, row: dict[str, Any], runtime: dict[str, Any], wor
         risk_debate["summary"] = summary
         state["risk_debate"] = risk_debate
         _set_stage_done(state, "risk_debate")
+        _persist_stage_checkpoint(
+            conn,
+            job_id=job_id,
+            stage="risk_debate",
+            state=state,
+            result=result,
+            decision_state=decision_state,
+            metrics=metrics,
+            worker_id=worker_id,
+            message="风险辩论总结完成，进入 Portfolio Manager 审批",
+            progress=92,
+        )
         _append_event(conn, job_id=job_id, stage="risk_debate", event_type="stage_done", payload={"rounds": len(rounds)})
         save("portfolio_manager", "running", "Portfolio Manager 审批中")
 
@@ -1554,6 +1639,18 @@ def _run_pipeline_v4_langgraph(conn, row: dict[str, Any], runtime: dict[str, Any
             rounds.append({"round": idx, "bull": bull, "bear": bear})
             _add_node_run(state, stage="research_debate", node=f"bull_r{idx}", output=bull)
             _add_node_run(state, stage="research_debate", node=f"bear_r{idx}", output=bear)
+            _persist_stage_checkpoint(
+                conn,
+                job_id=job_id,
+                stage="research_debate",
+                state=state,
+                result=result,
+                decision_state=decision_state,
+                metrics=metrics,
+                worker_id=worker_id,
+                message=f"研究辩论第 {idx}/{max_rounds} 轮已完成",
+                progress=min(65, 48 + idx * 8),
+            )
             if early_stop and not _to_list(bull.get("conflicts")) and not _to_list(bear.get("conflicts")):
                 break
         try:
@@ -1574,6 +1671,18 @@ def _run_pipeline_v4_langgraph(conn, row: dict[str, Any], runtime: dict[str, Any
         research_debate["rounds"] = rounds
         research_debate["summary"] = summary
         state["research_debate"] = research_debate
+        _persist_stage_checkpoint(
+            conn,
+            job_id=job_id,
+            stage="research_debate",
+            state=state,
+            result=result,
+            decision_state=decision_state,
+            metrics=metrics,
+            worker_id=worker_id,
+            message="研究辩论总结完成，进入研究经理裁决",
+            progress=68,
+        )
         _node_done("research_debate", {"rounds": len(rounds)})
         return gs
 
@@ -1673,6 +1782,18 @@ def _run_pipeline_v4_langgraph(conn, row: dict[str, Any], runtime: dict[str, Any
             _add_node_run(state, stage="risk_debate", node=f"aggressive_r{idx}", output=aggressive)
             _add_node_run(state, stage="risk_debate", node=f"conservative_r{idx}", output=conservative)
             _add_node_run(state, stage="risk_debate", node=f"neutral_r{idx}", output=neutral)
+            _persist_stage_checkpoint(
+                conn,
+                job_id=job_id,
+                stage="risk_debate",
+                state=state,
+                result=result,
+                decision_state=decision_state,
+                metrics=metrics,
+                worker_id=worker_id,
+                message=f"风险辩论第 {idx}/{max_rounds} 轮已完成",
+                progress=min(88, 80 + idx * 4),
+            )
         try:
             summary = _llm_node(
                 runtime=runtime,
@@ -1694,6 +1815,18 @@ def _run_pipeline_v4_langgraph(conn, row: dict[str, Any], runtime: dict[str, Any
         risk_debate["rounds"] = rounds
         risk_debate["summary"] = summary
         state["risk_debate"] = risk_debate
+        _persist_stage_checkpoint(
+            conn,
+            job_id=job_id,
+            stage="risk_debate",
+            state=state,
+            result=result,
+            decision_state=decision_state,
+            metrics=metrics,
+            worker_id=worker_id,
+            message="风险辩论总结完成，进入 Portfolio Manager 审批",
+            progress=92,
+        )
         _node_done("risk_debate", {"rounds": len(rounds)})
         return gs
 

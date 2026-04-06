@@ -39,3 +39,8 @@ export async function fetchDailySummaryTask(params: Record<string, any>) {
   const { data } = await http.get('/api/news/daily-summaries/task', { params })
   return data
 }
+
+export async function searchNewsSemantic(payload: Record<string, any>) {
+  const { data } = await http.post('/api/ai-retrieval/search', payload)
+  return data
+}

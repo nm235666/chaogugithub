@@ -20,7 +20,24 @@
       </PageSection>
 
       <PageSection :title="`评分结果 (${scores?.total || 0})`" subtitle="点击股票名进入详情页做进一步研究。">
-        <DataTable :columns="columns" :rows="scores?.items || []" row-key="ts_code" empty-text="暂无评分数据">
+        <div class="grid gap-3 lg:hidden">
+          <InfoCard
+            v-for="row in scores?.items || []"
+            :key="row.ts_code"
+            :title="row.name || row.ts_code || '-'"
+            :meta="`${row.ts_code || '-'} · ${row.industry || '-'} · ${row.market || '-'}`"
+            :description="`总分 ${formatNumber(row.total_score, 2)} · 行业内 ${formatNumber(row.industry_total_score, 2)} · 等级 ${row.score_grade || '-'}`"
+          >
+            <template #badge>
+              <StatusBadge value="brand" :label="row.score_grade || '-'" />
+            </template>
+            <div class="mt-3">
+              <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--brand)]" :to="`/stocks/detail/${row.ts_code}`">查看详情</RouterLink>
+            </div>
+          </InfoCard>
+        </div>
+
+        <DataTable class="hidden lg:block" :columns="columns" :rows="scores?.items || []" row-key="ts_code" empty-text="暂无评分数据">
           <template #cell-name="{ row }">
             <RouterLink class="font-semibold text-[var(--brand)]" :to="`/stocks/detail/${row.ts_code}`">{{ row.name || row.ts_code }}</RouterLink>
           </template>
@@ -36,15 +53,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, reactive, watch } from 'vue'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
+import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchStockScoreFilters, fetchStockScores } from '../../services/api/stocks'
 import { formatNumber } from '../../shared/utils/format'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
+
+const route = useRoute()
+const router = useRouter()
 
 const filters = reactive({ keyword: '', industry: '', market: '', score_date: '', page_size: 20 })
 const queryFilters = reactive({ keyword: '', industry: '', market: '', score_date: '', page: 1, page_size: 20 })
@@ -63,6 +85,7 @@ const { data: scoreFilters } = useQuery({ queryKey: ['stock-score-filters'], que
 const { data: scores, isFetching } = useQuery({
   queryKey: computed(() => ['stock-scores', { ...queryFilters }]),
   queryFn: () => fetchStockScores({ ...queryFilters }),
+  placeholderData: keepPreviousData,
 })
 
 function applyFilters() {
@@ -72,5 +95,45 @@ function applyFilters() {
   queryFilters.score_date = (filters.score_date || '').trim()
   queryFilters.page_size = Number(filters.page_size) || 20
   queryFilters.page = 1
+  syncRouteFromQuery()
 }
+
+function syncRouteFromQuery() {
+  router.replace({
+    query: buildCleanQuery({
+      keyword: queryFilters.keyword,
+      industry: queryFilters.industry,
+      market: queryFilters.market,
+      score_date: queryFilters.score_date,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteQuery() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    keyword: readQueryString(q, 'keyword', ''),
+    industry: readQueryString(q, 'industry', ''),
+    market: readQueryString(q, 'market', ''),
+    score_date: readQueryString(q, 'score_date', ''),
+    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+  }
+  Object.assign(filters, next)
+  Object.assign(queryFilters, {
+    ...next,
+    page: 1,
+  })
+}
+
+onMounted(() => {
+  applyRouteQuery()
+})
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
 </script>

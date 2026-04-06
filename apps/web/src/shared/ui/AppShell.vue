@@ -1,5 +1,8 @@
 <template>
   <div class="min-h-screen bg-[var(--bg)] text-[var(--ink)]">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[1600] focus:rounded-full focus:bg-[var(--brand)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">
+      跳到主内容
+    </a>
     <div class="mx-auto flex min-h-screen max-w-[1600px] gap-4 px-3 py-3 md:px-4">
       <aside :class="sidebarClasses">
         <div class="relative overflow-hidden rounded-[30px] border border-white/12 bg-[linear-gradient(180deg,#0d1720_0%,#12384a_58%,#0c6977_100%)] p-4 text-white shadow-2xl shadow-[rgba(10,32,44,0.22)]">
@@ -8,13 +11,13 @@
           <div class="absolute bottom-2 right-2 h-40 w-40 rounded-full bg-[rgba(214,134,72,0.18)] blur-3xl" />
           <div class="absolute inset-y-0 right-0 w-px bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.16)_50%,transparent_100%)]" />
           <div class="relative mb-5">
-            <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/82">Zanbo Quant</div>
+            <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/82">Zanbo Quant</div>
             <div class="mt-3 text-xl font-extrabold">研究终端</div>
             <div class="mt-2 text-sm leading-6 text-white/72">统一股票、新闻、信号</div>
           </div>
           <nav class="relative space-y-5">
             <div v-for="group in navGroups" :key="group.title" class="space-y-2">
-              <div class="px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/54">{{ group.title }}</div>
+              <div class="px-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/54">{{ group.title }}</div>
               <RouterLink
                 v-for="item in group.items"
                 :key="item.to"
@@ -49,20 +52,20 @@
                   <div class="mt-1 max-w-[180px] truncate">{{ realtime.lastEvent || '暂无' }}</div>
                 </div>
               </div>
-              <div class="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Zanbo Quant Vue Frontend</div>
+              <div class="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Zanbo Quant Vue Frontend</div>
               <div class="mt-1 text-[30px] font-extrabold tracking-tight" style="font-family: var(--font-display)">{{ title }}</div>
               <div class="mt-1 text-sm text-[var(--muted)]">{{ subtitle }}</div>
             </div>
             <div class="flex flex-wrap items-center gap-3">
               <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(238,244,247,0.88)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)]">
-                <div class="text-[11px] uppercase tracking-[0.15em] text-[var(--muted)]">实时连接</div>
+                <div class="text-xs uppercase tracking-[0.13em] text-[var(--muted)]">实时连接</div>
                 <div class="mt-1 flex items-center gap-2 font-semibold">
                   <span :class="['inline-block size-2.5 rounded-full', realtime.connected ? 'bg-emerald-500' : 'bg-amber-500']" />
                   {{ realtime.connected ? '在线' : '重连中' }}
                 </div>
               </div>
               <div class="hidden rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(238,244,247,0.88)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)] md:block">
-                <div class="text-[11px] uppercase tracking-[0.15em] text-[var(--muted)]">最近事件</div>
+                <div class="text-xs uppercase tracking-[0.13em] text-[var(--muted)]">最近事件</div>
                 <div class="mt-1 max-w-[300px] truncate font-semibold">{{ realtime.lastEvent || '暂无' }}</div>
               </div>
               <button class="hidden rounded-[20px] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-3 text-sm font-semibold text-white xl:block" @click="ui.toggleSidebar()">
@@ -79,7 +82,7 @@
           </div>
         </header>
 
-        <main>
+        <main id="main-content" tabindex="-1">
           <slot />
         </main>
       </div>
@@ -100,14 +103,14 @@
         >
           <div class="mb-4 flex items-center justify-between">
             <div>
-              <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/82">Zanbo Quant</div>
+              <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/82">Zanbo Quant</div>
               <div class="mt-2 text-lg font-extrabold">研究终端导航</div>
             </div>
             <button class="rounded-full border border-white/18 bg-white/10 px-3 py-2 text-sm font-semibold text-white" @click="ui.closeMobileNav()">关闭</button>
           </div>
           <nav class="space-y-5">
             <div v-for="group in navGroups" :key="`mobile-${group.title}`" class="space-y-2">
-              <div class="px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/54">{{ group.title }}</div>
+              <div class="px-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/54">{{ group.title }}</div>
               <RouterLink
                 v-for="item in group.items"
                 :key="`mobile-${item.to}`"
@@ -124,18 +127,22 @@
         </aside>
       </div>
     </Teleport>
+    <AppDialogHost />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import AppDialogHost from './AppDialogHost.vue'
 import { useUiStore } from '../../stores/ui'
 import { useRealtimeStore } from '../../stores/realtime'
 import { useAuthStore } from '../../stores/auth'
 import { clearAuthStatusCache, logoutAuth } from '../../services/api/auth'
 import { clearAdminToken, readAdminToken } from '../../services/authToken'
-import { hasPermissionByEffective, type AppPermission } from '../../app/permissions'
+import { APP_PERMISSION_VALUES, hasPermissionByEffective, type AppPermission } from '../../app/permissions'
+import { NAV_GROUPS, type NavGroupConfig } from '../../app/navigation'
+import { fetchNavigationGroups } from '../../services/api/system'
 
 const props = defineProps<{
   title: string
@@ -148,6 +155,13 @@ const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const hasAdminToken = ref(!!readAdminToken())
+const remoteNavGroups = ref<NavGroupConfig[] | null>(null)
+const permissionValueSet = computed(() => {
+  const catalogCodes = Array.isArray(auth.permissionCatalog)
+    ? auth.permissionCatalog.map((item: any) => String(item?.code || '').trim()).filter(Boolean)
+    : []
+  return new Set<string>(catalogCodes.length ? catalogCodes : APP_PERMISSION_VALUES)
+})
 
 const sidebarClasses = computed(() => [
   'hidden shrink-0 xl:block',
@@ -157,67 +171,65 @@ const sidebarClasses = computed(() => [
 const title = computed(() => props.title)
 const subtitle = computed(() => props.subtitle || '统一研究、监控与信号分析工作流')
 
-const fullNavGroups = [
-  {
-    title: '总控',
-    items: [
-      { to: '/dashboard', label: '总控台', desc: '全局健康度、热点、任务与新鲜度', permission: 'admin_system' as AppPermission },
-      { to: '/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板', permission: 'admin_system' as AppPermission },
-      { to: '/system/jobs-ops', label: '任务调度中心', desc: '任务列表、dry-run、触发与告警观测', permission: 'admin_system' as AppPermission },
-      { to: '/system/llm-providers', label: 'LLM 节点管理', desc: '模型节点 CRUD、限速配置与联通测试', permission: 'admin_system' as AppPermission },
-      { to: '/system/permissions', label: '角色权限策略', desc: '配置 pro/limited/admin 的权限与日配额', permission: 'admin_system' as AppPermission },
-      { to: '/system/database-audit', label: '数据库审计', desc: '缺口、重复、未评分、陈旧数据', permission: 'admin_system' as AppPermission },
-      { to: '/system/invites', label: '邀请码管理', desc: '管理员邀请码与账号规模管理', permission: 'admin_users' as AppPermission },
-      { to: '/system/users', label: '用户与会话', desc: '用户、会话、审计日志管理', permission: 'admin_users' as AppPermission },
-    ],
-  },
-  {
-    title: '股票',
-    items: [
-      { to: '/stocks/list', label: '股票列表', desc: '代码、简称、市场、地区快速检索', permission: 'stocks_advanced' as AppPermission },
-      { to: '/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序', permission: 'stocks_advanced' as AppPermission },
-      { to: '/stocks/detail/000001.SZ', label: '股票详情', desc: '统一聚合价格、新闻、群聊与分析', permission: 'stocks_advanced' as AppPermission },
-      { to: '/stocks/prices', label: '价格中心', desc: '日线 + 分钟线统一查询与图表', permission: 'stocks_advanced' as AppPermission },
-    ],
-  },
-  {
-    title: '情报与信号',
-    items: [
-      { to: '/intelligence/global-news', label: '国际资讯', desc: '全球财经新闻、评分与映射', permission: 'news_read' as AppPermission },
-      { to: '/intelligence/cn-news', label: '国内资讯', desc: '新浪 / 东财资讯统一看', permission: 'news_read' as AppPermission },
-      { to: '/intelligence/stock-news', label: '个股新闻', desc: '聚焦单股新闻与立即采集', permission: 'stock_news_read' as AppPermission },
-      { to: '/intelligence/daily-summaries', label: '新闻日报总结', desc: '日报生成、历史查询与双格式导出', permission: 'daily_summary_read' as AppPermission },
-      { to: '/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced' as AppPermission },
-      { to: '/signals/themes', label: '主题热点', desc: '主题强度、方向、预期与证据链', permission: 'signals_advanced' as AppPermission },
-      { to: '/signals/audit', label: '信号质量审计', desc: '误映射、弱信号与质量问题', permission: 'signals_advanced' as AppPermission },
-      { to: '/signals/quality-config', label: '信号质量配置', desc: '规则参数与映射黑名单', permission: 'signals_advanced' as AppPermission },
-      { to: '/signals/state-timeline', label: '状态时间线', desc: '状态机迁移与市场预期层', permission: 'signals_advanced' as AppPermission },
-    ],
-  },
-  {
-    title: '研究与舆情',
-    items: [
-      { to: '/macro', label: '宏观看板', desc: '宏观指标查询与序列趋势', permission: 'macro_advanced' as AppPermission },
-      { to: '/research/trend', label: '走势分析', desc: 'LLM 股票走势分析工作台', permission: 'trend_analyze' as AppPermission },
-      { to: '/research/reports', label: '标准报告', desc: '统一投研报告列表', permission: 'research_advanced' as AppPermission },
-      { to: '/research/quant-factors', label: '因子挖掘', desc: 'QuantaAlpha 旁路因子挖掘与回测', permission: 'research_advanced' as AppPermission },
-      { to: '/research/multi-role', label: '多角色分析', desc: 'LLM 多角色公司分析工作台', permission: 'multi_role_analyze' as AppPermission },
-      { to: '/chatrooms/overview', label: '群聊总览', desc: '群聊标签、状态、拉取健康度', permission: 'chatrooms_advanced' as AppPermission },
-      { to: '/chatrooms/chatlog', label: '聊天记录', desc: '消息正文、引用和筛选查询', permission: 'chatrooms_advanced' as AppPermission },
-      { to: '/chatrooms/investment', label: '投资倾向', desc: '群聊结论、情绪和标的清单', permission: 'chatrooms_advanced' as AppPermission },
-      { to: '/chatrooms/candidates', label: '股票候选池', desc: '群聊汇总候选池与偏向', permission: 'chatrooms_advanced' as AppPermission },
-    ],
-  },
-]
-
 const navGroups = computed(() => {
-  return fullNavGroups
+  const source = remoteNavGroups.value?.length ? remoteNavGroups.value : NAV_GROUPS
+  return [...source]
+    .sort((a, b) => a.order - b.order)
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => hasPermissionByEffective(auth.effectivePermissions, auth.role, item.permission)),
     }))
     .filter((group) => group.items.length > 0)
 })
+
+function normalizeNavigationGroups(value: unknown): NavGroupConfig[] {
+  if (!Array.isArray(value)) return []
+  const groups: NavGroupConfig[] = []
+  let invalidGroups = 0
+  let invalidItems = 0
+  for (const group of value) {
+    if (!group || typeof group !== 'object') {
+      invalidGroups += 1
+      continue
+    }
+    const g = group as Record<string, unknown>
+    const id = String(g.id || '').trim()
+    const title = String(g.title || '').trim()
+    const orderRaw = Number(g.order || 0)
+    if (!id || !title || !Number.isFinite(orderRaw)) {
+      invalidGroups += 1
+      continue
+    }
+    const rawItems = Array.isArray(g.items) ? g.items : []
+    const items = rawItems
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          invalidItems += 1
+          return null
+        }
+        const it = item as Record<string, unknown>
+        const to = String(it.to || '').trim()
+        const label = String(it.label || '').trim()
+        const desc = String(it.desc || '').trim()
+        const permission = String(it.permission || '').trim()
+        if (!to || !label || !permissionValueSet.value.has(permission)) {
+          invalidItems += 1
+          return null
+        }
+        return { to, label, desc, permission: permission as AppPermission }
+      })
+      .filter(Boolean) as NavGroupConfig['items']
+    if (!items.length) {
+      invalidGroups += 1
+      continue
+    }
+    groups.push({ id, title, order: Math.floor(orderRaw), items })
+  }
+  if (invalidGroups > 0 || invalidItems > 0) {
+    console.warn(`[nav-config] ignored invalid groups=${invalidGroups}, invalid items=${invalidItems}`)
+  }
+  return groups
+}
 
 function isNavActive(to: string): boolean {
   const targetPath = String(to || '').split('?')[0] || ''
@@ -236,6 +248,25 @@ watch(
     ui.closeMobileNav()
   },
 )
+
+onMounted(async () => {
+  try {
+    const payload = await fetchNavigationGroups()
+    if ((payload?.validation?.invalid_groups || 0) > 0 || (payload?.validation?.invalid_items || 0) > 0) {
+      console.warn(
+        `[nav-config] server validation invalid_groups=${payload?.validation?.invalid_groups || 0}, invalid_items=${payload?.validation?.invalid_items || 0}`,
+      )
+    }
+    const normalized = normalizeNavigationGroups(payload?.groups)
+    if (normalized.length) {
+      remoteNavGroups.value = normalized
+    } else {
+      console.warn('[nav-config] server payload has no usable groups, fallback to local defaults')
+    }
+  } catch {
+    // Keep local NAV_GROUPS when server config is unavailable.
+  }
+})
 
 async function logout() {
   try {

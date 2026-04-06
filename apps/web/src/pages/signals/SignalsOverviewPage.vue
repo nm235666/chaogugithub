@@ -161,9 +161,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
@@ -174,7 +174,9 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchInvestmentSignals } from '../../services/api/signals'
 import { formatNumber } from '../../shared/utils/format'
 import { parseJsonObject } from '../../shared/utils/finance'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
+const route = useRoute()
 const router = useRouter()
 
 const filters = reactive({
@@ -212,6 +214,7 @@ const columns = [
 const { data: result, isFetching, error, refetch } = useQuery({
   queryKey: computed(() => ['investment-signals', { ...queryFilters }]),
   queryFn: () => fetchInvestmentSignals({ ...queryFilters }),
+  placeholderData: keepPreviousData,
 })
 
 const summary = computed(() => result.value?.summary || {})
@@ -258,6 +261,7 @@ function applyFilters() {
   queryFilters.keyword = (filters.keyword || '').trim()
   queryFilters.page_size = Number(filters.page_size) || 30
   queryFilters.page = 1
+  syncRouteFromQuery()
 }
 
 function resetFilters() {
@@ -276,4 +280,47 @@ function resetFilters() {
 function retryQuery() {
   refetch()
 }
+
+function syncRouteFromQuery() {
+  router.replace({
+    query: buildCleanQuery({
+      scope: queryFilters.scope,
+      signal_group: queryFilters.signal_group,
+      direction: queryFilters.direction,
+      source_filter: queryFilters.source_filter,
+      signal_status: queryFilters.signal_status,
+      keyword: queryFilters.keyword,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteQuery() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    scope: readQueryString(q, 'scope', '7d'),
+    signal_group: readQueryString(q, 'signal_group', ''),
+    direction: readQueryString(q, 'direction', ''),
+    source_filter: readQueryString(q, 'source_filter', ''),
+    signal_status: readQueryString(q, 'signal_status', ''),
+    keyword: readQueryString(q, 'keyword', ''),
+    page_size: Math.max(10, readQueryNumber(q, 'page_size', 30)),
+  }
+  Object.assign(filters, next)
+  Object.assign(queryFilters, {
+    ...next,
+    page: 1,
+  })
+}
+
+onMounted(() => {
+  applyRouteQuery()
+})
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
 </script>

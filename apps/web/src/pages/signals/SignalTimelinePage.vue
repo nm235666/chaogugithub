@@ -2,7 +2,7 @@
   <AppShell title="信号时间线" subtitle="看主题或股票信号如何从初始走到强化、弱化、证伪或反转。">
     <div class="space-y-4">
       <PageSection title="时间线查询" subtitle="按 signal_key 查看完整时间线，例如 theme:黄金 / stock:000001.SZ。">
-        <div class="grid gap-3 xl:grid-cols-[1fr_140px_140px_120px] md:grid-cols-2">
+        <div class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
           <input v-model="filters.signal_key" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="signal_key，如 theme:黄金 或 stock:000001.SZ" />
           <input v-model="filters.state_filter" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="状态筛选（可选）" />
           <input v-model="filters.driver_filter" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="驱动来源筛选（可选）" />
@@ -44,8 +44,8 @@
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
           <div>第 {{ filters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="filters.page -= 1">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (result?.total_pages || 1)" @click="filters.page += 1">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="goPrevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -55,8 +55,8 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useRoute, useRouter } from 'vue-router'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
@@ -65,8 +65,10 @@ import StatCard from '../../shared/ui/StatCard.vue'
 import TrendAreaChart from '../../shared/charts/TrendAreaChart.vue'
 import { fetchSignalTimeline } from '../../services/api/signals'
 import { formatNumber } from '../../shared/utils/format'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
 const route = useRoute()
+const router = useRouter()
 const filters = reactive({
   signal_key: '',
   state_filter: '',
@@ -78,25 +80,29 @@ const filters = reactive({
 watch(
   () => route.query,
   (query) => {
-    const signalKey = String(query.signal_key || '').trim()
+    const q = query as Record<string, unknown>
+    const signalKey = readQueryString(q, 'signal_key', '')
+    filters.state_filter = readQueryString(q, 'state_filter', '')
+    filters.driver_filter = readQueryString(q, 'driver_filter', '')
+    filters.page = Math.max(1, readQueryNumber(q, 'page', 1))
+    filters.page_size = Math.max(20, readQueryNumber(q, 'page_size', 20))
     if (signalKey) {
       filters.signal_key = signalKey
-      filters.page = 1
       return
     }
-    const legacyName = String(query.entity_name || '').trim()
+    const legacyName = readQueryString(q, 'entity_name', '')
     if (legacyName) {
       filters.signal_key = `theme:${legacyName}`
-      filters.page = 1
     }
   },
   { immediate: true, deep: true },
 )
 
 const { data: result } = useQuery({
-  queryKey: ['signal-timeline', filters],
-  queryFn: () => fetchSignalTimeline(filters),
+  queryKey: computed(() => ['signal-timeline', { ...filters }]),
+  queryFn: () => fetchSignalTimeline({ ...filters }),
   enabled: computed(() => !!filters.signal_key),
+  placeholderData: keepPreviousData,
 })
 
 const events = computed(() => result.value?.events || [])
@@ -170,5 +176,31 @@ const timelineChart = computed(() => {
 
 function refreshFromFirstPage() {
   filters.page = 1
+  syncRouteFromFilters()
+}
+
+function syncRouteFromFilters() {
+  router.replace({
+    query: buildCleanQuery({
+      signal_key: filters.signal_key,
+      state_filter: filters.state_filter,
+      driver_filter: filters.driver_filter,
+      page: filters.page,
+      page_size: filters.page_size,
+    }),
+  })
+}
+
+function goPrevPage() {
+  if (filters.page <= 1) return
+  filters.page -= 1
+  syncRouteFromFilters()
+}
+
+function goNextPage() {
+  const totalPages = Number(result.value?.total_pages || 1)
+  if (filters.page >= totalPages) return
+  filters.page += 1
+  syncRouteFromFilters()
 }
 </script>

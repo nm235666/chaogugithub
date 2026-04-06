@@ -27,6 +27,9 @@
   --info: #2c7598;
   --shadow: 0 24px 64px rgba(15, 41, 56, 0.12);
   --shadow-soft: 0 14px 32px rgba(15, 41, 56, 0.08);
+  --radius-panel: 28px;
+  --radius-card: 22px;
+  --font-size-compact: 12px;
   --font-body: "MiSans", "HarmonyOS Sans SC", "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-display: "Source Han Serif SC", "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
 }
@@ -40,13 +43,13 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   background:
-    radial-gradient(circle at 8% -10%, rgba(15, 97, 122, 0.14), transparent 32%),
-    radial-gradient(circle at 96% 4%, rgba(214, 134, 72, 0.16), transparent 26%),
-    radial-gradient(circle at 65% 100%, rgba(15, 97, 122, 0.08), transparent 34%),
-    linear-gradient(rgba(255, 255, 255, 0.28) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.24) 1px, transparent 1px),
+    radial-gradient(circle at 8% -10%, rgba(15, 97, 122, 0.1), transparent 32%),
+    radial-gradient(circle at 96% 4%, rgba(214, 134, 72, 0.1), transparent 26%),
+    radial-gradient(circle at 65% 100%, rgba(15, 97, 122, 0.06), transparent 34%),
+    linear-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
-  background-size: auto, auto, auto, 28px 28px, 28px 28px, auto;
+  background-size: auto, auto, auto, 32px 32px, 32px 32px, auto;
 }
 
 * {
@@ -77,6 +80,14 @@ button:hover {
 button:disabled {
   cursor: not-allowed;
   transform: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgba(15, 97, 122, 0.28);
+  outline-offset: 2px;
 }
 
 input:focus,
@@ -205,6 +216,17 @@ button[class*='bg-stone-900']:hover {
   color: var(--brand-ink);
 }
 
+.interactive-card {
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.interactive-card:focus-visible {
+  outline: 2px solid rgba(15, 97, 122, 0.28);
+  outline-offset: 2px;
+}
+
 .section-anchor-link {
   border: 1px solid rgba(15, 97, 122, 0.14);
   border-radius: 999px;
@@ -240,5 +262,14 @@ button[class*='bg-stone-900']:hover {
 @keyframes skeleton-slide {
   100% {
     transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

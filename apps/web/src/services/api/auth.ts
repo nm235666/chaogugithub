@@ -1,5 +1,24 @@
 import { http } from '../http'
 
+export type PermissionCatalogItem = {
+  code: string
+  label?: string
+  group?: string
+  system_reserved?: boolean
+}
+
+export type DynamicRoutePermissionMap = Record<string, string>
+
+export type DynamicRbacPayload = {
+  schema_version?: string
+  version?: string
+  source?: string
+  permission_catalog?: PermissionCatalogItem[]
+  route_permissions?: DynamicRoutePermissionMap
+  navigation_groups?: Array<Record<string, any>>
+  validation?: Record<string, number>
+}
+
 export type AuthStatus = {
   ok: boolean
   auth_required: boolean
@@ -18,6 +37,11 @@ export type AuthStatus = {
   }
   permission_matrix?: Record<string, string[]>
   effective_permissions?: string[]
+  rbac_dynamic_enforced?: boolean
+  rbac_dynamic_version?: string
+  rbac_dynamic_source?: string
+  rbac_schema_version?: string
+  dynamic_rbac?: DynamicRbacPayload
   user?: {
     id: number
     username: string

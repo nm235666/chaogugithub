@@ -15,6 +15,15 @@ export const useAuthStore = defineStore('auth', {
     user: (state) => state.status?.user || null,
     role: (state) => String(state.status?.user?.role || state.status?.user?.tier || '').trim().toLowerCase(),
     effectivePermissions: (state) => (Array.isArray(state.status?.effective_permissions) ? state.status?.effective_permissions || [] : []),
+    dynamicRoutePermissions: (state) =>
+      state.status?.dynamic_rbac?.route_permissions && typeof state.status.dynamic_rbac.route_permissions === 'object'
+        ? state.status.dynamic_rbac.route_permissions
+        : {},
+    permissionCatalog: (state) => (Array.isArray(state.status?.dynamic_rbac?.permission_catalog) ? state.status?.dynamic_rbac?.permission_catalog || [] : []),
+    dynamicNavigationGroups: (state) => (Array.isArray(state.status?.dynamic_rbac?.navigation_groups) ? state.status?.dynamic_rbac?.navigation_groups || [] : []),
+    rbacDynamicVersion: (state) => String(state.status?.rbac_dynamic_version || state.status?.dynamic_rbac?.version || 'unknown'),
+    rbacDynamicSource: (state) => String(state.status?.rbac_dynamic_source || state.status?.dynamic_rbac?.source || 'unknown'),
+    rbacDynamicEnforced: (state) => Boolean(state.status?.rbac_dynamic_enforced),
     isAuthenticated: (state) => Boolean(state.status?.token_valid),
     authRequired: (state) => Boolean(state.status?.auth_required),
     isAdmin(): boolean {

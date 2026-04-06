@@ -11,20 +11,35 @@
       </PageSection>
 
       <PageSection title="筛选条件" subtitle="按群名、整体偏向和目标关键词检索。">
-        <div class="grid gap-3 xl:grid-cols-[1.2fr_180px_1fr_140px_120px] md:grid-cols-2">
-          <input v-model="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="搜索群名 / 群总结" />
-          <select v-model="filters.final_bias" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部倾向</option>
-            <option v-for="item in finalBiasOptions" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <input v-model="filters.target_keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="按投资标的关键词筛选，如 原油 / 英伟达" />
-          <select v-model.number="filters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option :value="20">20 / 页</option>
-            <option :value="50">50 / 页</option>
-            <option :value="100">100 / 页</option>
-          </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="filters.page = 1">查询</button>
-        </div>
+        <fieldset class="grid gap-3 xl:grid-cols-5 md:grid-cols-2">
+          <legend class="sr-only">投资倾向筛选条件</legend>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            群聊关键词
+            <input v-model="filters.keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="群名 / 群总结" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            倾向
+            <select v-model="filters.final_bias" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部倾向</option>
+              <option v-for="item in finalBiasOptions" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            标的关键词
+            <input v-model="filters.target_keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="如 原油 / 英伟达" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            每页条数
+            <select v-model.number="filters.page_size" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option :value="20">20 / 页</option>
+              <option :value="50">50 / 页</option>
+              <option :value="100">100 / 页</option>
+            </select>
+          </label>
+          <div class="flex items-end">
+            <button class="w-full rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">查询</button>
+          </div>
+        </fieldset>
       </PageSection>
 
       <PageSection :title="`分析结果 (${result?.total || 0})`" subtitle="每个群卡片里同时展示总结、情绪和标的列表。">
@@ -63,10 +78,10 @@
           </InfoCard>
         </div>
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-          <div>第 {{ filters.page }} / {{ result?.total_pages || 1 }} 页</div>
+          <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="filters.page -= 1">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (result?.total_pages || 1)" @click="filters.page += 1">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="goPrevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -75,14 +90,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, reactive, watch } from 'vue'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { fetchChatroomInvestment } from '../../services/api/chatrooms'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
 function joinParts(parts: Array<unknown>) {
   return parts.map((item) => String(item ?? '').trim()).filter(Boolean).join(' · ')
@@ -106,12 +123,79 @@ const filters = reactive({
   page: 1,
   page_size: 20,
 })
+const queryFilters = reactive({
+  keyword: '',
+  final_bias: '',
+  target_keyword: '',
+  page: 1,
+  page_size: 20,
+})
+const route = useRoute()
+const router = useRouter()
 
 const { data: result } = useQuery({
-  queryKey: ['chatroom-investment', filters],
-  queryFn: () => fetchChatroomInvestment(filters),
+  queryKey: computed(() => ['chatroom-investment', { ...queryFilters }]),
+  queryFn: () => fetchChatroomInvestment({ ...queryFilters }),
+  placeholderData: keepPreviousData,
 })
 
 const summary = computed(() => result.value?.summary || {})
 const finalBiasOptions = computed(() => result.value?.filters?.final_biases || [])
+
+function syncRouteFromFilters() {
+  router.replace({
+    query: buildCleanQuery({
+      keyword: queryFilters.keyword,
+      final_bias: queryFilters.final_bias,
+      target_keyword: queryFilters.target_keyword,
+      page: queryFilters.page,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteFilters() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    keyword: readQueryString(q, 'keyword', ''),
+    final_bias: readQueryString(q, 'final_bias', ''),
+    target_keyword: readQueryString(q, 'target_keyword', ''),
+    page: Math.max(1, readQueryNumber(q, 'page', 1)),
+    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+  }
+  Object.assign(filters, next)
+  Object.assign(queryFilters, next)
+}
+
+function applyFilters() {
+  Object.assign(queryFilters, {
+    keyword: filters.keyword,
+    final_bias: filters.final_bias,
+    target_keyword: filters.target_keyword,
+    page: 1,
+    page_size: Number(filters.page_size) || 20,
+  })
+  syncRouteFromFilters()
+}
+
+function goPrevPage() {
+  if (queryFilters.page <= 1) return
+  queryFilters.page -= 1
+  syncRouteFromFilters()
+}
+
+function goNextPage() {
+  const totalPages = Number(result.value?.total_pages || 1)
+  if (queryFilters.page >= totalPages) return
+  queryFilters.page += 1
+  syncRouteFromFilters()
+}
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteFilters()
+  },
+  { immediate: true },
+)
 </script>

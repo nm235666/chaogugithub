@@ -132,9 +132,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
@@ -144,7 +144,9 @@ import DetailDrawer from '../../shared/ui/DetailDrawer.vue'
 import { fetchThemeHotspots } from '../../services/api/signals'
 import { parseJsonArray } from '../../shared/utils/finance'
 import { downloadElementAsImage } from '../../shared/utils/export'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
+const route = useRoute()
 const router = useRouter()
 
 const filters = reactive({ keyword: '', theme_group: '', direction: '', heat_level: '', state: '', page_size: 20 })
@@ -155,6 +157,7 @@ const downloadStatus = ref('')
 const { data: result, isFetching } = useQuery({
   queryKey: computed(() => ['theme-hotspots', { ...queryFilters }]),
   queryFn: () => fetchThemeHotspots({ ...queryFilters }),
+  placeholderData: keepPreviousData,
 })
 
 const summary = computed(() => result.value?.summary || {})
@@ -220,5 +223,47 @@ function applyFilters() {
   queryFilters.state = filters.state
   queryFilters.page_size = Number(filters.page_size) || 20
   queryFilters.page = 1
+  syncRouteFromQuery()
 }
+
+function syncRouteFromQuery() {
+  router.replace({
+    query: buildCleanQuery({
+      keyword: queryFilters.keyword,
+      theme_group: queryFilters.theme_group,
+      direction: queryFilters.direction,
+      heat_level: queryFilters.heat_level,
+      state: queryFilters.state,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteQuery() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    keyword: readQueryString(q, 'keyword', ''),
+    theme_group: readQueryString(q, 'theme_group', ''),
+    direction: readQueryString(q, 'direction', ''),
+    heat_level: readQueryString(q, 'heat_level', ''),
+    state: readQueryString(q, 'state', ''),
+    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+  }
+  Object.assign(filters, next)
+  Object.assign(queryFilters, {
+    ...next,
+    page: 1,
+  })
+}
+
+onMounted(() => {
+  applyRouteQuery()
+})
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
 </script>

@@ -5,7 +5,7 @@
       :key="`${item.label}-${item.value}`"
       class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(238,244,247,0.86)_100%)] p-4 shadow-[var(--shadow-soft)]"
     >
-      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">{{ item.label }}</div>
+      <div class="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">{{ item.label }}</div>
       <div class="mt-2 text-lg font-bold text-[var(--ink)]">{{ item.value || '-' }}</div>
       <div v-if="item.hint" class="mt-2 text-sm leading-6 text-[var(--muted)]">{{ item.hint }}</div>
     </div>

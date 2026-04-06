@@ -183,11 +183,11 @@
         <div class="mt-4 flex items-center justify-between text-sm text-[var(--muted)]">
           <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="queryFilters.page -= 1">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="goPrevPage">上一页</button>
             <button
               class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40"
               :disabled="queryFilters.page >= (result?.total_pages || 1)"
-              @click="queryFilters.page += 1"
+              @click="goNextPage"
             >
               下一页
             </button>
@@ -199,8 +199,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
@@ -210,8 +211,11 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchChatrooms, triggerChatroomFetch } from '../../services/api/chatrooms'
 import { formatDate, formatDateTime, formatNumber } from '../../shared/utils/format'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
 const queryClient = useQueryClient()
+const route = useRoute()
+const router = useRouter()
 const fetchingRoomId = ref('')
 const fetchActionMessage = ref('')
 const fetchActionTone = ref<'default' | 'warning' | 'danger'>('default')
@@ -249,6 +253,7 @@ const {
 } = useQuery({
   queryKey: ['chatrooms', queryFilters],
   queryFn: () => fetchChatrooms(queryFilters),
+  placeholderData: keepPreviousData,
 })
 
 const runFetchMutation = useMutation({
@@ -340,6 +345,7 @@ function fetchLabel(value: unknown) {
 
 function handleRefresh() {
   Object.assign(queryFilters, { ...draftFilters, page: 1 })
+  syncRouteFromQuery()
   refetch()
 }
 
@@ -349,4 +355,59 @@ async function runFetch(roomId: string, mode: string) {
   fetchActionMessage.value = mode === 'today' ? '正在触发立即拉取...' : '正在触发补抓昨今...'
   await runFetchMutation.mutateAsync({ roomId, mode })
 }
+
+function syncRouteFromQuery() {
+  router.replace({
+    query: buildCleanQuery({
+      keyword: queryFilters.keyword,
+      primary_category: queryFilters.primary_category,
+      activity_level: queryFilters.activity_level,
+      risk_level: queryFilters.risk_level,
+      skip_realtime_monitor: queryFilters.skip_realtime_monitor,
+      fetch_status: queryFilters.fetch_status,
+      page: queryFilters.page,
+      page_size: queryFilters.page_size,
+    }),
+  })
+}
+
+function applyRouteQuery() {
+  const q = route.query as Record<string, unknown>
+  const next = {
+    keyword: readQueryString(q, 'keyword', ''),
+    primary_category: readQueryString(q, 'primary_category', ''),
+    activity_level: readQueryString(q, 'activity_level', ''),
+    risk_level: readQueryString(q, 'risk_level', ''),
+    skip_realtime_monitor: readQueryString(q, 'skip_realtime_monitor', ''),
+    fetch_status: readQueryString(q, 'fetch_status', ''),
+    page: Math.max(1, readQueryNumber(q, 'page', 1)),
+    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+  }
+  Object.assign(draftFilters, next)
+  Object.assign(queryFilters, next)
+}
+
+function goPrevPage() {
+  if (queryFilters.page <= 1) return
+  queryFilters.page -= 1
+  syncRouteFromQuery()
+}
+
+function goNextPage() {
+  const totalPages = Number(result.value?.total_pages || 1)
+  if (queryFilters.page >= totalPages) return
+  queryFilters.page += 1
+  syncRouteFromQuery()
+}
+
+onMounted(() => {
+  applyRouteQuery()
+})
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
 </script>

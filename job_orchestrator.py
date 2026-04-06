@@ -41,7 +41,35 @@ def resolve_recent_trade_dates() -> list[str]:
         check=False,
     )
     dates = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
-    return dates[:2]
+    if len(dates) >= 2:
+        return dates[:2]
+    if len(dates) == 1:
+        return [dates[0], dates[0]]
+    # Fallback: when Tushare token/availability is unstable, use existing DB trade dates
+    # to avoid emitting empty --trade-date placeholders that break downstream jobs.
+    try:
+        conn = sqlite3.connect(str(ROOT_DIR / "stock_codes.db"))
+        try:
+            rows = conn.execute(
+                """
+                SELECT trade_date
+                FROM stock_daily_prices
+                WHERE trade_date IS NOT NULL AND trade_date <> ''
+                GROUP BY trade_date
+                ORDER BY trade_date DESC
+                LIMIT 2
+                """
+            ).fetchall()
+            fallback = [str(r[0]).strip() for r in rows if r and str(r[0]).strip()]
+            if len(fallback) >= 2:
+                return [fallback[0], fallback[1]]
+            if len(fallback) == 1:
+                return [fallback[0], fallback[0]]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return []
 
 
 def expand_command(cmd: tuple[str, ...]) -> list[str]:
@@ -142,13 +170,14 @@ def sync_job_definitions(conn: sqlite3.Connection) -> None:
             f"""
             INSERT INTO {JOB_DEFINITION_TABLE} (
                 job_key, name, category, owner, schedule_expr, description, enabled, commands_json, created_at, update_time
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_key) DO UPDATE SET
                 name=excluded.name,
                 category=excluded.category,
                 owner=excluded.owner,
                 schedule_expr=excluded.schedule_expr,
                 description=excluded.description,
+                enabled=excluded.enabled,
                 commands_json=excluded.commands_json,
                 update_time=excluded.update_time
             """,
@@ -159,6 +188,7 @@ def sync_job_definitions(conn: sqlite3.Connection) -> None:
                 job.owner,
                 job.schedule_expr,
                 job.description,
+                int(job.enabled or 0),
                 json.dumps([list(x) for x in job.commands], ensure_ascii=False),
                 now,
                 now,
@@ -262,6 +292,37 @@ def insert_job_alert(
     return int(row[0] or 0)
 
 
+def insert_job_skip(conn: sqlite3.Connection, *, job_key: str, trigger_mode: str, reason: str, command_json: str = "[]") -> int:
+    now = utc_now()
+    conn.execute(
+        f"""
+        INSERT INTO {JOB_RUN_TABLE} (
+            job_key, trigger_mode, status, started_at, finished_at, duration_seconds,
+            host_name, process_id, exit_code, command_json, stdout_text, stderr_text,
+            error_text, metadata_json, created_at, update_time
+        ) VALUES (?, ?, 'skipped', ?, ?, 0, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_key,
+            trigger_mode,
+            now,
+            now,
+            socket.gethostname(),
+            os.getpid(),
+            command_json,
+            f"skipped: {reason}",
+            "",
+            str(reason or "").strip() or "skipped",
+            json.dumps({"kind": "skip", "reason": reason}, ensure_ascii=False),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    row = conn.execute(f"SELECT MAX(id) FROM {JOB_RUN_TABLE} WHERE job_key = ?", (job_key,)).fetchone()
+    return int(row[0] or 0)
+
+
 def dry_run_job(job_key: str, trigger_mode: str = "dry-run") -> dict:
     conn = sqlite3.connect(str(ROOT_DIR / "stock_codes.db"))
     conn.row_factory = sqlite3.Row
@@ -308,21 +369,35 @@ def run_job(job_key: str, trigger_mode: str = "manual", max_retries_per_command:
             cmd_text = " ".join(cmd)
             attempt = 0
             while True:
-                proc = subprocess.run(
-                    cmd,
-                    cwd=str(ROOT_DIR),
-                    capture_output=True,
-                    text=True,
-                    timeout=7200,
-                    check=False,
-                )
-                stdout_parts.append(f"$ {cmd_text}\n[attempt={attempt}]\n{proc.stdout}")
-                stderr_parts.append(f"$ {cmd_text}\n[attempt={attempt}]\n{proc.stderr}")
-                if proc.returncode == 0:
+                timed_out = False
+                try:
+                    proc = subprocess.run(
+                        cmd,
+                        cwd=str(ROOT_DIR),
+                        capture_output=True,
+                        text=True,
+                        timeout=7200,
+                        check=False,
+                    )
+                    proc_stdout = proc.stdout or ""
+                    proc_stderr = proc.stderr or ""
+                    proc_returncode = int(proc.returncode or 0)
+                except subprocess.TimeoutExpired as exc:
+                    # 命令级超时：记为可观测失败并允许按现有重试策略继续尝试。
+                    timed_out = True
+                    proc_stdout = str(exc.stdout or "")
+                    proc_stderr = f"{str(exc.stderr or '')}\n[timeout] command timed out after 7200s"
+                    proc_returncode = 124
+                stdout_parts.append(f"$ {cmd_text}\n[attempt={attempt}]\n{proc_stdout}")
+                stderr_parts.append(f"$ {cmd_text}\n[attempt={attempt}]\n{proc_stderr}")
+                if proc_returncode == 0:
                     break
                 if attempt >= max(max_retries_per_command, 0):
-                    exit_code = proc.returncode
-                    error_text = f"command failed after retry: {cmd_text}"
+                    exit_code = proc_returncode
+                    if timed_out:
+                        error_text = f"command timed out after retry: {cmd_text}"
+                    else:
+                        error_text = f"command failed after retry: {cmd_text}"
                     break
                 attempt += 1
                 time.sleep(min(10, 2 * attempt))
@@ -361,6 +436,60 @@ def run_job(job_key: str, trigger_mode: str = "manual", max_retries_per_command:
             "status": status,
             "exit_code": exit_code,
             "alert_id": alert_id,
+        }
+    except Exception as exc:
+        # 兜底：无论出现什么未捕获异常，都必须把 running 回写为 error，避免僵尸状态。
+        status = "error"
+        if exit_code == 0:
+            exit_code = 1
+        if not error_text:
+            error_text = f"orchestrator exception: {exc.__class__.__name__}: {exc}"
+        stderr_parts.append(error_text)
+        try:
+            update_job_run(
+                conn,
+                run_id,
+                status=status,
+                exit_code=exit_code,
+                stdout_text="\n\n".join(stdout_parts)[-20000:],
+                stderr_text="\n\n".join(stderr_parts)[-20000:],
+                error_text=error_text,
+            )
+        except Exception:
+            pass
+        alert_id = 0
+        try:
+            alert_id = insert_job_alert(
+                conn,
+                job_key=job.job_key,
+                run_id=run_id,
+                severity="error",
+                message=f"任务失败: {job.job_key}",
+                detail_text=error_text or "\n\n".join(stderr_parts)[-8000:],
+            )
+        except Exception:
+            pass
+        try:
+            publish_app_event(
+                event="job_alert",
+                payload={"job_key": job.job_key, "run_id": run_id, "alert_id": alert_id, "status": status},
+                producer="job_orchestrator.py",
+            )
+            publish_app_event(
+                event="job_run_update",
+                payload={"job_key": job.job_key, "run_id": run_id, "status": status, "exit_code": exit_code},
+                producer="job_orchestrator.py",
+            )
+        except Exception:
+            pass
+        return {
+            "ok": False,
+            "run_id": run_id,
+            "job_key": job.job_key,
+            "status": status,
+            "exit_code": exit_code,
+            "alert_id": alert_id,
+            "error": str(exc),
         }
     finally:
         release_lock(lock_info)
@@ -454,6 +583,10 @@ def parse_args() -> argparse.Namespace:
     run_p = sub.add_parser("run", help="执行指定任务")
     run_p.add_argument("job_key", help="任务标识")
     run_p.add_argument("--trigger-mode", default="manual", help="manual / cron / api")
+    skip_p = sub.add_parser("skip", help="记录任务跳过（例如非交易日门禁）")
+    skip_p.add_argument("job_key", help="任务标识")
+    skip_p.add_argument("--reason", default="skipped", help="跳过原因")
+    skip_p.add_argument("--trigger-mode", default="scheduler-gate", help="触发来源")
     sub.add_parser("list", help="列出任务定义")
     dry_p = sub.add_parser("dry-run", help="展开任务命令但不执行")
     dry_p.add_argument("job_key", help="任务标识")
@@ -483,6 +616,24 @@ def main() -> int:
         result = run_job(args.job_key, trigger_mode=args.trigger_mode)
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result.get("ok") else 1
+    if args.cmd == "skip":
+        conn = sqlite3.connect(str(ROOT_DIR / "stock_codes.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_tables(conn)
+            sync_job_definitions(conn)
+            run_id = insert_job_skip(
+                conn,
+                job_key=str(args.job_key).strip(),
+                trigger_mode=str(args.trigger_mode).strip() or "scheduler-gate",
+                reason=str(args.reason).strip() or "skipped",
+            )
+            payload = {"job_key": str(args.job_key).strip(), "run_id": run_id, "status": "skipped", "reason": str(args.reason).strip()}
+            publish_app_event(event="job_run_update", payload=payload, producer="job_orchestrator.py")
+            print(json.dumps({"ok": True, **payload}, ensure_ascii=False))
+            return 0
+        finally:
+            conn.close()
     if args.cmd == "list":
         print(json.dumps(query_job_definitions(), ensure_ascii=False))
         return 0

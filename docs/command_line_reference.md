@@ -69,10 +69,11 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 
 | 命令 | 作用 |
 | --- | --- |
-| `bash /home/zanbo/zanbotest/install_all_crons.sh` | 安装当前项目完整 cron 集合 |
+| `bash /home/zanbo/zanbotest/install_all_crons.sh` | 按 `job_definitions(enabled=1)` 自动安装 cron（统一触发 `job_orchestrator`） |
 | `bash /home/zanbo/zanbotest/install_chatroom_daily_cron.sh "5 0 * * *"` | 安装群聊列表每日同步 cron |
 | `bash /home/zanbo/zanbotest/install_monitored_chatlog_cron.sh "*/3 * * * *"` | 安装监控群聊天记录增量抓取 cron |
 | `bash /home/zanbo/zanbotest/install_monitored_chatlog_midnight_cron.sh "10 0 * * *"` | 安装监控群跨天补抓 cron |
+| `python3 /home/zanbo/zanbotest/scripts/scheduler/check_cron_sync.py` | 校验 `job_definitions` 与 crontab 一致性，并输出下次触发 UTC/CST |
 
 ## 任务编排器
 
@@ -81,6 +82,7 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py list` | 列出当前注册任务 |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py sync` | 同步任务定义到数据库 |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py run <job_key>` | 手动执行某个编排任务 |
+| `python3 /home/zanbo/zanbotest/job_orchestrator.py skip <job_key> --reason skipped_non_trading_day` | 记录一次任务跳过（交易日门禁） |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py dry-run <job_key>` | 展开任务命令但不执行（回归/排障首选） |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py runs --job-key <job_key> --limit 20` | 查看任务运行记录 |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py alerts --job-key <job_key> --limit 20` | 查看任务失败告警（默认仅未确认） |
@@ -106,6 +108,13 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 ## 一次性 cron 包装脚本
 
 这些脚本通常供 cron 调用，也可以手工运行。
+
+统一调度新增入口：
+
+| 命令 | 作用 |
+| --- | --- |
+| `bash /home/zanbo/zanbotest/run_job_always.sh <job_key>` | 总是执行指定编排任务 |
+| `bash /home/zanbo/zanbotest/run_job_if_trade_day.sh <job_key>` | 交易日才执行，非交易日写入 `skipped_non_trading_day` |
 
 | 命令 | 作用 |
 | --- | --- |

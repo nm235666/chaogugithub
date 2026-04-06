@@ -26,6 +26,13 @@
         <div class="mt-3 rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]" role="status" aria-live="polite">
           {{ actionMessage }}
         </div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-40" :disabled="!currentJobId" @click="clearCurrentTaskTracking">
+            清除当前任务跟踪
+          </button>
+        </div>
+        <div v-if="restoredTaskHint" class="mt-1 text-sm text-[var(--muted)]">已从会话恢复任务跟踪（{{ restoredTaskHint }}）</div>
+        <div v-if="taskPersistenceNotice" class="mt-1 text-sm text-[var(--muted)]">{{ taskPersistenceNotice }}</div>
         <div class="mt-2 text-sm text-[var(--muted)]">实际模型：{{ usedModel }}</div>
         <div v-if="attemptChain" class="mt-1 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
         <div v-if="quotaHint" class="mt-1 text-sm text-[var(--muted)]">今日额度：{{ quotaHint }}</div>
@@ -50,6 +57,10 @@
           <InfoCard title="模型链路" :meta="usedModel || '-'" :description="attemptChain || '等待任务返回模型链路'" />
           <InfoCard title="额度提示" :meta="quotaHint || '-'" :description="pendingDecision ? '当前存在失败角色，等待用户决策。' : '当前无额外用户决策阻塞。'" />
         </div>
+        <div v-if="taskStatus" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.78)] px-4 py-3 text-sm text-[var(--muted)]">
+          当前阶段：{{ taskStage || taskStatus }} · {{ statusSummary }}
+          <span v-if="taskUpdatedAt" class="ml-2">· 最近更新 {{ taskUpdatedAt }}</span>
+        </div>
       </PageSection>
 
       <PageSection title="子任务进度" subtitle="每个角色独立执行，状态可单独追踪。">
@@ -69,12 +80,12 @@
       </PageSection>
 
       <PageSection title="阶段时间线" subtitle="展示 v3 六阶段编排状态与当前执行位置。">
-        <div v-if="stageTimeline.length" class="grid gap-2 md:grid-cols-3">
-          <div v-for="item in stageTimeline" :key="item.stage" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm">
-            <div class="font-semibold">{{ item.stage }}</div>
-            <div class="mt-1 text-[var(--muted)]">{{ item.status || '-' }}</div>
+          <div v-if="stageTimeline.length" class="grid gap-2 md:grid-cols-3">
+            <div v-for="item in stageTimeline" :key="item.stage" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm">
+              <div class="font-semibold">{{ item.stage }}</div>
+              <div class="mt-1 text-[var(--muted)]">{{ item.status || '-' }}</div>
+            </div>
           </div>
-        </div>
         <div v-else class="text-sm text-[var(--muted)]">尚无阶段数据。</div>
       </PageSection>
 
@@ -170,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
 import MarkdownIt from 'markdown-it'
 import AppShell from '../../shared/ui/AppShell.vue'
@@ -187,6 +198,8 @@ import {
   triggerMultiRoleTaskV3,
 } from '../../services/api/stocks'
 import { fetchAuthStatus } from '../../services/api/auth'
+import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
+import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
 
 function looksLikeTsCode(value: string) {
   return /^[0-9A-Z]{6}\.(SZ|SH|BJ)$/i.test(value.trim())
@@ -228,6 +241,8 @@ const portfolioReview = ref<Record<string, any>>({})
 const acceptAutoDegrade = ref(true)
 const currentJobId = ref('')
 const taskStatus = ref('')
+const taskStage = ref('')
+const taskUpdatedAt = ref('')
 const decisionPending = ref(false)
 const aggregateRetryPending = ref(false)
 const pollRetryCount = ref(0)
@@ -235,6 +250,14 @@ const pollMaxRetries = 5
 const fullMarkdownExpanded = ref(false)
 let timer = 0
 let streamController: AbortController | null = null
+const taskScopeKey = computed(() => buildTaskScopeKey('multi-role-research', 'active-task'))
+const {
+  restoredHint: restoredTaskHint,
+  noticeMessage: taskPersistenceNotice,
+  restoreTaskSnapshot,
+  persistTaskSnapshot,
+  clearPersistedTaskSnapshot,
+} = usePersistedTaskRunner(() => taskScopeKey.value)
 
 const selectedRoleSection = computed(() => roleSections.value.find((item) => item.role === activeRole.value) || null)
 const selectedRoleContent = computed(() => selectedRoleSection.value?.content || fullMarkdown.value)
@@ -266,6 +289,7 @@ const pendingDecision = computed(() => taskStatus.value === 'pending_user_decisi
 const taskStatusLabel = computed(() => taskStatus.value || 'idle')
 const taskStatusTone = computed(() => {
   if (pendingDecision.value) return 'warning'
+  if (taskStatus.value === 'running' && taskStage.value) return 'info'
   if (['done', 'done_with_warnings', 'approved'].includes(taskStatus.value)) return 'success'
   if (['error', 'rejected', 'aborted'].includes(taskStatus.value)) return 'danger'
   if (taskStatus.value) return 'info'
@@ -274,6 +298,12 @@ const taskStatusTone = computed(() => {
 const statusSummary = computed(() => {
   if (pendingDecision.value) return '存在失败角色，等待重试、降级或终止决策。'
   if (!taskStatus.value) return '尚未启动分析任务。'
+  if (taskStatus.value === 'running' && taskStage.value === 'research_debate') {
+    return `研究辩论阶段正在收敛中，已完成 ${researchDebateRounds.value} 轮，后续将继续进入研究经理裁决。`
+  }
+  if (taskStatus.value === 'running' && taskStage.value === 'risk_debate') {
+    return `风险辩论阶段正在收敛中，已完成 ${riskDebateRounds.value} 轮，后续将继续进入 Portfolio Manager 审批。`
+  }
   if (['done', 'done_with_warnings', 'approved'].includes(taskStatus.value)) return '任务已完成，优先查看汇总面板与审批结论。'
   if (['error', 'rejected', 'aborted'].includes(taskStatus.value)) return '任务已终止或失败，请查看子任务进度和错误信息。'
   return `任务仍在运行中，当前状态 ${taskStatus.value}。`
@@ -397,10 +427,36 @@ function resetResultViews() {
   researchDebate.value = {}
   riskDebate.value = {}
   portfolioReview.value = {}
+  taskStage.value = ''
+  taskUpdatedAt.value = ''
+}
+
+function persistCurrentTaskSnapshot(task: Record<string, any> = {}) {
+  if (!currentJobId.value) return
+  persistTaskSnapshot({
+    jobId: currentJobId.value,
+    status: String(task.status || taskStatus.value || ''),
+    stage: String(task.stage || taskStage.value || ''),
+    progress: Number(task.progress || 0),
+    requestedModel: String(task.requested_model || task.model || ''),
+    usedModel: String(task.used_model || usedModel.value || ''),
+    attempts: Array.isArray(attempts.value) ? attempts.value : [],
+    actionMessage: actionMessage.value,
+    error: String(task.error || ''),
+    updatedAt: String(task.updated_at || taskUpdatedAt.value || new Date().toISOString()),
+    data: {
+      resolvedStock: resolvedStock.value,
+      fullMarkdown: fullMarkdown.value,
+      roleSections: roleSections.value,
+      activeRole: activeRole.value,
+    },
+  })
 }
 
 function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: string; name: string }) {
   taskStatus.value = String(task.status || '')
+  taskStage.value = String(task.stage || task.status || '')
+  taskUpdatedAt.value = String(task.updated_at || taskUpdatedAt.value || '')
   stageTimeline.value = Array.isArray(task.v3_stage_timeline) ? task.v3_stage_timeline : stageTimeline.value
   researchDebate.value = (task.v3_research_debate || {}) as Record<string, any>
   riskDebate.value = (task.v3_risk_debate || {}) as Record<string, any>
@@ -423,16 +479,19 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
     commonSectionsMarkdown.value = String(task.common_sections_markdown || '')
     const statusLabel = String(task.status || '').toUpperCase()
     actionMessage.value = `分析完成：${task.name || resolved?.name || resolved?.ts_code || resolvedStock.value.name || resolvedStock.value.ts_code} · ${statusLabel}${task.status === 'done_with_warnings' ? '（含降级告警）' : ''}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
+    persistCurrentTaskSnapshot(task)
     return true
   }
   if (task.status === 'pending_user_decision') {
     actionMessage.value = '有角色任务失败，等待你的决策（重试/降级/终止）。'
+    persistCurrentTaskSnapshot(task)
     return true
   }
   if (task.status === 'error') {
     actionMessage.value = `分析失败：${task.error || task.message || '未知错误'}`
     fullMarkdown.value = `分析失败：${task.error || task.message || '未知错误'}`
     resetResultViews()
+    persistCurrentTaskSnapshot(task)
     return true
   }
   const queueInfo = (task.queue_info || {}) as Record<string, any>
@@ -444,6 +503,7 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
     return false
   }
   actionMessage.value = `任务运行中：${task.progress || 0}% · ${task.message || task.status || '运行中'}`
+  persistCurrentTaskSnapshot(task)
   return false
 }
 
@@ -463,10 +523,12 @@ function startPolling(jobId: string, resolved?: { ts_code: string; name: string 
         const delay = pollRetryDelayMs(pollRetryCount.value)
         const seconds = Math.max(1, Math.round(delay / 1000))
         actionMessage.value = `轮询短暂失败（第 ${pollRetryCount.value}/${pollMaxRetries} 次），${seconds} 秒后自动重试...`
+        persistCurrentTaskSnapshot({ status: taskStatus.value || 'running', stage: taskStage.value || 'polling' })
         timer = window.setTimeout(poll, delay)
         return
       }
       actionMessage.value = `轮询失败：${message}（endpoint: /api/llm/multi-role/v3/jobs/${jobId}）`
+      persistCurrentTaskSnapshot({ status: 'error', stage: 'polling', error: message, progress: 100 })
     }
   }
   poll()
@@ -478,7 +540,7 @@ function startLiveStream(jobId: string, resolved?: { ts_code: string; name: stri
   const controller = new AbortController()
   streamController = controller
   streamMultiRoleTaskV3(
-    { job_id: jobId, interval_ms: 1000, timeout_seconds: 180 },
+    { job_id: jobId, interval_ms: 1000, timeout_seconds: 300 },
     {
       signal: controller.signal,
       onMessage: (packet: Record<string, any>) => {
@@ -490,12 +552,14 @@ function startLiveStream(jobId: string, resolved?: { ts_code: string; name: stri
         }
         if (event === 'timeout') {
           actionMessage.value = '流式连接超时，切换轮询继续跟踪...'
+          persistCurrentTaskSnapshot({ status: taskStatus.value || 'running', stage: taskStage.value || 'stream_timeout' })
           controller.abort()
           startPolling(jobId, resolved)
           return
         }
         if (event === 'error') {
           actionMessage.value = `流式更新失败：${packet?.error || 'unknown error'}，切换轮询继续跟踪...`
+          persistCurrentTaskSnapshot({ status: taskStatus.value || 'running', stage: taskStage.value || 'stream_error', error: String(packet?.error || '') })
           controller.abort()
           startPolling(jobId, resolved)
         }
@@ -504,6 +568,7 @@ function startLiveStream(jobId: string, resolved?: { ts_code: string; name: stri
   ).catch((error: any) => {
     if (controller.signal.aborted) return
     actionMessage.value = `流式更新中断：${error?.message || String(error)}，切换轮询继续跟踪...`
+    persistCurrentTaskSnapshot({ status: taskStatus.value || 'running', stage: taskStage.value || 'stream_disconnected', error: String(error?.message || error) })
     startPolling(jobId, resolved)
   }).finally(() => {
     if (streamController === controller) streamController = null
@@ -536,13 +601,20 @@ const mutation = useMutation({
       ts_code: resolved.ts_code,
       lookback: form.lookback,
       accept_auto_degrade: acceptAutoDegrade.value,
-      max_research_debate_rounds: 2,
-      max_risk_debate_rounds: 2,
+      max_research_debate_rounds: 1,
+      max_risk_debate_rounds: 1,
       early_stop: true,
     })
     const jobId = String(payload.job_id || '')
     currentJobId.value = jobId
     fullMarkdown.value = '任务已创建，正在后台生成分析...'
+    persistCurrentTaskSnapshot({
+      status: String(payload.status || 'queued'),
+      stage: String(payload.stage || 'queued'),
+      progress: Number(payload.progress || 5),
+      requested_model: String(payload.requested_model || payload.model || ''),
+      updated_at: String(payload.updated_at || new Date().toISOString()),
+    })
     const terminal = applyTaskSnapshot(payload as Record<string, any>, resolved)
     if (!terminal && jobId) startLiveStream(jobId, resolved)
     refetchAuthStatus()
@@ -557,6 +629,7 @@ const mutation = useMutation({
     aggregatorRun.value = {}
     taskStatus.value = ''
     currentJobId.value = ''
+    clearPersistedTaskSnapshot()
   },
 })
 
@@ -575,12 +648,15 @@ async function submitDecision(action: 'retry' | 'degrade' | 'abort') {
     if (action === 'abort' || res.status === 'error') {
       actionMessage.value = `任务已终止：${res.error || '用户终止'}`
       fullMarkdown.value = `任务已终止：${res.error || '用户终止'}`
+      persistCurrentTaskSnapshot(res as Record<string, any>)
       return
     }
     actionMessage.value = action === 'degrade' ? '正在按降级策略收口汇总...' : '正在执行补重试，请稍候...'
+    persistCurrentTaskSnapshot(res as Record<string, any>)
     if (!terminal && currentJobId.value) startLiveStream(currentJobId.value, resolvedStock.value)
   } catch (error: any) {
     actionMessage.value = `决策提交失败：${error?.message || String(error)}`
+    persistCurrentTaskSnapshot({ status: taskStatus.value || '', stage: taskStage.value || '', error: String(error?.message || error) })
   } finally {
     decisionPending.value = false
   }
@@ -595,9 +671,11 @@ async function retryAggregate() {
     const terminal = applyTaskSnapshot(res as Record<string, any>, resolvedStock.value)
     const aggStatus = String((res.aggregator_run || {}).status || '')
     actionMessage.value = aggStatus === 'done' ? '汇总重试成功。' : '汇总重试失败，已保留角色原文。'
+    persistCurrentTaskSnapshot(res as Record<string, any>)
     if (!terminal && currentJobId.value) startLiveStream(currentJobId.value, resolvedStock.value)
   } catch (error: any) {
     actionMessage.value = `重试汇总失败：${error?.message || String(error)}`
+    persistCurrentTaskSnapshot({ status: taskStatus.value || '', stage: taskStage.value || '', error: String(error?.message || error) })
   } finally {
     aggregateRetryPending.value = false
   }
@@ -613,6 +691,53 @@ function downloadFullMarkdown() {
   const stock = resolvedStock.value.ts_code || 'UNKNOWN'
   downloadText(fullMarkdown.value || '', `${stock}_LLM多角色公司分析.md`)
 }
+
+function clearCurrentTaskTracking() {
+  stopLiveStream()
+  clearTimer()
+  currentJobId.value = ''
+  taskStatus.value = ''
+  taskStage.value = ''
+  taskUpdatedAt.value = ''
+  attempts.value = []
+  actionMessage.value = '已清除当前任务跟踪。'
+  clearPersistedTaskSnapshot()
+}
+
+onMounted(async () => {
+  const restored = restoreTaskSnapshot()
+  if (!restored) return
+  currentJobId.value = String(restored.jobId || '')
+  taskStatus.value = String(restored.status || '')
+  taskStage.value = String(restored.stage || '')
+  usedModel.value = String(restored.usedModel || '')
+  attempts.value = Array.isArray(restored.attempts) ? restored.attempts : []
+  actionMessage.value = restored.actionMessage || '已恢复历史任务跟踪。'
+  if (restored.data?.resolvedStock) {
+    const restoredStockRaw = restored.data.resolvedStock as Record<string, any>
+    resolvedStock.value = {
+      ts_code: String(restoredStockRaw.ts_code || ''),
+      name: String(restoredStockRaw.name || ''),
+    }
+    if (resolvedStock.value.ts_code) form.keyword = resolvedStock.value.ts_code
+  }
+  if (typeof restored.data?.fullMarkdown === 'string' && restored.data.fullMarkdown) {
+    fullMarkdown.value = String(restored.data.fullMarkdown)
+  }
+  if (Array.isArray(restored.data?.roleSections) && restored.data.roleSections.length) {
+    roleSections.value = restored.data.roleSections as Array<Record<string, any>>
+    activeRole.value = String(restored.data?.activeRole || roleSections.value[0]?.role || '')
+  }
+  if (!currentJobId.value) return
+  try {
+    const latest = await fetchMultiRoleTaskV3(currentJobId.value)
+    const terminal = applyTaskSnapshot(latest as Record<string, any>, resolvedStock.value)
+    if (!terminal) startLiveStream(currentJobId.value, resolvedStock.value)
+  } catch (error: any) {
+    actionMessage.value = `恢复任务失败：${error?.message || String(error)}`
+    persistCurrentTaskSnapshot({ status: taskStatus.value || 'error', stage: taskStage.value || '', error: String(error?.message || error) })
+  }
+})
 
 onBeforeUnmount(() => {
   stopLiveStream()

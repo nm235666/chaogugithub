@@ -16,6 +16,7 @@ class JobDefinition:
     name: str
     category: str
     schedule_expr: str
+    enabled: int = 1
     owner: str = "scheduler"
     description: str = ""
     commands: tuple[tuple[str, ...], ...] = field(default_factory=tuple)
@@ -34,7 +35,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="intl_news_pipeline",
         name="国际新闻采集评分映射",
         category="news",
-        schedule_expr="*/5 * * * *",
+        schedule_expr="1-59/5 * * * *",
         description="抓取国际新闻、补评分、补情绪、做股票映射",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "intl_news_pipeline"),
@@ -54,7 +55,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="news_stock_map_refresh",
         name="新闻股票映射刷新",
         category="news",
-        schedule_expr="*/5 * * * *",
+        schedule_expr="2-59/5 * * * *",
         description="补做新闻到股票的映射",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "news_stock_map_refresh"),
@@ -64,7 +65,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="news_sentiment_refresh",
         name="新闻情绪刷新",
         category="news",
-        schedule_expr="*/5 * * * *",
+        schedule_expr="3-59/5 * * * *",
         description="小批次高频补做国际与国内新闻统一情绪标签",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "news_sentiment_refresh"),
@@ -74,7 +75,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="news_daily_summary_refresh",
         name="新闻日报总结",
         category="reports",
-        schedule_expr="30 3,15 * * *",
+        schedule_expr="35 3,15 * * *",
         description="生成当日重要新闻总结，默认 GPT-5.4 优先，失败自动降级",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "news_daily_summary_refresh"),
@@ -158,7 +159,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="stock_news_backfill_missing",
         name="个股新闻缺口补抓",
         category="stock_news",
-        schedule_expr="55 * * * *",
+        schedule_expr="53 * * * *",
         description="补抓缺失个股新闻",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_stock_news_job.py"), "--job-key", "stock_news_backfill_missing"),
@@ -168,7 +169,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="stock_news_expand_focus",
         name="个股新闻重点扩抓",
         category="stock_news",
-        schedule_expr="25 * * * *",
+        schedule_expr="23 * * * *",
         description="围绕重点股票扩抓个股新闻并评分",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_stock_news_job.py"), "--job-key", "stock_news_expand_focus"),
@@ -195,16 +196,6 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         ),
     ),
     JobDefinition(
-        job_key="market_expectations_refresh",
-        name="市场预期抓取刷新",
-        category="market",
-        schedule_expr="40 * * * *",
-        description="抓取市场预期数据并写入 market_expectation_items",
-        commands=(
-            py_cmd(str(ROOT_DIR / "jobs" / "run_market_job.py"), "--job-key", "market_expectations_refresh"),
-        ),
-    ),
-    JobDefinition(
         job_key="market_news_refresh",
         name="市场新闻抓取刷新",
         category="market",
@@ -219,6 +210,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="QuantaAlpha 健康检查",
         category="quant",
         schedule_expr="*/30 * * * *",
+        enabled=0,
         description="旁路能力健康检查，不影响主链路",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_quantaalpha_job.py"), "--job-key", "quantaalpha_health_check"),
@@ -229,6 +221,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="QuantaAlpha 因子挖掘",
         category="quant",
         schedule_expr="20 1 * * *",
+        enabled=0,
         description="A股因子挖掘旁路任务",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_quantaalpha_job.py"), "--job-key", "quantaalpha_mine_daily"),
@@ -239,6 +232,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="QuantaAlpha 回测",
         category="quant",
         schedule_expr="45 1 * * *",
+        enabled=0,
         description="A股回测旁路任务",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_quantaalpha_job.py"), "--job-key", "quantaalpha_backtest_daily"),
@@ -306,24 +300,55 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="daily_postclose_update",
         name="盘后更新流水线",
         category="market_data",
-        schedule_expr="30 7 * * *",
-        description="盘后刷新行情、估值、资金流、风险、财务与评分",
+        schedule_expr="40 7 * * 1-5",
+        description="盘后刷新行情、估值、财务与评分（市场资金流与风险场景独立任务）",
         commands=(
             bash_cmd(
                 "python3 auto_update_stocks_and_prices.py --pause 0.02;"
                 " python3 backfill_stock_valuation_daily.py --lookback-days 5 --pause 0.02;"
                 " python3 backfill_capital_flow_stock.py --lookback-days 5 --pause 0.02;"
                 " python3 backfill_capital_flow_stock_akshare.py --only-bj --missing-only --pause 0.05;"
-                " python3 backfill_capital_flow_market.py --lookback-days 5 --pause 0.02;"
                 " python3 backfill_fx_daily.py --lookback-days 10 --pause 0.02;"
                 " python3 backfill_rate_curve_points.py --lookback-days 10 --pause 0.02;"
                 " python3 backfill_spread_daily.py --lookback-days 10;"
-                " python3 backfill_risk_scenarios.py --lookback-bars 120;"
                 " python3 fast_backfill_stock_financials.py --recent-periods 4 --pause 0.02;"
                 " python3 backfill_missing_stock_financials.py --recent-periods 4 --pause 0.05;"
                 " python3 update_daily_stock_events.py;"
                 " python3 backfill_stock_scores_daily.py --truncate-date;"
                 " python3 build_stock_daily_price_rollups.py --window-days 30,90,365"
+            ),
+        ),
+    ),
+    JobDefinition(
+        job_key="capital_flow_market_refresh",
+        name="市场资金流独立刷新",
+        category="market_data",
+        schedule_expr="55 7 * * 1-5",
+        description="独立刷新市场级资金流，避免被盘后大流水线连带失败",
+        commands=(
+            py_cmd(
+                str(ROOT_DIR / "backfill_capital_flow_market.py"),
+                "--lookback-days",
+                "7",
+                "--provider-chain",
+                "tushare,akshare",
+                "--akshare-summary-fallback",
+                "--pause",
+                "0.02",
+            ),
+        ),
+    ),
+    JobDefinition(
+        job_key="risk_scenarios_refresh",
+        name="风险场景独立刷新",
+        category="market_data",
+        schedule_expr="10 8 * * 1-5",
+        description="独立刷新 risk_scenarios，避免盘后总流水线被单点 SQL/数据异常连带失败",
+        commands=(
+            py_cmd(
+                str(ROOT_DIR / "backfill_risk_scenarios.py"),
+                "--lookback-bars",
+                "120",
             ),
         ),
     ),
@@ -352,7 +377,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="minline_backfill_recent",
         name="分钟线最近交易日补抓",
         category="market_data",
-        schedule_expr="45 7 * * *",
+        schedule_expr="45 7 * * 1-5",
         description="补抓最近两个交易日的分钟线",
         commands=(
             py_cmd(str(ROOT_DIR / "fetch_sina_minline_all_listed.py"), "--trade-date", "__TRADE_DATE_1__", "--workers", "6", "--min-workers", "2", "--max-workers", "10", "--retry", "2", "--batch-size", "300", "--max-rounds", "3", "--max-fail-per-stock", "5", "--stagnation-rounds", "2"),
@@ -439,7 +464,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="minline_akshare_patch",
         name="分钟线 AKShare 补洞",
         category="market_data",
-        schedule_expr="5 8 * * *",
+        schedule_expr="5 8 * * 1-5",
         description="使用 AKShare 对最近交易日分钟线补洞",
         commands=(
             py_cmd(str(ROOT_DIR / "backfill_stock_minline_akshare.py"), "--trade-date", "__TRADE_DATE_1__", "--skip-existing"),
@@ -450,7 +475,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="research_reports_refresh",
         name="标准投研报告刷新",
         category="reports",
-        schedule_expr="30 7,15 * * *",
+        schedule_expr="50 7,15 * * *",
         description="每日盘后与夜间补算：自动生成市场/主题/高分股票标准报告",
         commands=((PYTHON_BIN, str(ROOT_DIR / "generate_standard_research_report.py"), "--report-type", "market", "--subject-key", "market_overview", "--report-date", "__CN_DATE__", "--model", "auto_market_snapshot_v1"),),
     ),
@@ -489,4 +514,19 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
 
 
 def get_default_jobs() -> list[JobDefinition]:
-    return list(DEFAULT_JOBS)
+    jobs = list(DEFAULT_JOBS)
+    seen: set[str] = set()
+    dup: list[str] = []
+    for job in jobs:
+        if job.job_key in seen:
+            dup.append(job.job_key)
+            continue
+        seen.add(job.job_key)
+    if dup:
+        unique_dup = sorted(set(dup))
+        raise RuntimeError(f"duplicate job_key in DEFAULT_JOBS: {', '.join(unique_dup)}")
+    return jobs
+
+
+def is_trade_day_gated(job: JobDefinition) -> bool:
+    return str(job.category or "").strip() == "market_data"

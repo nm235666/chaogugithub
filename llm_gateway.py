@@ -580,6 +580,10 @@ def post_chat_completions(
     timeout_s: int = 120,
     max_retries: int = 3,
 ) -> str:
+    stream_enabled = bool(payload.get("stream"))
+    if stream_enabled:
+        return _post_chat_completions_stream(route=route, payload=payload, timeout_s=timeout_s)
+
     body = json.dumps(sanitize_json_value(payload), ensure_ascii=False, allow_nan=False).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
@@ -623,6 +627,116 @@ def post_chat_completions(
         if last_error:
             raise RuntimeError(f"{last_error}; fallback requests error: {exc}") from exc
         raise RuntimeError(str(exc)) from exc
+
+
+def _extract_stream_chunk_content(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+                continue
+            if isinstance(text, dict):
+                value = text.get("value")
+                if isinstance(value, str):
+                    parts.append(value)
+                    continue
+            if item.get("type") == "output_text":
+                value = item.get("text")
+                if isinstance(value, str):
+                    parts.append(value)
+        return "".join(parts)
+    return ""
+
+
+def _extract_stream_delta_text(obj: dict) -> str:
+    choices = obj.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first = choices[0] if isinstance(choices[0], dict) else {}
+    if not isinstance(first, dict):
+        return ""
+    delta = first.get("delta")
+    if isinstance(delta, dict):
+        text = _extract_stream_chunk_content(delta.get("content"))
+        if text:
+            return text
+    message = first.get("message")
+    if isinstance(message, dict):
+        text = _extract_stream_chunk_content(message.get("content"))
+        if text:
+            return text
+    text = _extract_stream_chunk_content(first.get("text"))
+    return text or ""
+
+
+def _post_chat_completions_stream(route: LLMRoute, payload: dict, timeout_s: int = 120) -> str:
+    try:
+        import requests  # type: ignore
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(f"stream mode requires requests: {exc}") from exc
+
+    stream_payload = dict(sanitize_json_value(payload))
+    stream_payload["stream"] = True
+    url = route.base_url.rstrip("/") + "/chat/completions"
+    headers = {"Authorization": f"Bearer {route.api_key}", "Connection": "close"}
+    texts: list[str] = []
+    raw_events: list[str] = []
+    last_json_obj: dict | None = None
+
+    with requests.post(
+        url,
+        json=stream_payload,
+        headers=headers,
+        stream=True,
+        timeout=(30, max(timeout_s, 30)),
+    ) as response:
+        if response.status_code >= 400:
+            raise RuntimeError(f"LLM接口错误: HTTP {response.status_code} {response.reason} | {response.text}")
+        for raw_line in response.iter_lines(decode_unicode=True):
+            if not raw_line:
+                continue
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith(":"):
+                continue
+            if not line.startswith("data:"):
+                raw_events.append(line)
+                continue
+            data = line[5:].strip()
+            if not data:
+                continue
+            if data == "[DONE]":
+                break
+            raw_events.append(data)
+            try:
+                obj = json.loads(data)
+            except Exception:
+                continue
+            if isinstance(obj, dict):
+                last_json_obj = obj
+                delta_text = _extract_stream_delta_text(obj)
+                if delta_text:
+                    texts.append(delta_text)
+
+    if texts:
+        merged = "".join(texts).strip()
+        return json.dumps({"choices": [{"message": {"content": merged}}]}, ensure_ascii=False)
+
+    if isinstance(last_json_obj, dict):
+        return json.dumps(last_json_obj, ensure_ascii=False)
+
+    preview = _compact_error_preview("\n".join(raw_events))
+    raise RuntimeError(f"LLM流式返回缺少可解析内容: {preview}")
 
 
 def _compact_error_preview(raw_text: str, limit: int = 280) -> str:

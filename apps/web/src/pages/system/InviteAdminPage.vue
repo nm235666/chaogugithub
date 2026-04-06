@@ -13,7 +13,7 @@
       </PageSection>
 
       <PageSection title="创建邀请码" subtitle="支持一次性邀请码，也支持多次可用邀请码。">
-        <div class="grid gap-3 xl:grid-cols-[220px_220px_1fr_160px] md:grid-cols-2">
+        <div class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
           <input v-model.trim="createForm.invite_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="邀请码（留空自动生成）" />
           <input v-model.number="createForm.max_uses" type="number" min="1" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="最大使用次数" />
           <input v-model.trim="createForm.expires_at" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="过期时间（可选，如 2026-12-31 23:59:59）" />
@@ -25,7 +25,7 @@
       </PageSection>
 
       <PageSection title="邀请码列表" subtitle="支持筛选、停用/启用、修改、删除。">
-        <div class="mb-3 grid gap-3 xl:grid-cols-[1fr_180px_120px] md:grid-cols-2">
+        <div class="mb-3 grid gap-3 xl:grid-cols-3 md:grid-cols-2">
           <input v-model.trim="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="按邀请码搜索" />
           <select v-model="filters.active" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部状态</option>
@@ -50,7 +50,7 @@
               </div>
               <StatusBadge :value="item.is_active ? 'ok' : 'warn'" :label="item.is_active ? '启用中' : '已停用'" />
             </div>
-            <div class="mt-3 grid gap-2 xl:grid-cols-[140px_1fr_1fr_auto_auto] md:grid-cols-2">
+            <div class="mt-3 grid gap-2 xl:grid-cols-5 md:grid-cols-2">
               <input v-model.number="editCache[item.invite_code].max_uses" type="number" min="1" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm" />
               <input v-model.trim="editCache[item.invite_code].expires_at" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm" placeholder="过期时间（可空）" />
               <select v-model="editCache[item.invite_code].is_active" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm">
@@ -66,8 +66,8 @@
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
           <div>第 {{ filters.page }} / {{ list?.total_pages || 1 }} 页 · 共 {{ list?.total || 0 }} 条</div>
           <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="filters.page -= 1">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (list?.total_pages || 1)" @click="filters.page += 1">下一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page <= 1" @click="goPrevPage">上一页</button>
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="filters.page >= (list?.total_pages || 1)" @click="goNextPage">下一页</button>
           </div>
         </div>
       </PageSection>
@@ -77,14 +77,19 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { createAuthInvite, deleteAuthInvite, fetchAuthInvites, fetchAuthUsersSummary, updateAuthInvite } from '../../services/api/system'
+import { confirmDangerAction } from '../../shared/utils/confirm'
+import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
 const queryClient = useQueryClient()
+const route = useRoute()
+const router = useRouter()
 
 const filters = reactive({
   keyword: '',
@@ -110,6 +115,7 @@ const { data: summary, refetch: refetchSummary } = useQuery({
 const { data: list, refetch: refetchList } = useQuery({
   queryKey: ['auth-invites', filters],
   queryFn: () => fetchAuthInvites(filters),
+  placeholderData: keepPreviousData,
 })
 
 watch(
@@ -132,6 +138,27 @@ watch(
     filters.page = 1
   },
 )
+
+function syncRouteFromFilters() {
+  router.replace({
+    query: buildCleanQuery({
+      keyword: filters.keyword,
+      active: filters.active,
+      page: filters.page,
+      page_size: filters.page_size,
+    }),
+  })
+}
+
+function applyRouteFilters() {
+  const q = route.query as Record<string, unknown>
+  Object.assign(filters, {
+    keyword: readQueryString(q, 'keyword', ''),
+    active: readQueryString(q, 'active', ''),
+    page: Math.max(1, readQueryNumber(q, 'page', 1)),
+    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+  })
+}
 
 const createMutation = useMutation({
   mutationFn: () =>
@@ -176,7 +203,7 @@ async function onUpdate(inviteCode: string) {
 }
 
 async function onDelete(inviteCode: string) {
-  if (!window.confirm(`确认删除邀请码 ${inviteCode} ?`)) return
+  if (!await confirmDangerAction('删除邀请码', inviteCode, '删除后将无法恢复，请确认该邀请码不再使用。')) return
   try {
     await deleteAuthInvite(inviteCode)
     actionMessage.text = `删除成功：${inviteCode}`
@@ -188,7 +215,29 @@ async function onDelete(inviteCode: string) {
 }
 
 function refreshList() {
-  refetchList()
+  filters.page = 1
+  syncRouteFromFilters()
   refetchSummary()
 }
+
+function goPrevPage() {
+  if (filters.page <= 1) return
+  filters.page -= 1
+  syncRouteFromFilters()
+}
+
+function goNextPage() {
+  const totalPages = Number(list.value?.total_pages || 1)
+  if (filters.page >= totalPages) return
+  filters.page += 1
+  syncRouteFromFilters()
+}
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteFilters()
+  },
+  { immediate: true },
+)
 </script>
