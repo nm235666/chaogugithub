@@ -1040,7 +1040,7 @@ def _build_manager_prompt(kind: str, payload: dict[str, Any]) -> str:
             "decision（approve/reject/defer）、"
             "invalidation（失效条件，一句话：什么情况下本判断需要推翻）。"
             "你的职责是裁决，不是平衡各方观点。"
-            "claim 字段必须是一句话的核心押注，不超过50字，禁止使用"一方面…另一方面"句式。"
+            "claim 字段必须是一句话的核心押注，不超过50字，禁止使用'一方面...另一方面'句式。"
         )
     return (
         f"你是{kind}。请完成该阶段最终裁决。"
@@ -1967,38 +1967,25 @@ def process_one_multi_role_v3_job(*, sqlite3_module, db_path, runtime: dict[str,
     conn.row_factory = sqlite3_module.Row
     try:
         ensure_multi_role_v3_tables(conn)
+        now = _now_iso()
         row = conn.execute(
             """
-            SELECT * FROM multi_role_v3_jobs
-            WHERE status = 'queued'
-            ORDER BY id ASC
-            LIMIT 1
-            """
+            UPDATE multi_role_v3_jobs
+               SET status = 'running', worker_id = ?, updated_at = ?, lease_until = ?
+             WHERE id = (
+                   SELECT id FROM multi_role_v3_jobs
+                    WHERE status = 'queued'
+                    ORDER BY id ASC
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+             )
+            RETURNING *
+            """,
+            (wid, now, now),
         ).fetchone()
         if not row:
             return False
         job = dict(row)
-        now = _now_iso()
-        state = _loads(str(job.get("state_json") or ""), {})
-        result = _loads(str(job.get("result_json") or ""), {})
-        decision_state = _loads(str(job.get("decision_state_json") or ""), {})
-        metrics = _loads(str(job.get("metrics_json") or ""), {})
-        metrics["message"] = "worker 已接单，执行中"
-        metrics["progress"] = max(10, int(metrics.get("progress") or 0))
-        _update_job_row(
-            conn,
-            job_id=str(job.get("job_id") or ""),
-            status="running",
-            stage=str(job.get("stage") or "context"),
-            state=state,
-            result=result,
-            decision_state=decision_state,
-            metrics=metrics,
-            error="",
-            finished=False,
-            worker_id=wid,
-            lease_until=now,
-        )
         _append_event(conn, job_id=str(job.get("job_id") or ""), stage=str(job.get("stage") or "context"), event_type="worker_claimed", payload={"worker_id": wid})
         conn.commit()
         row2 = conn.execute("SELECT * FROM multi_role_v3_jobs WHERE job_id = ? LIMIT 1", (str(job.get("job_id") or ""),)).fetchone()

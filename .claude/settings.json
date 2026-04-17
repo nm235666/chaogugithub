@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"/home/zanbo/zanbotest\" diff -- apps/web/src/pages/system/JobsOpsPage.vue)"
+    ],
+    "additionalDirectories": [
+      "/home/zanbo/agent-board/myproj/rounds",
+      "/home/zanbo/agent-board/myproj/reports",
+      "/home/zanbo/agent-board/myproj/decisions"
+    ]
+  }
+}

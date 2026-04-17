@@ -1,3 +1,7 @@
+---
+name: llm-provider-ops
+---
+
 # LLM Provider Ops
 
 Use this skill when LLM provider routing becomes unstable or score/analyze jobs fail due to model channel issues.

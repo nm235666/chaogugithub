@@ -29,6 +29,193 @@ def _today_cn() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
+def _trace_token(prefix: str, value: Any) -> str:
+    token = str(value or "").strip()
+    return f"{prefix}-{token}" if token else ""
+
+
+def _snapshot_trace_id(snapshot_id: Any = None, snapshot_date: str = "") -> str:
+    return _trace_token("snapshot", snapshot_id) or _trace_token("snapshot", snapshot_date)
+
+
+def _snapshot_run_id(snapshot_id: Any = None, snapshot_date: str = "") -> str:
+    return _trace_token("snapshot-run", snapshot_id) or _trace_token("snapshot-run", snapshot_date)
+
+
+def _action_trace_fields(
+    payload: dict[str, Any] | None,
+    *,
+    action_row_id: Any = None,
+    snapshot_date: str = "",
+    snapshot_row_id: Any = None,
+) -> dict[str, str]:
+    raw_payload = payload if isinstance(payload, dict) else {}
+    context = raw_payload.get("context") if isinstance(raw_payload.get("context"), dict) else {}
+    raw_trace = raw_payload.get("trace") if isinstance(raw_payload.get("trace"), dict) else {}
+    action_id = str(raw_trace.get("action_id") or raw_payload.get("action_id") or "").strip()
+    run_id = str(raw_trace.get("run_id") or raw_payload.get("run_id") or context.get("run_id") or context.get("job_id") or "").strip()
+    snapshot_id = str(raw_trace.get("snapshot_id") or raw_payload.get("snapshot_id") or "").strip()
+    if not action_id and action_row_id not in (None, ""):
+        action_id = _trace_token("action", action_row_id)
+    if not snapshot_id:
+        snapshot_id = _snapshot_trace_id(snapshot_row_id, snapshot_date)
+    return {
+        "action_id": action_id,
+        "run_id": run_id,
+        "snapshot_id": snapshot_id,
+    }
+
+
+def _snapshot_trace_fields(payload: dict[str, Any] | None, *, snapshot_row_id: Any = None, snapshot_date: str = "") -> dict[str, str]:
+    raw_payload = payload if isinstance(payload, dict) else {}
+    raw_trace = raw_payload.get("trace") if isinstance(raw_payload.get("trace"), dict) else {}
+    snapshot_id = str(raw_trace.get("snapshot_id") or raw_payload.get("snapshot_id") or "").strip() or _snapshot_trace_id(snapshot_row_id, snapshot_date)
+    run_id = str(raw_trace.get("run_id") or raw_payload.get("run_id") or "").strip() or _snapshot_run_id(snapshot_row_id, snapshot_date)
+    action_id = str(raw_trace.get("action_id") or raw_payload.get("action_id") or "").strip()
+    return {
+        "action_id": action_id,
+        "run_id": run_id,
+        "snapshot_id": snapshot_id,
+    }
+
+
+def _receipt_source(payload: dict[str, Any] | None, default_source: str) -> str:
+    raw_payload = payload if isinstance(payload, dict) else {}
+    context = raw_payload.get("context") if isinstance(raw_payload.get("context"), dict) else {}
+    source = str(raw_payload.get("source") or context.get("source") or "").strip()
+    return source or default_source
+
+
+
+def _decision_receipt(
+    payload: dict[str, Any] | None,
+    *,
+    trace: dict[str, str],
+    source: str,
+    status: str = "success",
+) -> dict[str, Any]:
+    return {
+        "status": str(status or "success").strip() or "success",
+        "source": str(source or "").strip(),
+        "trace": {
+            "action_id": str(trace.get("action_id") or "").strip(),
+            "run_id": str(trace.get("run_id") or "").strip(),
+            "snapshot_id": str(trace.get("snapshot_id") or "").strip(),
+        },
+        "context": (payload or {}).get("context") if isinstance((payload or {}).get("context"), dict) else {},
+    }
+
+
+def _job_trace_summary(*, stage: str = "", status: str = "", message: str = "", error: str = "") -> str:
+    normalized_stage = str(stage or "").strip()
+    normalized_status = str(status or "").strip()
+    normalized_message = str(message or "").strip()
+    normalized_error = str(error or "").strip()
+    parts: list[str] = []
+    if normalized_stage:
+        parts.append(f"阶段 {normalized_stage}")
+    elif normalized_status:
+        parts.append(f"状态 {normalized_status}")
+    if normalized_message and normalized_message not in parts:
+        parts.append(normalized_message)
+    if normalized_error:
+        parts.append(f"异常 {normalized_error}")
+    return " · ".join(parts)
+
+
+def _query_multi_role_job_trace(conn, job_id: str) -> dict[str, Any]:
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_job_id or not _table_exists(conn, "multi_role_v3_jobs"):
+        return {}
+    row = conn.execute(
+        """
+        SELECT status, stage, metrics_json, error, updated_at, finished_at
+        FROM multi_role_v3_jobs
+        WHERE job_id = ?
+        LIMIT 1
+        """,
+        (normalized_job_id,),
+    ).fetchone()
+    if not row:
+        return {}
+    item = dict(row)
+    metrics = _parse_json(item.get("metrics_json"))
+    message = str(metrics.get("message") or "").strip()
+    updated_at = str(item.get("updated_at") or item.get("finished_at") or "").strip()
+    if _table_exists(conn, "multi_role_v3_events"):
+        event_row = conn.execute(
+            """
+            SELECT stage, event_type, created_at
+            FROM multi_role_v3_events
+            WHERE job_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (normalized_job_id,),
+        ).fetchone()
+        if event_row:
+            event = dict(event_row)
+            message = message or str(event.get("event_type") or "").strip()
+            updated_at = str(event.get("created_at") or updated_at or "").strip()
+            if not str(item.get("stage") or "").strip():
+                item["stage"] = str(event.get("stage") or "").strip()
+    return {
+        "job_id": normalized_job_id,
+        "status": str(item.get("status") or "").strip(),
+        "stage": str(item.get("stage") or "").strip(),
+        "updated_at": updated_at,
+        "summary": _job_trace_summary(
+            stage=str(item.get("stage") or ""),
+            status=str(item.get("status") or ""),
+            message=message,
+            error=str(item.get("error") or ""),
+        ),
+    }
+
+
+def _query_roundtable_job_trace(conn, job_id: str) -> dict[str, Any]:
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_job_id or not _table_exists(conn, "chief_roundtable_jobs"):
+        return {}
+    row = conn.execute(
+        """
+        SELECT status, stage, updated_at, finished_at, error, source_job_id
+        FROM chief_roundtable_jobs
+        WHERE job_id = ?
+        LIMIT 1
+        """,
+        (normalized_job_id,),
+    ).fetchone()
+    if not row:
+        return {}
+    item = dict(row)
+    return {
+        "job_id": normalized_job_id,
+        "status": str(item.get("status") or "").strip(),
+        "stage": str(item.get("stage") or "").strip(),
+        "updated_at": str(item.get("updated_at") or item.get("finished_at") or "").strip(),
+        "source_job_id": str(item.get("source_job_id") or "").strip(),
+        "summary": _job_trace_summary(
+            stage=str(item.get("stage") or ""),
+            status=str(item.get("status") or ""),
+            error=str(item.get("error") or ""),
+        ),
+    }
+
+
+def _action_job_trace(conn, item: dict[str, Any]) -> dict[str, Any]:
+    source = str(item.get("source") or "").strip()
+    context = item.get("context") if isinstance(item.get("context"), dict) else {}
+    job_id = str(context.get("job_id") or item.get("trace", {}).get("run_id") or "").strip()
+    if not job_id:
+        return {}
+    if source == "multi_role_v3":
+        return _query_multi_role_job_trace(conn, job_id)
+    if source == "chief_roundtable":
+        return _query_roundtable_job_trace(conn, job_id)
+    return {}
+
+
 def _table_exists(conn, table_name: str) -> bool:
     row = conn.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
@@ -522,11 +709,7 @@ def _aggregate_industries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _validation_snapshot(conn) -> dict[str, Any]:
     if not _table_exists(conn, "quantaalpha_runs"):
-        return {
-            "source": "quantaalpha_service",
-            "status": "not_available",
-            "summary": "当前没有可用的策略验证结果，后续会在 quantaalpha 退役/替换过程中逐步补齐。",
-        }
+        return {"status": "table_missing", "table_exists": False, "checked_at": _utc_now(), "done": 0, "error": 0, "latest": None}
     done = int(conn.execute("SELECT COUNT(*) FROM quantaalpha_runs WHERE status = 'done'").fetchone()[0] or 0)
     error = int(conn.execute("SELECT COUNT(*) FROM quantaalpha_runs WHERE status = 'error'").fetchone()[0] or 0)
     latest = conn.execute(
@@ -2021,6 +2204,15 @@ def query_decision_history(*, sqlite3_module, db_path: str, page: int = 1, page_
         for row in rows:
             item = dict(row)
             item["payload"] = _parse_json(item.get("payload_json"))
+            item["trace"] = _snapshot_trace_fields(item.get("payload"), snapshot_row_id=item.get("id"), snapshot_date=str(item.get("snapshot_date") or ""))
+            item["receipt"] = _decision_receipt(
+                item.get("payload"),
+                trace=item["trace"],
+                source=_receipt_source(item.get("payload"), "decision_snapshot"),
+            )
+            item["status"] = item["receipt"]["status"]
+            item["source"] = item["receipt"]["source"]
+            item["context"] = item["receipt"]["context"]
             items.append(item)
         return {
             "page": page,
@@ -2065,6 +2257,20 @@ def query_decision_actions(*, sqlite3_module, db_path: str, page: int = 1, page_
         for row in rows:
             item = dict(row)
             item["payload"] = _parse_json(item.get("action_payload_json"))
+            item["trace"] = _action_trace_fields(
+                item.get("payload"),
+                action_row_id=item.get("id"),
+                snapshot_date=str(item.get("snapshot_date") or ""),
+            )
+            item["receipt"] = _decision_receipt(
+                item.get("payload"),
+                trace=item["trace"],
+                source=_receipt_source(item.get("payload"), "decision_board"),
+            )
+            item["status"] = item["receipt"]["status"]
+            item["source"] = item["receipt"]["source"]
+            item["context"] = item["receipt"]["context"]
+            item["job_trace"] = _action_job_trace(conn, item)
             items.append(item)
         return {
             "page": page,
@@ -2072,6 +2278,147 @@ def query_decision_actions(*, sqlite3_module, db_path: str, page: int = 1, page_
             "total": total,
             "total_pages": (total + page_size - 1) // page_size if total else 0,
             "items": items,
+        }
+    finally:
+        conn.close()
+
+
+def query_decision_calibration(
+    *,
+    sqlite3_module,
+    db_path: str,
+    page: int = 1,
+    page_size: int = 20,
+    ts_code: str = "",
+) -> dict[str, Any]:
+    """
+    Return decision actions (confirm/reject) enriched with price returns at 5/20/60
+    trading days after the verdict date, plus an overall accuracy summary.
+    """
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    try:
+        _ensure_tables(conn)
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 100)
+        offset = (page - 1) * page_size
+
+        where: list[str] = ["action_type IN ('confirm', 'reject')"]
+        params: list[Any] = []
+        normalized_ts_code = str(ts_code or "").strip().upper()
+        if normalized_ts_code:
+            where.append("ts_code = ?")
+            params.append(normalized_ts_code)
+        where_sql = "WHERE " + " AND ".join(where)
+
+        total = int(
+            conn.execute(f"SELECT COUNT(*) FROM {DECISION_ACTION_TABLE} {where_sql}", tuple(params)).fetchone()[0] or 0
+        )
+
+        _row_sql = f"""
+            SELECT id, action_type, ts_code, stock_name, note, actor, snapshot_date, action_payload_json, created_at
+            FROM {DECISION_ACTION_TABLE}
+            {where_sql}
+            ORDER BY created_at DESC, id DESC
+            """
+
+        # All rows (no LIMIT) for accurate summary computation
+        summary_rows = conn.execute(_row_sql, tuple(params)).fetchall()
+
+        # Current page only for items
+        page_rows = conn.execute(
+            _row_sql + " LIMIT ? OFFSET ?",
+            tuple(params) + (page_size, offset),
+        ).fetchall()
+
+        prices_table_exists = _table_exists(conn, "stock_daily_prices")
+
+        # Fix 2b: batch price fetch — one query for all ts_codes in summary_rows
+        price_map: dict[str, list[tuple[str, float | None]]] = {}
+        if prices_table_exists and summary_rows:
+            all_ts_codes = list({dict(r)["ts_code"] for r in summary_rows if dict(r)["ts_code"]})
+            if all_ts_codes:
+                placeholders = ",".join("?" * len(all_ts_codes))
+                price_batch = conn.execute(
+                    f"SELECT ts_code, trade_date, close FROM stock_daily_prices"
+                    f" WHERE ts_code IN ({placeholders}) ORDER BY ts_code, trade_date ASC",
+                    tuple(all_ts_codes),
+                ).fetchall()
+                for pb in price_batch:
+                    ts_val, td_val, cl_val = pb[0], pb[1], pb[2]
+                    price_map.setdefault(ts_val, []).append(
+                        (td_val, float(cl_val) if cl_val is not None else None)
+                    )
+
+        def _closes_from_map(ts: str, verdict_date: str) -> list[float | None]:
+            if not prices_table_exists or not ts or len(verdict_date) != 8:
+                return []
+            return [cl for td, cl in price_map.get(ts, []) if td >= verdict_date][:61]
+
+        def _return_at(closes: list[float | None], idx: int) -> float | None:
+            if len(closes) <= idx or closes[0] is None or closes[idx] is None or closes[0] == 0:
+                return None
+            return round((closes[idx] - closes[0]) / closes[0] * 100, 2)
+
+        def _verdict_date(created_at: str) -> str:
+            return str(created_at or "")[:10].replace("-", "")
+
+        def _enrich(d: dict) -> dict:
+            vdate = _verdict_date(d["created_at"])
+            closes = _closes_from_map(d["ts_code"], vdate)
+            r5 = _return_at(closes, 5)
+            r20 = _return_at(closes, 20)
+            r60 = _return_at(closes, 60)
+            hit_5d = None if r5 is None else (r5 > 0 if d["action_type"] == "confirm" else r5 < 0)
+            return {
+                "id": d["id"],
+                "ts_code": d["ts_code"],
+                "stock_name": d["stock_name"],
+                "action_type": d["action_type"],
+                "created_at": d["created_at"],
+                "snapshot_date": d["snapshot_date"],
+                "actor": d["actor"],
+                "note": d["note"],
+                "payload": _parse_json(d.get("action_payload_json")),
+                "price_at_verdict": closes[0] if closes else None,
+                "return_5d": r5,
+                "return_20d": r20,
+                "return_60d": r60,
+                "hit_5d": hit_5d,
+            }
+
+        # Summary over ALL rows (no page cap)
+        all_enriched = [_enrich(dict(row)) for row in summary_rows]
+        confirm_items = [e for e in all_enriched if e["action_type"] == "confirm"]
+        reject_items = [e for e in all_enriched if e["action_type"] == "reject"]
+        confirm_count = len(confirm_items)
+        reject_count = len(reject_items)
+        confirm_hit = sum(1 for e in confirm_items if e["hit_5d"] is True)
+        reject_hit = sum(1 for e in reject_items if e["hit_5d"] is True)
+        total_count = confirm_count + reject_count
+        total_hit = confirm_hit + reject_hit
+        summary: dict[str, Any] = {
+            "confirm_count": confirm_count,
+            "confirm_hit_5d": confirm_hit,
+            "confirm_hit_rate_5d": round(confirm_hit / confirm_count, 3) if confirm_count else 0.0,
+            "reject_count": reject_count,
+            "reject_hit_5d": reject_hit,
+            "reject_hit_rate_5d": round(reject_hit / reject_count, 3) if reject_count else 0.0,
+            "total_count": total_count,
+            "total_hit_5d": total_hit,
+            "total_hit_rate_5d": round(total_hit / total_count, 3) if total_count else 0.0,
+        }
+
+        # Items: enrich only the current page rows
+        page_enriched = [_enrich(dict(row)) for row in page_rows]
+
+        return {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size if total else 0,
+            "summary": summary,
+            "items": page_enriched,
         }
     finally:
         conn.close()
@@ -2131,6 +2478,20 @@ def record_decision_action(
         ).fetchone()
         result = dict(row) if row else {}
         result["payload"] = _parse_json(result.get("action_payload_json"))
+        result["trace"] = _action_trace_fields(
+            result.get("payload"),
+            action_row_id=result.get("id"),
+            snapshot_date=str(result.get("snapshot_date") or ""),
+        )
+        result["receipt"] = _decision_receipt(
+            result.get("payload"),
+            trace=result["trace"],
+            source=_receipt_source(result.get("payload"), "decision_board"),
+        )
+        result["status"] = result["receipt"]["status"]
+        result["source"] = result["receipt"]["source"]
+        result["context"] = result["receipt"]["context"]
+        result.update(result["trace"])
         return result
     finally:
         conn.close()
@@ -2154,6 +2515,7 @@ def run_decision_snapshot(*, sqlite3_module, db_path: str, snapshot_date: str = 
             """,
             (snapshot_date,),
         ).fetchone()
+        snapshot_row_id = existing[0] if existing else None
         if existing:
             conn.execute(
                 f"""
@@ -2164,19 +2526,32 @@ def run_decision_snapshot(*, sqlite3_module, db_path: str, snapshot_date: str = 
                 (payload_json, now, existing[0]),
             )
         else:
-            conn.execute(
+            cursor = conn.execute(
                 f"""
                 INSERT INTO {DECISION_SNAPSHOT_TABLE} (snapshot_date, snapshot_type, payload_json, created_at, updated_at)
                 VALUES (?, 'daily', ?, ?, ?)
                 """,
                 (snapshot_date, payload_json, now, now),
             )
+            snapshot_row_id = cursor.lastrowid
         conn.commit()
+        trace = _snapshot_trace_fields(board, snapshot_row_id=snapshot_row_id, snapshot_date=snapshot_date)
+        receipt = _decision_receipt(
+            board,
+            trace=trace,
+            source=_receipt_source(board, "decision_snapshot"),
+        )
         return {
             "ok": True,
             "snapshot_date": snapshot_date,
             "summary": board.get("summary") or {},
             "kill_switch": board.get("kill_switch") or {},
+            "trace": trace,
+            "receipt": receipt,
+            "status": receipt["status"],
+            "source": receipt["source"],
+            "context": receipt["context"],
+            **trace,
         }
     finally:
         conn.close()
@@ -2200,6 +2575,7 @@ def build_decision_runtime_deps(*, sqlite3_module, db_path: str) -> dict[str, An
         "run_decision_strategy_generation": lambda **kwargs: run_decision_strategy_generation(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_history": lambda **kwargs: query_decision_history(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_actions": lambda **kwargs: query_decision_actions(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
+        "query_decision_calibration": lambda **kwargs: query_decision_calibration(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "get_decision_kill_switch": lambda: get_decision_kill_switch(sqlite3_module=sqlite3_module, db_path=db_path),
         "set_decision_kill_switch": lambda **kwargs: set_decision_kill_switch(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "record_decision_action": lambda **kwargs: record_decision_action(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),

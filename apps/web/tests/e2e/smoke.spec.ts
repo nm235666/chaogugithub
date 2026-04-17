@@ -32,7 +32,7 @@ test('admin 登录后落到 dashboard', async ({ page }) => {
 
 test('pro 默认落点正确且可打开评分总览', async ({ page }) => {
   await login(page, 'pro')
-  await expect(page).toHaveURL(/\/stocks\/list$/)
+  await expect(page).toHaveURL(/\/research\/decision$/)
   await page.goto('/research/scoreboard')
   await expect(page).toHaveURL(/\/research\/scoreboard$/)
   await expect(page.locator('header').getByText('评分总览')).toBeVisible()

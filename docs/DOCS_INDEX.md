@@ -10,6 +10,13 @@
 - `docs/command_line_reference.md`
 - `docs/database_dictionary.md`
 - `docs/database_audit_report.md`
+- `docs/business_closure_decision_audit_2026-04-15.md`
+- `docs/project_final_state_projection_2026-04-15.md`
+- `docs/final_state_gap_report_2026-04-16.md`
+- `docs/final_state_remaining_34_execution_plan_2026-04-16.md`
+- `docs/final_state_remaining_34_progress_assessment_2026-04-17.md`
+- `docs/final_state_projection_gap_closure_plan_2026-04-17.md`
+- `docs/unified_entry_and_long_term_metrics_strategy_2026-04-17.md`
 - `docs/repo_structure_rules.md`
 
 ## B. 归档文档（历史快照，不再持续维护）

@@ -244,33 +244,59 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
   const path = String(raw.split('?')[0] || '').trim()
   if (!path) return null
   const defaultAlternatives = [{ to: primaryEntry.value, label: primaryEntryLabel.value }]
+  const newsAlternatives = [{ to: '/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives]
+  const stockNewsAlternatives = [{ to: '/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives]
   const rules: Array<{ test: (pathName: string) => boolean; title: string; required: string[]; alternatives: Array<{ to: string; label: string }> }> = [
+    {
+      test: (pathName) => pathName === '/dashboard',
+      title: '访问总控台',
+      required: ['admin_system'],
+      alternatives: newsAlternatives,
+    },
+    {
+      test: (pathName) => pathName === '/intelligence/global-news' || pathName === '/intelligence/cn-news',
+      title: '访问资讯中心',
+      required: ['news_read'],
+      alternatives: defaultAlternatives,
+    },
+    {
+      test: (pathName) => pathName === '/intelligence/stock-news',
+      title: '访问个股新闻',
+      required: ['stock_news_read'],
+      alternatives: newsAlternatives,
+    },
+    {
+      test: (pathName) => pathName === '/intelligence/daily-summaries',
+      title: '访问新闻日报总结',
+      required: ['daily_summary_read'],
+      alternatives: newsAlternatives,
+    },
     {
       test: (pathName) => pathName.startsWith('/system/users') || pathName.startsWith('/system/invites'),
       title: '访问用户与邀请码管理',
       required: ['admin_users'],
-      alternatives: [{ to: '/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives],
+      alternatives: newsAlternatives,
     },
     {
       test: (pathName) => pathName.startsWith('/system/'),
       title: '访问系统管理模块',
       required: ['admin_system'],
-      alternatives: [{ to: '/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives],
+      alternatives: newsAlternatives,
     },
     {
       test: (pathName) => pathName.startsWith('/macro'),
       title: '访问宏观研究看板',
       required: ['macro_advanced'],
-      alternatives: [{ to: '/intelligence/global-news', label: '先看资讯中心' }, ...defaultAlternatives],
+      alternatives: newsAlternatives,
     },
     {
       test: (pathName) => pathName.startsWith('/chatrooms/'),
       title: '访问群聊投资分析',
       required: ['chatrooms_advanced'],
-      alternatives: [{ to: '/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives],
+      alternatives: stockNewsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/research/multi-role'),
+      test: (pathName) => pathName.startsWith('/research/multi-role') || pathName.startsWith('/research/roundtable'),
       title: '访问多角色研究',
       required: ['multi_role_analyze'],
       alternatives: [{ to: '/research/trend', label: '先看走势分析' }, ...defaultAlternatives],
@@ -285,19 +311,19 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
       test: (pathName) => pathName.startsWith('/research/'),
       title: '访问高级投研能力',
       required: ['research_advanced'],
-      alternatives: [{ to: '/intelligence/global-news', label: '先看资讯中心' }, ...defaultAlternatives],
+      alternatives: newsAlternatives,
     },
     {
       test: (pathName) => pathName.startsWith('/signals/'),
       title: '访问信号研究与图谱',
       required: ['signals_advanced'],
-      alternatives: [{ to: '/intelligence/global-news', label: '先看资讯中心' }, ...defaultAlternatives],
+      alternatives: newsAlternatives,
     },
     {
       test: (pathName) => pathName.startsWith('/stocks/'),
       title: '访问股票高级模块',
       required: ['stocks_advanced'],
-      alternatives: [{ to: '/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives],
+      alternatives: stockNewsAlternatives,
     },
   ]
   const matched = rules.find((item) => item.test(path))

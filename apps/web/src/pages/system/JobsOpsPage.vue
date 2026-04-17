@@ -97,15 +97,23 @@
             操作建议：先 `dry-run` 看命令是否合理，再做真实触发；如果最近运行区已经有连续失败，先排查不要盲点重试。
           </div>
           <div class="flex flex-wrap gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="!selectedJob || dryRunMutation.isPending.value" @click="doDryRun">
+            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="!selectedJob || dryRunMutation.isPending.value || triggerMutation.isPending.value" @click="doDryRun">
               {{ dryRunMutation.isPending.value ? 'dry-run 中...' : 'dry-run' }}
             </button>
-            <button class="rounded-2xl bg-blue-700 px-4 py-2 text-white disabled:opacity-40" :disabled="!selectedJob || triggerMutation.isPending.value" @click="doTrigger">
+            <button class="rounded-2xl bg-blue-700 px-4 py-2 text-white disabled:opacity-40" :disabled="dryRunMutation.isPending.value || triggerMutation.isPending.value" @click="doTrigger">
               {{ triggerMutation.isPending.value ? '触发中...' : '手动触发' }}
             </button>
           </div>
-          <div v-if="actionMessage" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
-            {{ actionMessage }}
+          <div
+            v-if="actionFeedback.text"
+            class="mt-3 rounded-[18px] border px-4 py-3 text-sm"
+            :class="actionFeedbackClass"
+          >
+            <div class="font-semibold">最近写操作反馈</div>
+            <div class="mt-1">{{ actionFeedback.text }}</div>
+            <div v-if="actionFeedback.confirmedAt" class="mt-1 text-xs opacity-80">
+              最近确认时间：{{ actionFeedback.confirmedAt }}
+            </div>
           </div>
 
           <div class="mt-4 space-y-2">
@@ -189,7 +197,11 @@ const filters = reactive({
 const runLimit = ref(80)
 const selectedJob = ref<Record<string, any> | null>(null)
 const dryRunCommands = ref<string[]>([])
-const actionMessage = ref('')
+const actionFeedback = reactive<{ text: string; tone: 'success' | 'error' | 'info'; confirmedAt: string }>({
+  text: '',
+  tone: 'info',
+  confirmedAt: '',
+})
 const ui = useUiStore()
 
 const jobsQuery = useQuery({
@@ -215,32 +227,51 @@ const dryRunMutation = useMutation({
   onSuccess: (payload) => {
     const commands = Array.isArray(payload?.commands) ? payload.commands : []
     dryRunCommands.value = commands.map((cmd: unknown) => Array.isArray(cmd) ? cmd.join(' ') : String(cmd || ''))
-    actionMessage.value = `dry-run 完成：${payload?.job_key || ''}，命令数 ${dryRunCommands.value.length}`
+    const successMessage = `dry-run 完成：${payload?.job_key || ''}，命令数 ${dryRunCommands.value.length}`
+    setActionFeedback(successMessage, 'success')
     ui.showToast('dry-run 已完成', 'success')
   },
   onError: (error: Error) => {
-    actionMessage.value = `dry-run 失败：${error.message}`
     dryRunCommands.value = []
-    ui.showToast(actionMessage.value, 'error')
+    const failureMessage = `dry-run 失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
   },
 })
 
 const triggerMutation = useMutation({
   mutationFn: (jobKey: string) => triggerJob(jobKey),
   onSuccess: async (payload) => {
-    actionMessage.value = `触发完成：${payload?.job_key || ''} · status=${payload?.status || '-'} · run_id=${payload?.run_id || '-'}`
+    const successMessage = `触发完成：${payload?.job_key || ''} · status=${payload?.status || '-'} · run_id=${payload?.run_id || '-'}`
+    setActionFeedback(successMessage, 'success')
     ui.showToast('任务触发已提交', 'info')
     await Promise.all([runsQuery.refetch(), alertsQuery.refetch()])
   },
   onError: (error: Error) => {
-    actionMessage.value = `触发失败：${error.message}`
-    ui.showToast(actionMessage.value, 'error')
+    const failureMessage = `触发失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
   },
 })
 
 const jobRows = computed<Array<Record<string, any>>>(() => (jobsQuery.data.value?.items || []) as Array<Record<string, any>>)
 const runsRows = computed<Array<Record<string, any>>>(() => (runsQuery.data.value?.items || []) as Array<Record<string, any>>)
 const alertsRows = computed<Array<Record<string, any>>>(() => (alertsQuery.data.value?.items || []) as Array<Record<string, any>>)
+const actionFeedbackClass = computed(() => {
+  if (actionFeedback.tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (actionFeedback.tone === 'error') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-[var(--line)] bg-[rgba(255,255,255,0.72)] text-[var(--muted)]'
+})
+
+function resolveActionError(error: unknown) {
+  return String((error as any)?.response?.data?.error || (error as Error)?.message || 'unknown')
+}
+
+function setActionFeedback(text: string, tone: 'success' | 'error' | 'info' = 'info') {
+  actionFeedback.text = text
+  actionFeedback.tone = tone
+  actionFeedback.confirmedAt = new Date().toLocaleString('zh-CN', { hour12: false })
+}
 
 const categoryOptions = computed(() => {
   const set = new Set<string>()
@@ -326,7 +357,6 @@ watch(
 function selectJob(item: Record<string, any>) {
   selectedJob.value = item
   dryRunCommands.value = []
-  actionMessage.value = ''
 }
 
 function doDryRun() {
@@ -335,7 +365,10 @@ function doDryRun() {
 }
 
 function doTrigger() {
-  if (!selectedJob.value?.job_key) return
+  if (!selectedJob.value?.job_key) {
+    setActionFeedback('触发失败：请先从任务列表中选择一个任务。', 'error')
+    return
+  }
   triggerMutation.mutate(String(selectedJob.value.job_key))
 }
 

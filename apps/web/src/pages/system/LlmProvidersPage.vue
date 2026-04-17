@@ -35,9 +35,23 @@
           </div>
         </div>
         <div class="mt-3">
-          <button class="rounded-2xl bg-stone-800 px-4 py-3 text-white" :disabled="createPending" @click="createNode">
+          <button class="rounded-2xl bg-stone-800 px-4 py-3 text-white disabled:opacity-50" :disabled="createPending" @click="createNode">
             {{ createPending ? '新增中...' : '新增节点' }}
           </button>
+        </div>
+        <div
+          v-if="actionFeedback.text"
+          class="mt-3 rounded-[18px] border px-4 py-3 text-sm"
+          :class="actionFeedbackClass"
+        >
+          <div class="font-semibold">最近写操作反馈</div>
+          <div class="mt-1">{{ actionFeedback.text }}</div>
+          <div v-if="actionFeedback.confirmedAt" class="mt-1 text-xs opacity-80">
+            最近确认时间：{{ actionFeedback.confirmedAt }}
+          </div>
+          <div v-if="actionFeedback.tone === 'error'" class="mt-2 text-xs opacity-80">
+            建议：核查节点配置与 API Key；如持续失败，请前往"数据源监控"页检查 LLM 节点状态。
+          </div>
         </div>
       </PageSection>
 
@@ -89,11 +103,12 @@
             </button>
             <button
               type="button"
-              class="rounded-xl px-3 py-2 text-sm"
+              class="rounded-xl px-3 py-2 text-sm disabled:opacity-60"
               :class="currentPreview.status === 'active' ? 'border border-amber-200 bg-amber-50 text-amber-700' : 'border border-emerald-200 bg-emerald-50 text-emerald-700'"
+              :disabled="previewWritePending"
               @click.stop="toggleNodeStatus(currentPreview)"
             >
-              {{ currentPreview.status === 'active' ? '关闭节点' : '开启节点' }}
+              {{ previewWritePending ? '处理中...' : (currentPreview.status === 'active' ? '关闭节点' : '开启节点') }}
             </button>
           </div>
         </div>
@@ -112,8 +127,8 @@
             <template #default>
               <div class="mt-3 flex flex-wrap gap-2">
                 <button type="button" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click.stop="setCurrentPreview(item)">设为当前预览</button>
-                <button type="button" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click.stop="openEdit(item)">编辑</button>
-                <button type="button" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" @click.stop="removeNode(item)">删除</button>
+                <button type="button" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm disabled:opacity-60" :disabled="!!nodeWritePending[buildNodeKey(item)]" @click.stop="openEdit(item)">编辑</button>
+                <button type="button" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 disabled:opacity-60" :disabled="!!nodeWritePending[buildNodeKey(item)]" @click.stop="removeNode(item)">{{ nodeWritePending[buildNodeKey(item)] === 'delete' ? '删除中...' : '删除' }}</button>
                 <button
                   type="button"
                   class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 disabled:opacity-60"
@@ -124,11 +139,12 @@
                 </button>
                 <button
                   type="button"
-                  class="rounded-xl px-3 py-2 text-sm"
+                  class="rounded-xl px-3 py-2 text-sm disabled:opacity-60"
                   :class="item.status === 'active' ? 'border border-amber-200 bg-amber-50 text-amber-700' : 'border border-emerald-200 bg-emerald-50 text-emerald-700'"
+                  :disabled="!!nodeWritePending[buildNodeKey(item)]"
                   @click.stop="toggleNodeStatus(item)"
                 >
-                  {{ item.status === 'active' ? '关闭节点' : '开启节点' }}
+                  {{ nodeWritePending[buildNodeKey(item)] === 'toggle' ? '处理中...' : (item.status === 'active' ? '关闭节点' : '开启节点') }}
                 </button>
               </div>
             </template>
@@ -251,11 +267,37 @@ const defaultRateLimitFeedback = ref('')
 const lastLoadedDefaultRateLimit = ref<number | null>(null)
 const singleTestPending = ref(false)
 const singleTestTargetKey = ref('')
+const nodeWritePending = reactive<Record<string, 'delete' | 'toggle' | undefined>>({})
+const actionFeedback = reactive<{ text: string; tone: 'success' | 'error' | 'info'; confirmedAt: string }>({
+  text: '',
+  tone: 'info',
+  confirmedAt: '',
+})
 
 const modelKeys = computed(() => Array.from(new Set(rows.value.map((item) => String(item.model || '').trim()).filter(Boolean))).sort())
 const previewKey = computed(() =>
   currentPreview.value ? `${currentPreview.value.provider_key}-${currentPreview.value.index}` : '',
 )
+const previewWritePending = computed(() => !!(previewKey.value && nodeWritePending[previewKey.value]))
+const actionFeedbackClass = computed(() => {
+  if (actionFeedback.tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (actionFeedback.tone === 'error') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-[var(--line)] bg-[rgba(255,255,255,0.72)] text-[var(--muted)]'
+})
+
+function buildNodeKey(item: Pick<LlmProviderItem, 'provider_key' | 'index'>): string {
+  return `${item.provider_key}-${item.index}`
+}
+
+function resolveActionError(error: unknown) {
+  return String((error as any)?.response?.data?.error || (error as Error)?.message || 'unknown')
+}
+
+function setActionFeedback(text: string, tone: 'success' | 'error' | 'info' = 'info') {
+  actionFeedback.text = text
+  actionFeedback.tone = tone
+  actionFeedback.confirmedAt = new Date().toLocaleString('zh-CN', { hour12: false })
+}
 
 function buildDescription(item: LlmProviderItem): string {
   const obs = item.observability_7d || {}
@@ -321,6 +363,12 @@ async function createNode() {
   try {
     await createLlmProvider({ ...createForm })
     await refreshAll()
+    setActionFeedback(`已新增节点 ${createForm.provider_key}`, 'success')
+    ui.showToast(`已新增节点 ${createForm.provider_key}`, 'success')
+  } catch (error) {
+    const failureMessage = `新增节点失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
   } finally {
     createPending.value = false
   }
@@ -358,7 +406,14 @@ async function saveEdit() {
       rate_limit_per_minute: editModal.form.rate_limit_per_minute,
     })
     await refreshAll()
+    const successMessage = `已保存节点 ${editModal.provider_key}#${editModal.index}`
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
     closeEdit()
+  } catch (error) {
+    const failureMessage = `保存节点失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
   } finally {
     editPending.value = false
   }
@@ -366,8 +421,21 @@ async function saveEdit() {
 
 async function removeNode(item: LlmProviderItem) {
   if (!await confirmDangerAction('删除 LLM 节点', `${item.provider_key}#${item.index}`, '删除后需要重新配置节点信息。')) return
-  await deleteLlmProvider({ provider_key: item.provider_key, index: item.index })
-  await refreshAll()
+  const nodeKey = buildNodeKey(item)
+  nodeWritePending[nodeKey] = 'delete'
+  try {
+    await deleteLlmProvider({ provider_key: item.provider_key, index: item.index })
+    await refreshAll()
+    const successMessage = `已删除节点 ${item.provider_key}#${item.index}`
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
+  } catch (error) {
+    const failureMessage = `删除节点失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
+  } finally {
+    delete nodeWritePending[nodeKey]
+  }
 }
 
 async function testOne(item: LlmProviderItem) {
@@ -417,12 +485,25 @@ function setCurrentPreview(item: LlmProviderItem) {
 async function toggleNodeStatus(item: LlmProviderItem) {
   const action = item.status === 'active' ? '关闭节点' : '开启节点'
   if (!await confirmDangerAction(action, `${item.provider_key}#${item.index}`)) return
-  await updateLlmProvider({
-    provider_key: item.provider_key,
-    index: item.index,
-    status: item.status === 'active' ? 'disabled' : 'active',
-  })
-  await refreshAll()
+  const nodeKey = buildNodeKey(item)
+  nodeWritePending[nodeKey] = 'toggle'
+  try {
+    await updateLlmProvider({
+      provider_key: item.provider_key,
+      index: item.index,
+      status: item.status === 'active' ? 'disabled' : 'active',
+    })
+    await refreshAll()
+    const successMessage = `已${item.status === 'active' ? '关闭' : '开启'}节点 ${item.provider_key}#${item.index}`
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
+  } catch (error) {
+    const failureMessage = `${action}失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
+  } finally {
+    delete nodeWritePending[nodeKey]
+  }
 }
 
 async function saveDefaultLimit() {
@@ -442,18 +523,22 @@ async function saveDefaultLimit() {
     if (effectiveValue === requestedValue) {
       ui.showToast('默认限速已保存。', 'success')
       defaultRateLimitFeedback.value = '默认限速已保存。'
+      setActionFeedback('默认限速已保存。', 'success')
     } else {
       ui.showToast(`默认限速已更新为 ${effectiveValue}。`, 'success')
       defaultRateLimitFeedback.value = `默认限速已更新为 ${effectiveValue}。`
+      setActionFeedback(`默认限速已更新为 ${effectiveValue}。`, 'success')
     }
     if (!changed) {
       ui.showToast('配置未变化，已确认当前默认限速。', 'info')
       defaultRateLimitFeedback.value = '配置未变化，已确认当前默认限速。'
+      setActionFeedback('配置未变化，已确认当前默认限速。', 'info')
     }
   } catch (error: any) {
     const detail = String(error?.response?.data?.error || error?.message || 'unknown')
     ui.showToast(`保存默认限速失败：${detail}`, 'error')
     defaultRateLimitFeedback.value = `保存默认限速失败：${detail}`
+    setActionFeedback(`保存默认限速失败：${detail}`, 'error')
   } finally {
     saveDefaultLimitPending.value = false
   }

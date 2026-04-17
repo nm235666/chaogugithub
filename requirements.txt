@@ -1,5 +1,5 @@
 # Core database drivers
-psycopg2==2.9.2
+psycopg2-binary==2.9.2
 redis==3.5.3
 
 # HTTP / networking

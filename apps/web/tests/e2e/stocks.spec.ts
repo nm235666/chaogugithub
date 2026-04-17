@@ -2,18 +2,25 @@ import { test, expect } from '@playwright/test'
 
 async function loginAsAdmin(page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/login')
-    await page.waitForTimeout(900)
-    await page.fill('input[type="text"]', 'nm235666')
-    await page.fill('input[type="password"]', 'nm235689')
-    for (const pick of ['last', 'first'] as const) {
+    try {
+      await page.goto('/login')
+      // SPA may redirect immediately if session is already active
       try {
-        await page.getByRole('button', { name: '登录' })[pick]().click({ timeout: 4000 })
-        await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 12000 })
+        await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 2000 })
+        await expect(page.locator('#main-content')).toBeVisible({ timeout: 12000 })
         return
       } catch {
-        // continue to next strategy
+        // Still on login page, proceed to authenticate
       }
+      await page.getByPlaceholder('请输入账号（3-32位英文数字._-）').waitFor({ state: 'visible', timeout: 15000 })
+      await page.getByPlaceholder('请输入账号（3-32位英文数字._-）').fill('nm235666')
+      await page.getByPlaceholder('请输入密码（至少6位）').fill('nm235689')
+      await page.locator('button').filter({ hasText: /^登录$/ }).last().click({ timeout: 4000 })
+      await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 12000 })
+      await expect(page.locator('#main-content')).toBeVisible({ timeout: 12000 })
+      return
+    } catch {
+      // retry on transient login/render failures
     }
   }
   throw new Error('admin login failed after retries')
@@ -82,9 +89,14 @@ test.describe('股票模块', () => {
   test('评分页跳转决策板时携带上下文', async ({ page }) => {
     await page.goto('/stocks/scores?industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414')
     await page.waitForTimeout(3000)
-    await page.getByRole('link', { name: '打开决策板' }).click()
-    await page.waitForTimeout(3500)
-    await expect(page).toHaveURL(/\/research\/decision/)
+    const decisionLink = page.getByRole('link', { name: '打开决策板' })
+    await expect(decisionLink).toHaveAttribute('href', /\/research\/decision/)
+    await expect(decisionLink).toHaveAttribute('href', /industry=%E9%93%B6%E8%A1%8C/)
+    await expect(decisionLink).toHaveAttribute('href', /keyword=%E5%B9%B3%E5%AE%89/)
+    await expect(decisionLink).toHaveAttribute('href', /score_date=20260414/)
+    await decisionLink.click()
+    await page.waitForURL(/\/research\/decision/, { timeout: 15000 })
+    await expect(page.locator('#main-content')).toBeVisible({ timeout: 15000 })
     await expect(page.locator('text=当前研究上下文').first()).toBeVisible()
     await expect(page.locator('text=行业 银行').first()).toBeVisible()
     await expect(page.locator('text=关键词 平安').first()).toBeVisible()

@@ -1,3 +1,7 @@
+---
+name: minimal-fix
+---
+
 # Minimal Fix
 
 Use this skill when the task should be solved with the smallest possible code change.

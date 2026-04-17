@@ -24,9 +24,14 @@
             <div class="page-insight-note">评分 {{ formatNumber(marketRegime.score, 1) }}，建议先按模式理解仓位语言，再看个股执行。</div>
           </div>
           <div class="page-insight-item">
-            <div class="page-insight-label">最值得先看</div>
-            <div class="page-insight-value">{{ focusStock?.name || shortlist[0]?.name || '短名单为空' }}</div>
-            <div class="page-insight-note">短名单 {{ shortlist.length }} 只；优先检查总分高且风险提示较少的标的。</div>
+            <div class="page-insight-label">候选 / 待办</div>
+            <div class="page-insight-value">{{ shortlist.length }} 只候选 · {{ todayWatchCount }} 项跟踪</div>
+            <div class="page-insight-note">今日候选短名单 {{ shortlist.length }} 只；观察中动作 {{ todayWatchCount }} 项，点击下方列表处理。</div>
+          </div>
+          <div class="page-insight-item">
+            <div class="page-insight-label">风险 / 复盘</div>
+            <div class="page-insight-value">{{ riskIndicatorText }}</div>
+            <div class="page-insight-note">{{ riskIndicatorNote }}</div>
           </div>
         </div>
       </div>
@@ -47,9 +52,19 @@
             </button>
           </div>
           <div class="mt-2 flex flex-wrap gap-2 text-xs">
+            <span v-if="decisionContext.from" class="metric-chip font-semibold text-emerald-700">来源 {{ sourceModuleLabel(decisionContext.from) }}</span>
             <span v-if="decisionContext.industry" class="metric-chip">行业 {{ decisionContext.industry }}</span>
             <span v-if="decisionContext.keyword" class="metric-chip">关键词 {{ decisionContext.keyword }}</span>
             <span v-if="decisionContext.score_date" class="metric-chip">评分日期 {{ decisionContext.score_date }}</span>
+          </div>
+          <div v-if="hasExternalSource && actionTsCodeDraft" class="mt-3">
+            <div class="text-xs font-semibold text-[var(--ink)]">快速记录动作：{{ actionTsCodeDraft }}</div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 disabled:opacity-60 hover:bg-emerald-100" :disabled="isActionPending" @click="submitManualAction('watch', actionTsCodeDraft, actionNoteDraft, actionTsCodeDraft)">{{ isActionPending ? '记录中...' : '观察' }}</button>
+              <button class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 disabled:opacity-60 hover:bg-emerald-100" :disabled="isActionPending" @click="submitManualAction('confirm', actionTsCodeDraft, actionNoteDraft, actionTsCodeDraft)">{{ isActionPending ? '记录中...' : '确认' }}</button>
+              <button class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-60 hover:bg-amber-100" :disabled="isActionPending" @click="submitManualAction('defer', actionTsCodeDraft, actionNoteDraft, actionTsCodeDraft)">{{ isActionPending ? '记录中...' : '暂缓' }}</button>
+              <button class="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-60 hover:bg-red-100" :disabled="isActionPending" @click="submitManualAction('reject', actionTsCodeDraft, actionNoteDraft, actionTsCodeDraft)">{{ isActionPending ? '记录中...' : '拒绝' }}</button>
+            </div>
           </div>
           <div class="mt-2 text-xs text-[var(--muted)]">作用范围：仅用于决策板默认查询条件，不会修改底层评分数据。</div>
         </div>
@@ -75,6 +90,17 @@
           <StatusBadge :value="marketRegime.mode || 'muted'" :label="marketRegime.label || '数据不足'" />
           <StatusBadge value="info" :label="`短名单 ${shortlist.length}`" />
           <StatusBadge value="muted" :label="`行业 ${industries.length}`" />
+        </div>
+        <div v-if="lastTraceFeedback.action_id || lastTraceFeedback.run_id || lastTraceFeedback.snapshot_id || latestSnapshotId || latestActionId || snapshotDate" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
+          <div class="font-semibold text-[var(--ink)]">最近链路标识</div>
+          <div class="mt-2 flex flex-wrap gap-2 text-xs">
+            <span v-if="lastTraceFeedback.action_id" class="metric-chip">action_id {{ lastTraceFeedback.action_id }}</span>
+            <span v-else-if="latestActionId" class="metric-chip">action_id {{ latestActionId }}</span>
+            <span v-if="lastTraceFeedback.run_id" class="metric-chip">run_id {{ lastTraceFeedback.run_id }}</span>
+            <span v-if="lastTraceFeedback.snapshot_id" class="metric-chip">snapshot_id {{ lastTraceFeedback.snapshot_id }}</span>
+            <span v-else-if="latestSnapshotId" class="metric-chip">snapshot_id {{ latestSnapshotId }}</span>
+            <span v-if="snapshotDate" class="metric-chip">snapshot_date {{ snapshotDate }}</span>
+          </div>
         </div>
         <div v-if="message" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
           {{ message }}
@@ -112,6 +138,98 @@
         <StatCard title="行业数" :value="String(industries.length || 0)" :hint="`Top 行业 ${topIndustryName || '-'}`" />
         <StatCard title="验证层" :value="validation.status || 'idle'" :hint="`done ${validation.done ?? 0} · error ${validation.error ?? 0}`" />
       </div>
+
+      <PageSection v-if="recentVerdicts.length" title="近期首席裁决" subtitle="来自多角色分析的方向性判断，按时间倒序排列。">
+        <div class="flex flex-wrap gap-3">
+          <div
+            v-for="item in recentVerdicts"
+            :key="item.id"
+            class="flex min-w-[160px] flex-1 items-center gap-3 rounded-2xl border-2 px-4 py-3"
+            :class="item.action_type === 'confirm' ? 'border-emerald-300 bg-emerald-50' : item.action_type === 'reject' ? 'border-red-300 bg-red-50' : 'border-amber-200 bg-amber-50'"
+          >
+            <div
+              class="shrink-0 rounded-full px-2.5 py-1 text-xs font-bold text-white"
+              :class="item.action_type === 'confirm' ? 'bg-emerald-700' : item.action_type === 'reject' ? 'bg-red-700' : 'bg-amber-600'"
+            >
+              {{ actionLabel(item.action_type) }}
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2">
+                <RouterLink
+                  v-if="item.ts_code"
+                  :to="`/stocks/detail/${item.ts_code}`"
+                  class="block truncate text-sm font-semibold text-[var(--ink)] hover:underline"
+                >
+                  {{ item.stock_name || item.ts_code }}
+                </RouterLink>
+                <span v-if="verdictReturn(item).text" class="shrink-0 text-xs" :class="verdictReturn(item).cls">
+                  {{ verdictReturn(item).text }}
+                </span>
+              </div>
+              <div class="mt-0.5 truncate text-xs text-[var(--muted)]">{{ item.created_at || '-' }}</div>
+              <div v-if="item.note" class="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{{ item.note }}</div>
+            </div>
+          </div>
+        </div>
+      </PageSection>
+
+      <PageSection
+        v-if="calibrationSummary.total_count > 0 || calibrationQuery.isFetched.value"
+        title="裁决精准度"
+        subtitle="历史看多/看空裁决的 5 日胜率，用于评估判断质量。"
+      >
+        <div class="grid gap-3 md:grid-cols-3">
+          <StatCard
+            title="看多命中率"
+            :value="calibrationSummary.confirm_count ? `${(calibrationSummary.confirm_hit_rate_5d * 100).toFixed(0)}%` : '-'"
+            :hint="`命中 ${calibrationSummary.confirm_hit_5d} / ${calibrationSummary.confirm_count} 次（5 日为基准）`"
+          />
+          <StatCard
+            title="看空命中率"
+            :value="calibrationSummary.reject_count ? `${(calibrationSummary.reject_hit_rate_5d * 100).toFixed(0)}%` : '-'"
+            :hint="`命中 ${calibrationSummary.reject_hit_5d} / ${calibrationSummary.reject_count} 次（5 日为基准）`"
+          />
+          <StatCard
+            title="整体准确率"
+            :value="calibrationSummary.total_count ? `${(calibrationSummary.total_hit_rate_5d * 100).toFixed(0)}%` : '-'"
+            :hint="`共 ${calibrationSummary.total_count} 条有效裁决`"
+          />
+        </div>
+        <DataTable
+          v-if="calibrationItems.length"
+          class="mt-4"
+          :columns="calibrationColumns"
+          :rows="calibrationItems"
+        >
+          <template #cell-action_type="{ row }">
+            <StatusBadge :value="actionTone(row.action_type)" :label="actionLabel(row.action_type)" />
+          </template>
+          <template #cell-return_5d="{ row }">
+            <span :class="returnClass(row.return_5d)">{{ formatReturn(row.return_5d) }}</span>
+          </template>
+          <template #cell-return_20d="{ row }">
+            <span :class="returnClass(row.return_20d)">{{ formatReturn(row.return_20d) }}</span>
+          </template>
+          <template #cell-return_60d="{ row }">
+            <span :class="returnClass(row.return_60d)">{{ formatReturn(row.return_60d) }}</span>
+          </template>
+          <template #cell-hit_5d="{ row }">
+            <div class="flex items-center gap-2">
+              <span v-if="row.hit_5d === true" class="text-emerald-600 font-semibold">命中</span>
+              <span v-else-if="row.hit_5d === false" class="text-red-500">未中</span>
+              <span v-else class="text-[var(--muted)]">-</span>
+              <RouterLink
+                v-if="row.payload?.context?.job_id"
+                :to="`/research/multi-role?restore_job=${row.payload.context.job_id}`"
+                class="rounded-full border border-[var(--line)] bg-white px-2 py-0.5 text-xs text-[var(--brand)] hover:underline"
+              >
+                原始分析
+              </RouterLink>
+            </div>
+          </template>
+        </DataTable>
+        <div v-else class="mt-3 text-sm text-[var(--muted)]">暂无裁决记录（需要 confirm 或 reject 类型的决策动作）。</div>
+      </PageSection>
 
       <div class="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <PageSection title="市场模式与交易计划" subtitle="把宏观评分直接转成仓位语言与执行提醒。">
@@ -258,6 +376,10 @@
             {{ isActionPending ? '记录中...' : '记录确认' }}
           </button>
         </div>
+        <div class="mt-3 grid gap-3 xl:grid-cols-2">
+          <input v-model.trim="actionEvidenceDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="证据来源（可选），如「多角色分析 run_id=xxx」" />
+          <input v-model.trim="actionReviewConclusionDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="复盘结论（可选），如「5日内涨幅超预期，模式有效」" />
+        </div>
         <div class="mt-3 flex flex-wrap gap-2 text-xs">
           <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="isActionPending || !actionTsCodeDraft.trim()" @click="submitManualAction('confirm', actionTsCodeDraft, actionNoteDraft, actionTsCodeDraft)">
             确认
@@ -281,12 +403,83 @@
             :description="item.note || item.payload?.context?.reason || '暂无备注'"
           >
             <template #badge>
-              <StatusBadge :value="item.action_type || 'muted'" :label="item.action_type || '-'" />
+              <StatusBadge :value="actionTone(item.action_type)" :label="actionLabel(item.action_type)" />
             </template>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <span class="metric-chip">source {{ actionSource(item) }}</span>
+              <span class="metric-chip">状态 {{ actionDisplayStatus(item) }}</span>
+              <span v-if="actionTraceId(item)" class="metric-chip">action_id {{ actionTraceId(item) }}</span>
+              <span v-if="actionJobId(item)" class="metric-chip">job_id {{ actionJobId(item) }}</span>
+            </div>
+            <div class="mt-2 text-xs text-[var(--muted)]">
+              <span>最近更新 {{ actionDisplayUpdatedAt(item) }}</span>
+              <span v-if="actionStageSummary(item)"> · 阶段 {{ actionStageSummary(item) }}</span>
+            </div>
+            <div v-if="actionEvidenceSources(item).length" class="mt-2 flex flex-wrap gap-1.5 text-xs">
+              <span class="font-semibold text-[var(--muted)]">证据：</span>
+              <span v-for="(ev, ei) in actionEvidenceSources(item)" :key="ei" class="metric-chip text-[11px]">{{ ev }}</span>
+            </div>
+            <div v-if="actionReviewConclusion(item)" class="mt-2 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              <span class="font-semibold">复盘：</span>{{ actionReviewConclusion(item) }}
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <RouterLink
+                v-if="actionRestoreLink(item)"
+                :to="actionRestoreLink(item)"
+                class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--brand)] transition hover:underline"
+              >
+                {{ actionRestoreLabel(item) }}
+              </RouterLink>
+              <RouterLink
+                v-if="item.ts_code"
+                :to="`/stocks/detail/${item.ts_code}`"
+                class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+              >
+                查看股票详情
+              </RouterLink>
+            </div>
           </InfoCard>
         </div>
         <div v-else class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm text-[var(--muted)]">
           暂无人工确认记录。
+        </div>
+      </PageSection>
+
+      <!-- 复盘面板：汇总历史裁决动作，显示价格验证结果与复盘结论，形成策略反馈闭环 -->
+      <PageSection title="决策复盘" subtitle="历史裁决的价格验证结果与复盘结论汇总，命中率反哺策略优化。">
+        <div class="grid gap-3 md:grid-cols-3 mb-4">
+          <StatCard title="确认命中率（5日）" :value="calibrationSummary.confirm_count ? `${(calibrationSummary.confirm_hit_rate_5d * 100).toFixed(0)}%` : '-'" :hint="`命中 ${calibrationSummary.confirm_hit_5d ?? 0} / ${calibrationSummary.confirm_count ?? 0} 次`" />
+          <StatCard title="拒绝命中率（5日）" :value="calibrationSummary.reject_count ? `${(calibrationSummary.reject_hit_rate_5d * 100).toFixed(0)}%` : '-'" :hint="`命中 ${calibrationSummary.reject_hit_5d ?? 0} / ${calibrationSummary.reject_count ?? 0} 次`" />
+          <StatCard title="综合命中率（5日）" :value="calibrationSummary.total_count ? `${(calibrationSummary.total_hit_rate_5d * 100).toFixed(0)}%` : '-'" :hint="`共 ${calibrationSummary.total_count ?? 0} 条有效裁决`" />
+        </div>
+        <div v-if="reviewItems.length" class="space-y-2">
+          <InfoCard
+            v-for="item in reviewItems"
+            :key="`review-${item.id}`"
+            :title="`${item.stock_name || item.ts_code || '-'} · ${actionLabel(item.action_type)}`"
+            :meta="`${item.ts_code || '-'} · ${item.created_at || '-'} · ${item.actor || '-'}`"
+            :description="item.note || ''"
+          >
+            <template #badge>
+              <StatusBadge
+                :value="item.hit_5d === true ? 'success' : item.hit_5d === false ? 'danger' : 'muted'"
+                :label="item.hit_5d === true ? '命中' : item.hit_5d === false ? '未命中' : '待验证'"
+              />
+            </template>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <span v-if="item.price_at_verdict != null" class="metric-chip">裁决时价 <strong>{{ Number(item.price_at_verdict).toFixed(2) }}</strong></span>
+              <span v-if="item.return_5d != null" :class="['metric-chip', Number(item.return_5d) > 0 ? 'text-emerald-700' : Number(item.return_5d) < 0 ? 'text-red-600' : '']">5日 <strong>{{ Number(item.return_5d) >= 0 ? '+' : '' }}{{ Number(item.return_5d).toFixed(1) }}%</strong></span>
+              <span v-if="item.return_20d != null" :class="['metric-chip', Number(item.return_20d) > 0 ? 'text-emerald-700' : Number(item.return_20d) < 0 ? 'text-red-600' : '']">20日 <strong>{{ Number(item.return_20d) >= 0 ? '+' : '' }}{{ Number(item.return_20d).toFixed(1) }}%</strong></span>
+              <span v-if="item.return_60d != null" :class="['metric-chip', Number(item.return_60d) > 0 ? 'text-emerald-700' : Number(item.return_60d) < 0 ? 'text-red-600' : '']">60日 <strong>{{ Number(item.return_60d) >= 0 ? '+' : '' }}{{ Number(item.return_60d).toFixed(1) }}%</strong></span>
+            </div>
+            <div v-if="actionReviewConclusion(item)" class="mt-2 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              <span class="font-semibold">复盘结论：</span>{{ actionReviewConclusion(item) }}
+            </div>
+            <div v-else class="mt-2 text-xs text-[var(--muted)]">尚无复盘结论 — 可在"人工确认记录"中填写"复盘结论"字段后重新提交。</div>
+          </InfoCard>
+        </div>
+        <div v-else class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm text-[var(--muted)]">
+          暂无已裁决动作可复盘（需先产生确认或拒绝动作）。
         </div>
       </PageSection>
     </div>
@@ -295,7 +488,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useMutation, useQuery } from '@tanstack/vue-query'
+import { useMutation, useQueries, useQuery } from '@tanstack/vue-query'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -303,7 +496,9 @@ import DataTable from '../../shared/ui/DataTable.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
-import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionHistory, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
+import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionCalibration, fetchDecisionHistory, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
+import type { DecisionTraceReceipt } from '../../services/api/decision'
+import { fetchStockPrices } from '../../services/api/stocks'
 import { formatNumber } from '../../shared/utils/format'
 import { buildCleanQuery, readQueryString } from '../../shared/utils/urlState'
 
@@ -315,9 +510,16 @@ type DecisionContext = {
   score_date: string
 }
 type SnapshotFeedback = {
+  receipt?: DecisionTraceReceipt
   run_id?: string
   snapshot_id?: string
+  action_id?: string
   job_id?: string
+  trace?: {
+    run_id?: string
+    snapshot_id?: string
+    action_id?: string
+  }
 }
 
 const route = useRoute()
@@ -329,10 +531,13 @@ const pageSize = ref(12)
 const killReasonDraft = ref('手动切换')
 const actionTsCodeDraft = ref('000001.SZ')
 const actionNoteDraft = ref('已确认')
+const actionEvidenceDraft = ref('')
+const actionReviewConclusionDraft = ref('')
 const message = ref('')
 const snapshotStatus = ref<ActionStatus>('idle')
 const snapshotStatusText = ref('')
 const decisionContext = ref<DecisionContext>({ from: '', industry: '', keyword: '', score_date: '' })
+const lastTraceFeedback = ref<{ action_id: string; run_id: string; snapshot_id: string }>({ action_id: '', run_id: '', snapshot_id: '' })
 
 const boardQuery = useQuery({
   queryKey: computed(() => ['decision-board', focusTsCode.value, keywordFilter.value, pageSize.value]),
@@ -357,6 +562,12 @@ const actionsQuery = useQuery({
   refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
 })
 
+const calibrationQuery = useQuery({
+  queryKey: computed(() => ['decision-calibration', focusTsCode.value]),
+  queryFn: () => fetchDecisionCalibration({ page: 1, page_size: 20, ts_code: focusTsCode.value }),
+  refetchInterval: () => (document.visibilityState === 'visible' ? 120_000 : 600_000),
+})
+
 const toggleKillSwitchMutation = useMutation({
   mutationFn: (allowTrading: boolean) => setDecisionKillSwitch({ allow_trading: allowTrading, reason: killReasonDraft.value }),
   onSuccess: async () => {
@@ -373,11 +584,15 @@ const runSnapshotMutation = useMutation({
   onSuccess: async (payload: SnapshotFeedback) => {
     snapshotStatus.value = 'success'
     const ts = new Date().toLocaleString('zh-CN', { hour12: false })
-    const runId = String(payload?.run_id || payload?.snapshot_id || payload?.job_id || '').trim()
-    snapshotStatusText.value = runId
-      ? `状态 success · 生成时间 ${ts} · 结果标识 ${runId}`
-      : `状态 success · 生成时间 ${ts} · 结果标识：无（后端未返回）`
-    message.value = runId ? `决策快照已生成（${runId}）。` : '决策快照已生成，但后端未返回标识。'
+    const trace = {
+      action_id: String(payload?.receipt?.trace?.action_id || payload?.trace?.action_id || payload?.action_id || '').trim(),
+      run_id: String(payload?.receipt?.trace?.run_id || payload?.trace?.run_id || payload?.run_id || payload?.job_id || '').trim(),
+      snapshot_id: String(payload?.receipt?.trace?.snapshot_id || payload?.trace?.snapshot_id || payload?.snapshot_id || '').trim(),
+    }
+    lastTraceFeedback.value = trace
+    const traceText = trace.snapshot_id || trace.run_id || '无（后端未返回）'
+    snapshotStatusText.value = `状态 success · 生成时间 ${ts} · 结果标识 ${traceText}`
+    message.value = trace.snapshot_id || trace.run_id ? `决策快照已生成（${trace.snapshot_id || trace.run_id}）。` : '决策快照已生成，但后端未返回标识。'
     await refreshAll()
   },
   onError: (error: Error) => {
@@ -388,21 +603,38 @@ const runSnapshotMutation = useMutation({
 })
 
 const actionMutation = useMutation({
-  mutationFn: (payload: { action_type: 'confirm' | 'reject' | 'defer' | 'watch' | 'review'; ts_code: string; stock_name?: string; note?: string }) =>
-    recordDecisionAction({
+  mutationFn: (payload: { action_type: 'confirm' | 'reject' | 'defer' | 'watch' | 'review'; ts_code: string; stock_name?: string; note?: string }) => {
+    const evidenceRaw = actionEvidenceDraft.value.trim()
+    const evidenceSources = evidenceRaw
+      ? evidenceRaw.split(/[,，;；]/).map((s) => ({ label: s.trim() })).filter((s) => s.label)
+      : undefined
+    const reviewConclusion = actionReviewConclusionDraft.value.trim() || undefined
+    return recordDecisionAction({
       action_type: payload.action_type,
       ts_code: payload.ts_code,
       stock_name: payload.stock_name || '',
       note: payload.note || '',
       snapshot_date: snapshotDate.value,
       context: {
-        source: 'decision_board',
+        source: decisionContext.value.from || 'decision_board',
+        source_module: decisionContext.value.from || 'decision_board',
         market_mode: marketRegime.value.mode || '',
         trade_plan: tradePlan.value.mode || '',
       },
-    }),
-  onSuccess: async () => {
-    message.value = '人工确认记录已保存。'
+      evidence_sources: evidenceSources,
+      review_conclusion: reviewConclusion,
+    })
+  },
+  onSuccess: async (payload) => {
+    const data = (payload || {}) as Record<string, any>
+    const receipt = (data.receipt || {}) as DecisionTraceReceipt
+    const trace = {
+      action_id: String(receipt.trace?.action_id || (data.trace as Record<string, any> | undefined)?.action_id || data.action_id || '').trim(),
+      run_id: String(receipt.trace?.run_id || (data.trace as Record<string, any> | undefined)?.run_id || data.run_id || '').trim(),
+      snapshot_id: String(receipt.trace?.snapshot_id || (data.trace as Record<string, any> | undefined)?.snapshot_id || data.snapshot_id || '').trim(),
+    }
+    lastTraceFeedback.value = trace
+    message.value = trace.action_id ? `人工确认记录已保存（${trace.action_id}）。` : '人工确认记录已保存。'
     await refreshAll()
   },
   onError: (error: Error) => {
@@ -426,13 +658,89 @@ const focusStock = computed<Record<string, any> | null>(() => (board.value.focus
 const killSwitch = computed<Record<string, any>>(() => (board.value.kill_switch || {}) as Record<string, any>)
 const historyItems = computed<Array<Record<string, any>>>(() => (historyQuery.data.value?.items || []) as Array<Record<string, any>>)
 const recentActions = computed<Array<Record<string, any>>>(() => (actionsQuery.data.value?.items || []) as Array<Record<string, any>>)
+const recentVerdicts = computed(() =>
+  recentActions.value
+    .filter((item) => ['confirm', 'reject', 'defer'].includes(String(item.action_type || '').toLowerCase()))
+    .slice(0, 6),
+)
+
+// Today's summary for decision hub
+const todayWatchCount = computed(() =>
+  recentActions.value.filter((item) => String(item.action_type || '').toLowerCase() === 'watch').length,
+)
+const riskIndicatorText = computed(() => {
+  const riskNote = String(tradePlan.value.risk_note || board.value.risk_note || '').trim()
+  if (riskNote) return riskNote.slice(0, 20)
+  const killAllowed = killSwitch.value.allow_trading !== false
+  return killAllowed ? '无紧急风险提示' : '⚠ Kill Switch 已关'
+})
+const riskIndicatorNote = computed(() => {
+  const undecided = recentActions.value.filter((item) =>
+    ['watch', 'review'].includes(String(item.action_type || '').toLowerCase()),
+  ).length
+  return `${undecided} 项待复核；复盘完成后在下方"决策复盘"区域记录结论。`
+})
+
+// Price-since-verdict queries — one per verdict card
+const verdictPriceQueries = useQueries({
+  queries: computed(() =>
+    recentVerdicts.value.map((item) => {
+      const dateStr = String(item.created_at || '').substring(0, 10).replace(/-/g, '')
+      return {
+        queryKey: ['verdict-price', String(item.ts_code || ''), dateStr] as const,
+        queryFn: () => fetchStockPrices({ ts_code: item.ts_code, start_date: dateStr, page: 1, page_size: 60 }),
+        enabled: Boolean(item.ts_code && dateStr.length === 8),
+        staleTime: 5 * 60 * 1000,
+      }
+    }),
+  ),
+})
+
+const verdictReturnMap = computed(() => {
+  const map = new Map<number | string, { pct: number | null; loading: boolean }>()
+  const queries = verdictPriceQueries.value
+  recentVerdicts.value.forEach((item, idx) => {
+    const q = queries[idx]
+    if (!q) { map.set(item.id, { pct: null, loading: false }); return }
+    if (q.isPending) { map.set(item.id, { pct: null, loading: true }); return }
+    const priceItems: Array<Record<string, any>> = (q.data as any)?.items ?? []
+    if (priceItems.length < 2) { map.set(item.id, { pct: null, loading: false }); return }
+    const latestClose = Number(priceItems[0]?.close ?? 0)
+    const verdictClose = Number(priceItems[priceItems.length - 1]?.close ?? 0)
+    if (!verdictClose) { map.set(item.id, { pct: null, loading: false }); return }
+    map.set(item.id, { pct: (latestClose - verdictClose) / verdictClose * 100, loading: false })
+  })
+  return map
+})
+
 const snapshotDate = computed(() => String(board.value.snapshot_date || '').trim())
+const latestSnapshotId = computed(() => {
+  const firstHistory = historyItems.value[0]
+  return String(firstHistory?.trace?.snapshot_id || '').trim()
+})
+const latestActionId = computed(() => {
+  const firstAction = recentActions.value[0]
+  return String(firstAction?.trace?.action_id || '').trim()
+})
 const topIndustryName = computed(() => String(industries.value[0]?.industry || '').trim())
 const killSwitchLabel = computed(() => (Number(killSwitch.value.allow_trading ?? 1) === 1 ? '交易允许' : '交易暂停'))
 const killSwitchTone = computed(() => (Number(killSwitch.value.allow_trading ?? 1) === 1 ? 'success' : 'danger'))
 const isTogglePending = computed(() => Boolean(toggleKillSwitchMutation.isPending.value))
 const isSnapshotPending = computed(() => Boolean(runSnapshotMutation.isPending.value))
 const isActionPending = computed(() => Boolean(actionMutation.isPending.value))
+const calibrationSummary = computed<Record<string, any>>(() => (calibrationQuery.data.value as any)?.summary ?? {})
+const calibrationItems = computed<Array<Record<string, any>>>(() => (calibrationQuery.data.value as any)?.items ?? [])
+
+const calibrationColumns = [
+  { key: 'stock_name', label: '股票' },
+  { key: 'action_type', label: '裁决' },
+  { key: 'created_at', label: '裁决日期' },
+  { key: 'price_at_verdict', label: '裁决时价格' },
+  { key: 'return_5d', label: '5日收益' },
+  { key: 'return_20d', label: '20日收益' },
+  { key: 'return_60d', label: '60日收益' },
+  { key: 'hit_5d', label: '结果' },
+]
 
 const industryColumns = [
   { key: 'industry', label: '行业' },
@@ -494,21 +802,138 @@ function resumeTrading() {
   toggleKillSwitchMutation.mutate(true)
 }
 
+const ACTION_LABEL_MAP: Record<string, string> = {
+  confirm: '确认 / 看多',
+  reject: '拒绝 / 看空',
+  defer: '暂缓 / 中性',
+  watch: '观察',
+  review: '复核',
+}
+const ACTION_TONE_MAP: Record<string, string> = {
+  confirm: 'success',
+  reject: 'danger',
+  defer: 'warning',
+  watch: 'info',
+  review: 'muted',
+}
+
+function actionLabel(type: string) {
+  return ACTION_LABEL_MAP[String(type || '').toLowerCase()] || String(type || '-').toUpperCase()
+}
+
+function actionTone(type: string) {
+  return ACTION_TONE_MAP[String(type || '').toLowerCase()] || 'muted'
+}
+
+function formatReturn(val: number | null | undefined): string {
+  if (val === null || val === undefined) return '-'
+  const sign = val >= 0 ? '+' : ''
+  return `${sign}${val.toFixed(1)}%`
+}
+
+function returnClass(val: number | null | undefined): string {
+  if (val === null || val === undefined) return 'text-[var(--muted)]'
+  if (val > 0.05) return 'text-emerald-600 font-semibold'
+  if (val < -0.05) return 'text-red-600 font-semibold'
+  return 'text-[var(--muted)]'
+}
+
+function verdictReturn(item: Record<string, any>): { text: string; cls: string } {
+  const entry = verdictReturnMap.value.get(item.id)
+  if (!entry) return { text: '', cls: '' }
+  if (entry.loading) return { text: '...', cls: 'text-[var(--muted)]' }
+  if (entry.pct === null) return { text: '', cls: '' }
+  const sign = entry.pct >= 0 ? '+' : ''
+  const cls = entry.pct > 0.05 ? 'text-emerald-600 font-semibold' : entry.pct < -0.05 ? 'text-red-600 font-semibold' : 'text-[var(--muted)]'
+  return { text: `${sign}${entry.pct.toFixed(1)}%`, cls }
+}
+
+function actionSource(item: Record<string, any>) {
+  return String(item.source || item.receipt?.source || item.context?.source || item.payload?.context?.source || 'decision_board').trim() || 'decision_board'
+}
+
+function actionTraceId(item: Record<string, any>) {
+  return String(item.trace?.action_id || item.receipt?.trace?.action_id || item.action_id || '').trim()
+}
+
+function actionJobId(item: Record<string, any>) {
+  return String(item.context?.job_id || item.receipt?.context?.job_id || item.payload?.context?.job_id || '').trim()
+}
+
+function actionStageSummary(item: Record<string, any>) {
+  return String(item.job_trace?.summary || '').trim()
+}
+
+function actionExecutionStatus(item: Record<string, any>) {
+  return String(item.payload?.execution_status || item.execution_status || '').trim()
+}
+
+function actionDisplayStatus(item: Record<string, any>) {
+  const execStatus = actionExecutionStatus(item)
+  if (execStatus) return execStatus
+  const receiptStatus = String(item.receipt?.status || item.status || '').trim()
+  if (receiptStatus) return receiptStatus
+  return '已记录'
+}
+
+function actionDisplayUpdatedAt(item: Record<string, any>) {
+  const traceTime = String(item.job_trace?.updated_at || '').trim()
+  if (traceTime) return traceTime
+  return String(item.created_at || '-').trim()
+}
+
+function actionEvidenceSources(item: Record<string, any>): string[] {
+  const raw = item.payload?.evidence_sources || item.evidence_sources
+  if (!Array.isArray(raw)) return []
+  return raw.map((ev: any) => String(ev?.label || ev || '').trim()).filter(Boolean)
+}
+
+function actionReviewConclusion(item: Record<string, any>) {
+  return String(item.payload?.review_conclusion || item.review_conclusion || '').trim()
+}
+
+const reviewItems = computed(() => calibrationItems.value.slice(0, 20))
+
+function actionRestoreLink(item: Record<string, any>) {
+  const source = actionSource(item)
+  const jobId = actionJobId(item)
+  if (!jobId) return ''
+  if (source === 'multi_role_v3') return `/research/multi-role?restore_job=${encodeURIComponent(jobId)}`
+  if (source === 'chief_roundtable') return `/research/roundtable?job_id=${encodeURIComponent(jobId)}`
+  return ''
+}
+
+function actionRestoreLabel(item: Record<string, any>) {
+  const source = actionSource(item)
+  if (source === 'multi_role_v3') return '回到多角色分析'
+  if (source === 'chief_roundtable') return '回到首席圆桌'
+  return '查看来源页'
+}
+
 function joinActionTitle(item: Record<string, any>) {
-  return `${item.stock_name || item.ts_code || '-'} · ${String(item.action_type || '-').toUpperCase()}`
+  return `${item.stock_name || item.ts_code || '-'} · ${actionLabel(item.action_type)}`
 }
 
 function joinActionMeta(item: Record<string, any>) {
   return [item.ts_code || '-', item.actor || '-', item.created_at || '-'].filter(Boolean).join(' · ')
 }
 
+const EXTERNAL_SOURCE_MODULES = ['news', 'chatroom', 'signal_graph']
+const hasExternalSource = computed(() => EXTERNAL_SOURCE_MODULES.includes(decisionContext.value.from))
+
 const hasDecisionContext = computed(() =>
   Boolean(
+    decisionContext.value.from ||
     decisionContext.value.industry ||
     decisionContext.value.keyword ||
     decisionContext.value.score_date,
   ),
 )
+
+function sourceModuleLabel(from: string): string {
+  const MAP: Record<string, string> = { news: '新闻', chatroom: '群聊', signal_graph: '信号图谱' }
+  return MAP[from] || from
+}
 
 function looksLikeTsCode(value: string) {
   return /^[0-9]{6}\.(SZ|SH|BJ)$/i.test(String(value || '').trim())
@@ -522,6 +947,15 @@ function syncContextFromRoute() {
     keyword: readQueryString(q, 'keyword', ''),
     score_date: readQueryString(q, 'score_date', ''),
   }
+
+  // Pre-fill action form from structured action template params (news/chatroom bridges)
+  const evidenceParam = readQueryString(q, 'evidence', '').trim()
+  const noteParam = readQueryString(q, 'note', '').trim()
+  const tsCodeParam = readQueryString(q, 'ts_code', '').trim()
+  if (evidenceParam) actionEvidenceDraft.value = evidenceParam
+  if (noteParam) actionNoteDraft.value = noteParam
+  if (tsCodeParam) actionTsCodeDraft.value = tsCodeParam.toUpperCase()
+
   const changed = JSON.stringify(next) !== JSON.stringify(decisionContext.value)
   decisionContext.value = next
   if (!changed) return

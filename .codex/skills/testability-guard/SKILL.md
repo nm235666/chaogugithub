@@ -1,3 +1,7 @@
+---
+name: testability-guard
+---
+
 # Testability Guard
 
 Use this skill when a task touches validation, tests, regression confidence, or a fragile area with poor verification.

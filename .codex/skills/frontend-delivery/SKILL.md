@@ -1,3 +1,7 @@
+---
+name: frontend-delivery
+---
+
 # Frontend Delivery
 
 Use this skill when the task is mainly about user-facing pages, layout, loading states, error states, table/detail presentation, charts, route behavior, or dashboard clarity.

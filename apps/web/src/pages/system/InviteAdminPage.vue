@@ -21,7 +21,20 @@
             {{ createPending ? '创建中...' : '创建邀请码' }}
           </button>
         </div>
-        <div v-if="actionMessage.text" class="mt-3 text-sm text-[var(--muted)]">{{ actionMessage.text }}</div>
+        <div
+          v-if="actionFeedback.text"
+          class="mt-3 rounded-[18px] border px-4 py-3 text-sm"
+          :class="actionFeedbackClass"
+        >
+          <div class="font-semibold">最近写操作反馈</div>
+          <div class="mt-1">{{ actionFeedback.text }}</div>
+          <div v-if="actionFeedback.confirmedAt" class="mt-1 text-xs opacity-80">
+            最近确认时间：{{ actionFeedback.confirmedAt }}
+          </div>
+          <div v-if="actionFeedback.tone === 'error'" class="mt-2 text-xs opacity-80">
+            建议：核查邀请码参数是否合法；如持续失败，请前往"数据源监控"页排查后台状态。
+          </div>
+        </div>
       </PageSection>
 
       <PageSection title="邀请码列表" subtitle="支持筛选、停用/启用、修改、删除。">
@@ -51,14 +64,26 @@
               <StatusBadge :value="item.is_active ? 'ok' : 'warn'" :label="item.is_active ? '启用中' : '已停用'" />
             </div>
             <div class="mt-3 grid gap-2 xl:grid-cols-5 md:grid-cols-2">
-              <input v-model.number="editCache[item.invite_code].max_uses" type="number" min="1" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm" />
-              <input v-model.trim="editCache[item.invite_code].expires_at" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm" placeholder="过期时间（可空）" />
-              <select v-model="editCache[item.invite_code].is_active" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm">
+              <input v-model.number="editCache[item.invite_code].max_uses" type="number" min="1" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm disabled:opacity-40" :disabled="inviteActionPending[item.invite_code] === 'update' || inviteActionPending[item.invite_code] === 'delete'" />
+              <input v-model.trim="editCache[item.invite_code].expires_at" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm disabled:opacity-40" :disabled="inviteActionPending[item.invite_code] === 'update' || inviteActionPending[item.invite_code] === 'delete'" placeholder="过期时间（可空）" />
+              <select v-model="editCache[item.invite_code].is_active" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm disabled:opacity-40" :disabled="inviteActionPending[item.invite_code] === 'update' || inviteActionPending[item.invite_code] === 'delete'">
                 <option :value="true">启用</option>
                 <option :value="false">停用</option>
               </select>
-              <button class="rounded-2xl bg-stone-800 px-3 py-2 text-sm font-semibold text-white" @click="onUpdate(item.invite_code)">保存</button>
-              <button class="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" @click="onDelete(item.invite_code)">删除</button>
+              <button
+                class="rounded-2xl bg-stone-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                :disabled="inviteActionPending[item.invite_code] === 'update' || inviteActionPending[item.invite_code] === 'delete'"
+                @click="onUpdate(item.invite_code)"
+              >
+                {{ inviteActionPending[item.invite_code] === 'update' ? '保存中...' : '保存' }}
+              </button>
+              <button
+                class="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-40"
+                :disabled="inviteActionPending[item.invite_code] === 'update' || inviteActionPending[item.invite_code] === 'delete'"
+                @click="onDelete(item.invite_code)"
+              >
+                {{ inviteActionPending[item.invite_code] === 'delete' ? '删除中...' : '删除' }}
+              </button>
             </div>
           </div>
         </div>
@@ -86,10 +111,12 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { createAuthInvite, deleteAuthInvite, fetchAuthInvites, fetchAuthUsersSummary, updateAuthInvite } from '../../services/api/system'
 import { confirmDangerAction } from '../../shared/utils/confirm'
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
+import { useUiStore } from '../../stores/ui'
 
 const queryClient = useQueryClient()
 const route = useRoute()
 const router = useRouter()
+const ui = useUiStore()
 
 const filters = reactive({
   keyword: '',
@@ -105,7 +132,12 @@ const createForm = reactive({
 })
 
 const editCache = reactive<Record<string, { max_uses: number; expires_at: string; is_active: boolean }>>({})
-const actionMessage = reactive({ text: '' })
+const inviteActionPending = reactive<Record<string, 'update' | 'delete' | undefined>>({})
+const actionFeedback = reactive<{ text: string; tone: 'success' | 'error' | 'info'; confirmedAt: string }>({
+  text: '',
+  tone: 'info',
+  confirmedAt: '',
+})
 
 const { data: summary, refetch: refetchSummary } = useQuery({
   queryKey: ['auth-users-summary'],
@@ -171,15 +203,34 @@ const createMutation = useMutation({
     createForm.invite_code = ''
     createForm.max_uses = 1
     createForm.expires_at = ''
-    actionMessage.text = `创建成功：${resp.invite_code}`
+    const successMessage = `创建成功：${resp.invite_code}`
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
     queryClient.invalidateQueries({ queryKey: ['auth-invites'] })
   },
   onError: (error: Error) => {
-    actionMessage.text = `创建失败：${error.message}`
+    const failureMessage = `创建失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
   },
 })
 
 const createPending = computed(() => createMutation.isPending.value)
+const actionFeedbackClass = computed(() => {
+  if (actionFeedback.tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (actionFeedback.tone === 'error') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-[var(--line)] bg-[rgba(255,255,255,0.72)] text-[var(--muted)]'
+})
+
+function resolveActionError(error: unknown) {
+  return String((error as any)?.response?.data?.error || (error as Error)?.message || 'unknown')
+}
+
+function setActionFeedback(text: string, tone: 'success' | 'error' | 'info' = 'info') {
+  actionFeedback.text = text
+  actionFeedback.tone = tone
+  actionFeedback.confirmedAt = new Date().toLocaleString('zh-CN', { hour12: false })
+}
 
 function onCreate() {
   createMutation.mutate()
@@ -188,6 +239,7 @@ function onCreate() {
 async function onUpdate(inviteCode: string) {
   const edit = editCache[inviteCode]
   if (!edit) return
+  inviteActionPending[inviteCode] = 'update'
   try {
     await updateAuthInvite({
       invite_code: inviteCode,
@@ -195,22 +247,35 @@ async function onUpdate(inviteCode: string) {
       expires_at: edit.expires_at || '',
       is_active: !!edit.is_active,
     })
-    actionMessage.text = `更新成功：${inviteCode}`
+    const successMessage = `更新成功：${inviteCode}`
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
     await refetchList()
   } catch (error) {
-    actionMessage.text = `更新失败：${(error as Error).message}`
+    const failureMessage = `更新失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
+  } finally {
+    delete inviteActionPending[inviteCode]
   }
 }
 
 async function onDelete(inviteCode: string) {
   if (!await confirmDangerAction('删除邀请码', inviteCode, '删除后将无法恢复，请确认该邀请码不再使用。')) return
+  inviteActionPending[inviteCode] = 'delete'
   try {
     await deleteAuthInvite(inviteCode)
-    actionMessage.text = `删除成功：${inviteCode}`
+    const successMessage = `删除成功：${inviteCode}`
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
     await refetchList()
     await refetchSummary()
   } catch (error) {
-    actionMessage.text = `删除失败：${(error as Error).message}`
+    const failureMessage = `删除失败：${resolveActionError(error)}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
+  } finally {
+    delete inviteActionPending[inviteCode]
   }
 }
 

@@ -327,6 +327,27 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         ),
     ),
     JobDefinition(
+        job_key="chief_roundtable_worker_guard",
+        name="首席圆桌 Worker 守护",
+        category="maintenance",
+        schedule_expr="* * * * *",
+        description="每分钟检查并补齐 chief_roundtable worker 进程数",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_llm_job.py"), "--job-key", "chief_roundtable_worker_guard"),
+        ),
+    ),
+    JobDefinition(
+        job_key="quantaalpha_worker_guard",
+        name="QuantaAlpha Worker 守护",
+        category="maintenance",
+        schedule_expr="*/2 * * * *",
+        enabled=1,
+        description="每2分钟检查 quantaalpha worker 进程状态；仅在 QUANTAALPHA_EXECUTION_MODE=hybrid/research 时实际拉起",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_llm_job.py"), "--job-key", "quantaalpha_worker_guard"),
+        ),
+    ),
+    JobDefinition(
         job_key="daily_postclose_update",
         name="盘后更新流水线",
         category="market_data",

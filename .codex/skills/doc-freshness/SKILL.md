@@ -1,3 +1,7 @@
+---
+name: doc-freshness
+---
+
 # Doc Freshness
 
 Use this skill when code changes might make documentation stale.

@@ -88,6 +88,12 @@
         </PageSection>
 
         <PageSection :title="`日线结果 (${result?.total || 0})`" subtitle="点击股票代码可回到统一详情页。">
+          <div
+            v-if="paginationNotice"
+            class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            {{ paginationNotice }}
+          </div>
           <div class="grid gap-3 lg:hidden">
             <InfoCard
               v-for="row in result?.items || []"
@@ -123,10 +129,10 @@
           </DataTable>
 
           <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-            <div>第 {{ queryParams.page }} / {{ result?.total_pages || 1 }} 页</div>
+            <div>第 {{ pageDisplay }} / {{ totalPagesDisplay }} 页</div>
             <div class="flex gap-2">
               <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryParams.page <= 1" @click="goPrevPage">上一页</button>
-              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryParams.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
+              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryParams.page >= totalPagesDisplay" @click="goNextPage">下一页</button>
             </div>
           </div>
         </PageSection>
@@ -203,6 +209,8 @@ const queryParams = reactive({
 const hasSearched = ref(false)
 const mobilePanel = ref<'daily' | 'minute'>('daily')
 const filterError = ref('')
+const paginationNotice = ref('')
+const lastNoticeKey = ref('')
 const minuteFilters = reactive({
   ts_code: '600114.SH',
   trade_date: '',
@@ -268,6 +276,15 @@ const chart = computed(() => {
 })
 
 const showChart = computed(() => hasSearched.value && (result.value?.items?.length || 0) > 0)
+const totalPagesDisplay = computed(() => {
+  const total = Number(result.value?.total || 0)
+  if (total <= 0) return 1
+  return Math.max(1, Number(result.value?.total_pages || 1))
+})
+const pageDisplay = computed(() => {
+  if (Number(result.value?.total || 0) <= 0) return 1
+  return Math.min(Math.max(1, Number(queryParams.page || 1)), totalPagesDisplay.value)
+})
 
 function isCompactDate(value: string) {
   const text = String(value || '').trim()
@@ -284,6 +301,7 @@ function submitSearch() {
     return
   }
   filterError.value = ''
+  paginationNotice.value = ''
   queryParams.ts_code = (filters.ts_code || '').trim().toUpperCase()
   queryParams.start_date = startDate
   queryParams.end_date = endDate
@@ -296,13 +314,15 @@ function submitSearch() {
 
 function goPrevPage() {
   if (queryParams.page <= 1) return
+  paginationNotice.value = ''
   queryParams.page -= 1
   syncRouteFromState()
 }
 
 function goNextPage() {
-  const totalPages = Number(result.value?.total_pages || 1)
+  const totalPages = totalPagesDisplay.value
   if (queryParams.page >= totalPages) return
+  paginationNotice.value = ''
   queryParams.page += 1
   syncRouteFromState()
 }
@@ -352,6 +372,18 @@ function syncRouteFromState() {
   })
 }
 
+function enforcePageCoherence(nextPage: number, reason: 'empty' | 'overflow') {
+  queryParams.page = nextPage
+  const noticeKey = `${queryParams.ts_code}|${queryParams.start_date}|${queryParams.end_date}|${reason}|${nextPage}`
+  if (lastNoticeKey.value !== noticeKey) {
+    paginationNotice.value = reason === 'empty'
+      ? '当前查询结果为空，系统已自动回到第 1 页。'
+      : `当前页超出结果范围，系统已自动跳转到第 ${nextPage} 页。`
+    lastNoticeKey.value = noticeKey
+  }
+  syncRouteFromState()
+}
+
 function applyRouteState() {
   const q = route.query as Record<string, unknown>
   const panel = readQueryString(q, 'panel', 'daily')
@@ -372,6 +404,7 @@ function applyRouteState() {
     hasSearched.value = true
   } else {
     hasSearched.value = false
+    paginationNotice.value = ''
   }
 
   const minuteEnabled = readQueryString(q, 'minute', '') === '1'
@@ -395,5 +428,18 @@ watch(
     applyRouteState()
   },
   { immediate: true },
+)
+
+watch(
+  () => [result.value?.total, result.value?.total_pages, queryParams.page] as const,
+  () => {
+    if (!hasSearched.value || !result.value) return
+    const total = Number(result.value?.total || 0)
+    const itemsCount = Array.isArray(result.value?.items) ? result.value.items.length : 0
+    const totalPages = Math.max(1, Number(result.value?.total_pages || 1))
+    const expectedPage = (total <= 0 || itemsCount <= 0) ? 1 : Math.min(Math.max(1, Number(queryParams.page || 1)), totalPages)
+    if (expectedPage === queryParams.page) return
+    enforcePageCoherence(expectedPage, total <= 0 || itemsCount <= 0 ? 'empty' : 'overflow')
+  },
 )
 </script>

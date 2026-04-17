@@ -2,18 +2,25 @@ import { test, expect } from '@playwright/test'
 
 async function loginAsAdmin(page: any) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/login')
-    await page.waitForTimeout(900)
-    await page.fill('input[type="text"]', 'nm235666')
-    await page.fill('input[type="password"]', 'nm235689')
-    for (const pick of ['last', 'first'] as const) {
+    try {
+      await page.goto('/login')
+      // SPA may redirect immediately if session is already active
       try {
-        await page.getByRole('button', { name: '登录' })[pick]().click({ timeout: 4000 })
-        await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 12000 })
+        await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 2000 })
+        await expect(page.locator('#main-content')).toBeVisible({ timeout: 12000 })
         return
       } catch {
-        // continue to next strategy
+        // Still on login page, proceed to authenticate
       }
+      await page.getByPlaceholder('请输入账号（3-32位英文数字._-）').waitFor({ state: 'visible', timeout: 15000 })
+      await page.getByPlaceholder('请输入账号（3-32位英文数字._-）').fill('nm235666')
+      await page.getByPlaceholder('请输入密码（至少6位）').fill('nm235689')
+      await page.locator('button').filter({ hasText: /^登录$/ }).last().click({ timeout: 4000 })
+      await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 12000 })
+      await expect(page.locator('#main-content')).toBeVisible({ timeout: 12000 })
+      return
+    } catch {
+      // retry on transient login/render failures
     }
   }
   throw new Error('admin login failed after retries')

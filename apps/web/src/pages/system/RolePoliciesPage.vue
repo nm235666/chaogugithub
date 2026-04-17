@@ -6,11 +6,25 @@
           <button class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold" @click="refreshPolicies">
             刷新策略
           </button>
-          <button class="rounded-2xl bg-stone-800 px-4 py-3 text-sm font-semibold text-white" @click="resetDefaults">
-            恢复默认策略
+          <button class="rounded-2xl bg-stone-800 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40" :disabled="resetPending" @click="resetDefaults">
+            {{ resetPending ? '恢复中...' : '恢复默认策略' }}
           </button>
         </div>
         <div v-if="message" class="mt-3 text-sm text-[var(--muted)]">{{ message }}</div>
+        <div
+          v-if="actionFeedback.text"
+          class="mt-3 rounded-[18px] border px-4 py-3 text-sm"
+          :class="actionFeedbackClass"
+        >
+          <div class="font-semibold">最近写操作反馈</div>
+          <div class="mt-1">{{ actionFeedback.text }}</div>
+          <div v-if="actionFeedback.confirmedAt" class="mt-1 text-xs opacity-80">
+            最近确认时间：{{ actionFeedback.confirmedAt }}
+          </div>
+          <div v-if="actionFeedback.tone === 'error'" class="mt-2 text-xs opacity-80">
+            建议：核查策略配置是否合法；如持续失败，请前往"数据源监控"页排查后台状态。
+          </div>
+        </div>
       </PageSection>
 
       <PageSection title="角色配置" subtitle="每个角色独立配置权限集合与日配额（留空表示不限）。">
@@ -41,8 +55,8 @@
           >
             <div class="flex items-center justify-between gap-2">
               <div class="text-lg font-bold">{{ role }}</div>
-              <button class="rounded-2xl bg-[var(--brand)] px-3 py-2 text-sm font-semibold text-white" @click="saveRole(role)">
-                保存 {{ role }}
+              <button class="rounded-2xl bg-[var(--brand)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40" :disabled="!!roleActionPending[role]" @click="saveRole(role)">
+                {{ roleActionPending[role] ? '保存中...' : `保存 ${role}` }}
               </button>
             </div>
             <div class="mt-3 grid gap-3 md:grid-cols-2">
@@ -114,12 +128,21 @@ import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import { fetchAuthRolePolicies, fetchNavigationGroups, resetAuthRolePoliciesToDefault, updateAuthRolePolicy, type AuthRolePolicy } from '../../services/api/system'
 import { useAuthStore } from '../../stores/auth'
+import { useUiStore } from '../../stores/ui'
 
 const message = ref('')
 const roleOrder = ['admin', 'pro', 'limited']
 const auth = useAuthStore()
+const ui = useUiStore()
 const permissionGroups = ref<Array<{ id: string; label: string; description: string; permissions: string[] }>>([])
 const mappingVersion = ref('server:unknown')
+const resetPending = ref(false)
+const roleActionPending = reactive<Record<string, boolean>>({})
+const actionFeedback = reactive<{ text: string; tone: 'success' | 'error' | 'info'; confirmedAt: string }>({
+  text: '',
+  tone: 'info',
+  confirmedAt: '',
+})
 const allPermissions = ref<string[]>([
   '*',
   'news_read',
@@ -161,6 +184,21 @@ const invalidPermissionsByRole = reactive<Record<string, string[]>>({
 const policyWarnings = computed(() =>
   roleOrder.flatMap((role) => (invalidPermissionsByRole[role] || []).map((perm) => `${role}：${perm}`)),
 )
+const actionFeedbackClass = computed(() => {
+  if (actionFeedback.tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (actionFeedback.tone === 'error') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-[var(--line)] bg-[rgba(255,255,255,0.72)] text-[var(--muted)]'
+})
+
+function resolveActionError(error: any) {
+  return String(error?.response?.data?.error || error?.message || 'unknown')
+}
+
+function setActionFeedback(messageText: string, tone: 'success' | 'error' | 'info' = 'info') {
+  actionFeedback.text = messageText
+  actionFeedback.tone = tone
+  actionFeedback.confirmedAt = new Date().toLocaleString('zh-CN', { hour12: false })
+}
 
 function permissionsForRole(role: string) {
   return rolePermissionAllowlist[role] || allPermissions.value
@@ -280,6 +318,7 @@ const { refetch } = useQuery({
 })
 
 async function saveRole(role: string) {
+  roleActionPending[role] = true
   try {
     await updateAuthRolePolicy({
       role,
@@ -288,9 +327,16 @@ async function saveRole(role: string) {
       multi_role_daily_limit: parseLimit(drafts[role].multi_role_daily_limit_text),
     })
     await refetch()
-    message.value = `已保存 ${role} 策略`
+    const successMessage = `已保存 ${role} 策略`
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
   } catch (error: any) {
-    message.value = `保存失败：${error?.message || String(error)}`
+    const errorMessage = resolveActionError(error)
+    const failureMessage = `保存 ${role} 策略失败：${errorMessage}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
+  } finally {
+    delete roleActionPending[role]
   }
 }
 
@@ -299,12 +345,20 @@ async function refreshPolicies() {
 }
 
 async function resetDefaults() {
+  resetPending.value = true
   try {
     const data = await resetAuthRolePoliciesToDefault()
     for (const item of data.roles || []) applyRolePolicy(item)
-    message.value = '已恢复默认策略'
+    const successMessage = '已恢复默认策略'
+    setActionFeedback(successMessage, 'success')
+    ui.showToast(successMessage, 'success')
   } catch (error: any) {
-    message.value = `恢复失败：${error?.message || String(error)}`
+    const errorMessage = resolveActionError(error)
+    const failureMessage = `恢复默认策略失败：${errorMessage}`
+    setActionFeedback(failureMessage, 'error')
+    ui.showToast(failureMessage, 'error')
+  } finally {
+    resetPending.value = false
   }
 }
 </script>

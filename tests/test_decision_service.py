@@ -101,6 +101,51 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             latest_signal_date TEXT,
             source_summary_json TEXT
         );
+        CREATE TABLE multi_role_v3_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            ts_code TEXT NOT NULL,
+            lookback INTEGER NOT NULL DEFAULT 120,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            state_json TEXT NOT NULL DEFAULT '{}',
+            result_json TEXT NOT NULL DEFAULT '{}',
+            decision_state_json TEXT NOT NULL DEFAULT '{}',
+            metrics_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finished_at TEXT NOT NULL DEFAULT '',
+            worker_id TEXT NOT NULL DEFAULT '',
+            lease_until TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE multi_role_v3_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE chief_roundtable_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'queued',
+            stage TEXT NOT NULL DEFAULT '',
+            ts_code TEXT NOT NULL,
+            trigger TEXT NOT NULL DEFAULT 'manual',
+            source_job_id TEXT NOT NULL DEFAULT '',
+            context_json TEXT NOT NULL DEFAULT '{}',
+            positions_json TEXT NOT NULL DEFAULT '{}',
+            synthesis_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finished_at TEXT NOT NULL DEFAULT '',
+            worker_id TEXT NOT NULL DEFAULT '',
+            owner TEXT NOT NULL DEFAULT ''
+        );
         """
     )
     conn.commit()
@@ -276,10 +321,18 @@ class DecisionServiceTest(unittest.TestCase):
 
                 snapshot = decision_service.run_decision_snapshot(sqlite3_module=sqlite3, db_path=db_path, snapshot_date="2026-04-08")
                 self.assertTrue(snapshot["ok"])
+                self.assertEqual(snapshot["status"], "success")
+                self.assertEqual(snapshot["source"], "decision_snapshot")
+                self.assertEqual(snapshot["receipt"]["source"], "decision_snapshot")
+                self.assertEqual(snapshot["receipt"]["trace"]["snapshot_id"], snapshot["snapshot_id"])
+                self.assertEqual(snapshot["receipt"]["trace"]["run_id"], snapshot["run_id"])
                 history = decision_service.query_decision_history(sqlite3_module=sqlite3, db_path=db_path, page=1, page_size=10)
                 self.assertEqual(history["total"], 1)
                 self.assertEqual(history["items"][0]["snapshot_date"], "2026-04-08")
                 self.assertIn("summary", history["items"][0]["payload"])
+                self.assertEqual(history["items"][0]["status"], "success")
+                self.assertEqual(history["items"][0]["source"], "decision_snapshot")
+                self.assertEqual(history["items"][0]["receipt"]["trace"]["snapshot_id"], history["items"][0]["trace"]["snapshot_id"])
 
                 action = decision_service.record_decision_action(
                     sqlite3_module=sqlite3,
@@ -293,13 +346,141 @@ class DecisionServiceTest(unittest.TestCase):
                     payload={"context": {"source": "unit_test"}},
                 )
                 self.assertEqual(action["action_type"], "confirm")
+                self.assertEqual(action["status"], "success")
+                self.assertEqual(action["source"], "unit_test")
+                self.assertEqual(action["receipt"]["source"], "unit_test")
+                self.assertEqual(action["receipt"]["trace"]["action_id"], action["action_id"])
                 actions = decision_service.query_decision_actions(sqlite3_module=sqlite3, db_path=db_path, page=1, page_size=10)
                 self.assertEqual(actions["total"], 1)
                 self.assertEqual(actions["items"][0]["ts_code"], "000001.SZ")
                 self.assertEqual(actions["items"][0]["payload"]["context"]["source"], "unit_test")
+                self.assertEqual(actions["items"][0]["status"], "success")
+                self.assertEqual(actions["items"][0]["source"], "unit_test")
+                self.assertEqual(actions["items"][0]["receipt"]["trace"]["action_id"], actions["items"][0]["trace"]["action_id"])
+
+                conn = sqlite3.connect(db_path)
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO multi_role_v3_jobs (
+                            job_id, status, stage, ts_code, lookback, config_json, state_json, result_json,
+                            decision_state_json, metrics_json, error, created_at, updated_at, finished_at, worker_id, lease_until
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            "mr-001",
+                            "pending_user_decision",
+                            "await_user_decision",
+                            "000001.SZ",
+                            120,
+                            "{}",
+                            "{}",
+                            "{}",
+                            "{}",
+                            json.dumps({"message": "等待人工裁决"}, ensure_ascii=False),
+                            "",
+                            "2026-04-08T11:20:00Z",
+                            "2026-04-08T11:30:00Z",
+                            "",
+                            "worker-a",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO multi_role_v3_events (job_id, stage, event_type, payload_json, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        ("mr-001", "await_user_decision", "awaiting_user_decision", "{}", "2026-04-08T11:31:00Z"),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO chief_roundtable_jobs (
+                            job_id, status, stage, ts_code, trigger, source_job_id, context_json, positions_json,
+                            synthesis_json, error, created_at, updated_at, finished_at, worker_id, owner
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            "rt-001",
+                            "running",
+                            "chiefs",
+                            "000001.SZ",
+                            "manual",
+                            "mr-001",
+                            "{}",
+                            "{}",
+                            "{}",
+                            "",
+                            "2026-04-08T11:40:00Z",
+                            "2026-04-08T11:50:00Z",
+                            "",
+                            "worker-b",
+                            "tester",
+                        ),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                multi_role_action = decision_service.record_decision_action(
+                    sqlite3_module=sqlite3,
+                    db_path=db_path,
+                    action_type="confirm",
+                    ts_code="000001.SZ",
+                    stock_name="平安银行",
+                    note="multi role confirm",
+                    actor="tester",
+                    snapshot_date="2026-04-08",
+                    payload={"context": {"source": "multi_role_v3", "job_id": "mr-001", "direction": "bullish"}},
+                )
+                self.assertEqual(multi_role_action["source"], "multi_role_v3")
+                self.assertEqual(multi_role_action["context"]["job_id"], "mr-001")
+                self.assertEqual(multi_role_action["receipt"]["source"], "multi_role_v3")
+                self.assertEqual(multi_role_action["receipt"]["context"]["job_id"], "mr-001")
+                self.assertTrue(multi_role_action["receipt"]["trace"]["action_id"])
+
+                roundtable_action = decision_service.record_decision_action(
+                    sqlite3_module=sqlite3,
+                    db_path=db_path,
+                    action_type="defer",
+                    ts_code="000001.SZ",
+                    stock_name="平安银行",
+                    note="roundtable defer",
+                    actor="tester",
+                    snapshot_date="2026-04-08",
+                    payload={"context": {"source": "chief_roundtable", "job_id": "rt-001", "consensus": "split"}},
+                )
+                self.assertEqual(roundtable_action["source"], "chief_roundtable")
+                self.assertEqual(roundtable_action["context"]["job_id"], "rt-001")
+                self.assertEqual(roundtable_action["receipt"]["source"], "chief_roundtable")
+                self.assertEqual(roundtable_action["receipt"]["context"]["job_id"], "rt-001")
+                self.assertTrue(roundtable_action["receipt"]["trace"]["action_id"])
+
+                actions = decision_service.query_decision_actions(sqlite3_module=sqlite3, db_path=db_path, page=1, page_size=10)
+                self.assertEqual(actions["total"], 3)
+                self.assertEqual(actions["items"][0]["source"], "chief_roundtable")
+                self.assertEqual(actions["items"][0]["context"]["job_id"], "rt-001")
+                self.assertEqual(actions["items"][0]["receipt"]["source"], "chief_roundtable")
+                self.assertEqual(actions["items"][0]["receipt"]["context"]["job_id"], "rt-001")
+                self.assertTrue(actions["items"][0]["receipt"]["trace"]["action_id"])
+                self.assertEqual(actions["items"][0]["job_trace"]["job_id"], "rt-001")
+                self.assertEqual(actions["items"][0]["job_trace"]["stage"], "chiefs")
+                self.assertEqual(actions["items"][0]["job_trace"]["status"], "running")
+                self.assertIn("阶段 chiefs", actions["items"][0]["job_trace"]["summary"])
+                self.assertEqual(actions["items"][0]["job_trace"]["updated_at"], "2026-04-08T11:50:00Z")
+                self.assertEqual(actions["items"][1]["source"], "multi_role_v3")
+                self.assertEqual(actions["items"][1]["context"]["job_id"], "mr-001")
+                self.assertEqual(actions["items"][1]["receipt"]["source"], "multi_role_v3")
+                self.assertEqual(actions["items"][1]["receipt"]["context"]["job_id"], "mr-001")
+                self.assertTrue(actions["items"][1]["receipt"]["trace"]["action_id"])
+                self.assertEqual(actions["items"][1]["job_trace"]["job_id"], "mr-001")
+                self.assertEqual(actions["items"][1]["job_trace"]["stage"], "await_user_decision")
+                self.assertEqual(actions["items"][1]["job_trace"]["status"], "pending_user_decision")
+                self.assertIn("等待人工裁决", actions["items"][1]["job_trace"]["summary"])
+                self.assertEqual(actions["items"][1]["job_trace"]["updated_at"], "2026-04-08T11:31:00Z")
 
                 plan_with_action = decision_service.query_decision_trade_plan(sqlite3_module=sqlite3, db_path=db_path, page=1, page_size=5, ts_code="000001.SZ")
-                self.assertEqual(plan_with_action["approval_flow"]["state"], "approved")
+                self.assertEqual(plan_with_action["approval_flow"]["state"], "deferred")
                 self.assertGreaterEqual(len(plan_with_action["approval_flow"]["recent_actions"]), 1)
 
                 scoreboard = decision_service.query_decision_scoreboard(sqlite3_module=sqlite3, db_path=db_path, page_size=5)

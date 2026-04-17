@@ -1,3 +1,7 @@
+---
+name: data-quality-audit
+---
+
 # Data Quality Audit
 
 Use this skill when table quality drifts, duplicates appear, or scoring coverage drops.

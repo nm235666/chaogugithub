@@ -149,9 +149,9 @@ class QuantaAlphaServiceTest(unittest.TestCase):
                     mapping = {
                         "INVALID_PARAM": (qa_service.ERR_RUNNER_CONFIG_INVALID, "direction 参数非法"),
                         "DATA_SHORT": (qa_service.ERR_DATA_NOT_READY, "样本不足"),
-                        "EXEC_FAIL": (qa_service.ERR_UNKNOWN, "执行异常"),
+                        "EXEC_FAIL": (qa_service.ERR_EXECUTION_EXCEPTION, "执行异常"),
                     }
-                    code, message = mapping.get(direction, (qa_service.ERR_UNKNOWN, "unknown"))
+                    code, message = mapping.get(direction, (qa_service.ERR_EXECUTION_EXCEPTION, "unknown"))
                     return False, {"error_code": code, "error_message": message, "stdout": "", "stderr": message}
 
                 qa_service._run_business_engine = _fake_business_fail
@@ -159,7 +159,7 @@ class QuantaAlphaServiceTest(unittest.TestCase):
                 for direction, expected_code in [
                     ("INVALID_PARAM", qa_service.ERR_RUNNER_CONFIG_INVALID),
                     ("DATA_SHORT", qa_service.ERR_DATA_NOT_READY),
-                    ("EXEC_FAIL", qa_service.ERR_UNKNOWN),
+                    ("EXEC_FAIL", qa_service.ERR_EXECUTION_EXCEPTION),
                 ]:
                     task = qa_service.start_quantaalpha_mine_task(
                         sqlite3_module=sqlite3, db_path=db_path, direction=direction, market_scope="A_share", lookback=30, config_profile="default", llm_profile="auto"

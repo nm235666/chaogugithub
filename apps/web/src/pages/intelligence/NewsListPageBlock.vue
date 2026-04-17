@@ -145,7 +145,23 @@
                 >
                   信号时间线 · {{ stock.ts_code || stock.name }}
                 </button>
+                <button
+                  v-for="stock in relatedStocks(item)"
+                  :key="`${item.id}-${stock.ts_code || stock.name}-decision`"
+                  class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:border-emerald-500 hover:bg-emerald-100"
+                  @click="goDecision(stock, item)"
+                >
+                  → 决策板 · {{ stock.ts_code || stock.name }}
+                </button>
               </div>
+            </div>
+            <div v-else-if="isExpanded(item)" class="mt-2 flex flex-wrap gap-2">
+              <button
+                class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:border-emerald-500 hover:bg-emerald-100"
+                @click="goDecisionByTitle(item)"
+              >
+                → 发送到决策板
+              </button>
             </div>
 
             <details class="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-3 py-3">
@@ -416,6 +432,40 @@ function goSignal(stock: { ts_code: string; name: string }) {
     return
   }
   router.push({ path: '/signals/overview', query: { keyword: stock.name, entity_type: '股票' } })
+}
+
+function goDecision(stock: { ts_code: string; name: string }, newsItem: Record<string, any>) {
+  const query: Record<string, string> = { from: 'news' }
+  if (stock.ts_code) {
+    query.ts_code = stock.ts_code
+    query.keyword = stock.ts_code
+  } else if (stock.name) {
+    query.keyword = stock.name
+  }
+  if (!query.ts_code && !query.keyword) {
+    const title = String(newsItem.title || '').trim()
+    if (title) query.keyword = title.slice(0, 20)
+  }
+  // Structured action template: pre-fill evidence source and action note
+  const title = String(newsItem.title || '').trim()
+  const pubDate = String(newsItem.pub_date || newsItem.published_at || '').slice(0, 10)
+  if (title) {
+    query.evidence = `[新闻] ${title.slice(0, 40)}${pubDate ? ' · ' + pubDate : ''}`
+    query.note = `新闻触发观察 · ${title.slice(0, 20)}`
+  }
+  router.push({ path: '/research/decision', query })
+}
+
+function goDecisionByTitle(newsItem: Record<string, any>) {
+  const title = String(newsItem.title || '').trim()
+  const pubDate = String(newsItem.pub_date || newsItem.published_at || '').slice(0, 10)
+  const query: Record<string, string> = { from: 'news' }
+  if (title) {
+    query.keyword = title.slice(0, 20)
+    query.evidence = `[新闻] ${title.slice(0, 40)}${pubDate ? ' · ' + pubDate : ''}`
+    query.note = `新闻触发观察 · ${title.slice(0, 20)}`
+  }
+  router.push({ path: '/research/decision', query })
 }
 
 function openSemanticHit(hit: Record<string, any>) {

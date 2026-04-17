@@ -92,6 +92,12 @@ from services.notifications import build_notification_payload, notify_with_wecom
 from services.agent_service.outputs.markdown_report import build_portfolio_view, build_risk_review, infer_decision_confidence
 from services.quantaalpha_service import build_quantaalpha_service_runtime_deps, get_quantaalpha_runtime_health
 from services.decision_service import build_decision_runtime_deps as build_decision_service_runtime_deps
+from services.agent_service.chief_roundtable_v1 import (
+    create_roundtable_job as _create_roundtable_job,
+    get_roundtable_job as _get_roundtable_job,
+    list_roundtable_jobs as _list_roundtable_jobs,
+    ensure_roundtable_tables as _ensure_roundtable_tables,
+)
 from services.stock_detail_service import (
     build_capital_flow_summary as stock_detail_build_capital_flow_summary,
     build_financial_summary as stock_detail_build_financial_summary,
@@ -141,6 +147,7 @@ from backend.routes import decision as decision_routes
 from backend.routes import signals as signal_routes
 from backend.routes import stocks as stock_routes
 from backend.routes import system as system_routes
+from backend.routes import roundtable as roundtable_routes
 
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "8000"))
@@ -7825,6 +7832,34 @@ def run_multi_role_v3_worker_once() -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Chief Roundtable API helpers
+# ---------------------------------------------------------------------------
+
+def _roundtable_create(payload: dict) -> dict:
+    ts_code = str(payload.get("ts_code") or "").strip().upper()
+    if not ts_code:
+        raise ValueError("ts_code 不能为空")
+    return _create_roundtable_job(
+        sqlite3_module=sqlite3,
+        ts_code=ts_code,
+        trigger=str(payload.get("trigger") or "manual"),
+        source_job_id=str(payload.get("source_job_id") or ""),
+        owner=str(payload.get("_owner") or ""),
+    )
+
+
+def _roundtable_get(job_id: str) -> dict | None:
+    return _get_roundtable_job(sqlite3_module=sqlite3, job_id=job_id)
+
+
+def _roundtable_list(ts_code: str = "", owner: str = "", page: int = 1, page_size: int = 20) -> dict:
+    return _list_roundtable_jobs(
+        sqlite3_module=sqlite3,
+        ts_code=ts_code, owner=owner, page=page, page_size=page_size,
+    )
+
+
 class ApiHandler(BaseHTTPRequestHandler):
     def _request_params(self) -> dict[str, list[str]]:
         return parse_qs(urlparse(self.path).query)
@@ -7938,6 +7973,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/llm/multi-role/v2/history",
         } or path.startswith("/api/llm/multi-role/v3/"):
             return _has("multi_role_analyze")
+        if path.startswith("/api/llm/chief-roundtable"):
+            return _has("multi_role_analyze")
         if path.startswith("/api/stocks") or path in {"/api/stock-detail", "/api/prices", "/api/minline", "/api/stock-scores", "/api/stock-scores/filters"}:
             return _has("stocks_advanced")
         if path.startswith("/api/macro"):
@@ -8013,6 +8050,10 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self._send_cors_headers()
+        _req_start = getattr(self, "_request_started_at", None)
+        if _req_start is not None:
+            elapsed_ms = int((time.time() - _req_start) * 1000)
+            self.send_header("X-Response-Time-Ms", str(elapsed_ms))
         self.end_headers()
         self.wfile.write(body)
 
@@ -8107,6 +8148,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             **build_signals_service_runtime_deps(),
             **build_quantaalpha_runtime_deps(),
             **build_decision_runtime_deps(),
+            "roundtable_create": _roundtable_create,
+            "roundtable_get": _roundtable_get,
+            "roundtable_list": _roundtable_list,
             "quant_factors_enabled": ENABLE_QUANT_FACTORS,
             "build_info": _build_info_payload,
             "permission_matrix": _role_permission_matrix,
@@ -8194,6 +8238,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self):
+        self._request_started_at = time.time()
         parsed = urlparse(self.path)
         if self._reject_protected_request():
             return
@@ -8233,12 +8278,15 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if decision_routes.dispatch_post(self, parsed, payload, deps):
             return
+        if roundtable_routes.dispatch_post(self, parsed, payload, deps):
+            return
         if ai_retrieval_routes.dispatch_post(self, parsed, payload, deps):
             return
 
         self._send_json({"error": "Not Found"}, status=404)
 
     def do_GET(self):
+        self._request_started_at = time.time()
         parsed = urlparse(self.path)
         host = self.headers.get("Host", f"127.0.0.1:{PORT}").split(":")[0]
         if self._reject_protected_request():
@@ -8271,6 +8319,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if decision_routes.dispatch_get(self, parsed, deps):
             return
+        if roundtable_routes.dispatch_get(self, parsed, deps):
+            return
         if chatroom_routes.dispatch_get(self, parsed, deps):
             return
         if signal_routes.dispatch_get(self, parsed, deps):
@@ -8290,6 +8340,7 @@ if __name__ == "__main__":
     try:
         _ensure_auth_tables(conn)
         ensure_multi_role_v3_tables(conn)
+        _ensure_roundtable_tables(conn)
     finally:
         conn.close()
     ai_retrieval_ensure_tables(sqlite3_module=sqlite3, db_path=DB_PATH)

@@ -158,10 +158,26 @@ export function resolveDefaultLandingPath(options: {
   dynamicNavigationGroups?: unknown
 }): string {
   const role = String(options.role || '').trim().toLowerCase()
-  if (role === 'admin') return '/dashboard'
-
   const groups = resolveNavigationGroups(options.dynamicNavigationGroups)
   const effectivePermissions = Array.isArray(options.effectivePermissions) ? options.effectivePermissions : []
+
+  // Non-admin roles: prefer /research/decision if accessible (decision board is the primary workspace)
+  if (role !== 'admin') {
+    for (const group of groups) {
+      for (const item of group.items) {
+        if (item.to === '/research/decision' && hasPermissionByEffective(effectivePermissions, role, item.permission)) {
+          return '/research/decision'
+        }
+      }
+    }
+  }
+
+  // Admin role: land on dashboard (system overview + research priority queue visible from there)
+  if (role === 'admin' && hasPermissionByEffective(effectivePermissions, role, 'admin_system')) {
+    return '/dashboard'
+  }
+
+  // All other roles: walk navigation groups in order, first accessible item wins
   for (const group of groups) {
     for (const item of group.items) {
       if (hasPermissionByEffective(effectivePermissions, role, item.permission)) {

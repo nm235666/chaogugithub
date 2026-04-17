@@ -47,6 +47,7 @@ export const router = createRouter({
     { path: '/research/decision', component: () => import('../pages/research/DecisionBoardPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/quant-factors', component: () => import('../pages/research/QuantFactorsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/multi-role', component: () => import('../pages/research/MultiRoleResearchPage.vue'), meta: { auth: true, permission: 'multi_role_analyze' } as RouteMetaAuth },
+    { path: '/research/roundtable', component: () => import('../pages/research/ChiefRoundtablePage.vue'), meta: { auth: true, permission: 'multi_role_analyze' } as RouteMetaAuth },
     { path: '/research/trend', component: () => import('../pages/research/TrendAnalysisPage.vue'), meta: { auth: true, permission: 'trend_analyze' } as RouteMetaAuth },
 
     { path: '/chatrooms/overview', component: () => import('../pages/chatrooms/ChatroomsOverviewPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced' } as RouteMetaAuth },

@@ -1,3 +1,7 @@
+---
+name: job-triage
+---
+
 # Job Triage
 
 Use this skill for cron/job_orchestrator failures, stuck pipelines, or repeated task regressions.

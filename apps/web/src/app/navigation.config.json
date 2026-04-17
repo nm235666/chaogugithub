@@ -166,6 +166,12 @@
           "label": "多角色分析",
           "desc": "LLM 多角色公司分析工作台",
           "permission": "multi_role_analyze"
+        },
+        {
+          "to": "/research/roundtable",
+          "label": "首席圆桌",
+          "desc": "三位首席多空辩论，为中性裁决提供第二意见",
+          "permission": "multi_role_analyze"
         }
       ]
     },

@@ -86,6 +86,14 @@
               </button>
             </div>
             <div v-else class="mt-3 text-sm text-[var(--muted)]">当前图谱暂无可筛选关系。</div>
+            <div class="mt-3 rounded-[20px] border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-xs leading-6 text-[var(--muted)]">
+              <div class="font-semibold text-[var(--ink)]">统计口径说明</div>
+              <div class="mt-1">统计卡片基于当前画布渲染结果，处理顺序为先按关系筛选，再根据视图模式决定是否折叠二级节点。</div>
+              <div class="mt-2 flex flex-wrap gap-2 text-[11px]">
+                <span class="metric-chip">当前关系：{{ readableRelationFilter }}</span>
+                <span class="metric-chip">当前视图：{{ readableViewMode }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </PageSection>
@@ -104,6 +112,8 @@
               <span class="metric-chip">中心：{{ centerLabel || '-' }}</span>
               <span class="metric-chip">最新评分：{{ summary.latest_score_date || '-' }}</span>
               <span class="metric-chip">中心类型：{{ centerTypeLabel(filters.center_type) }}</span>
+              <span class="metric-chip">关系筛选：{{ readableRelationFilter }}</span>
+              <span class="metric-chip">视图模式：{{ readableViewMode }}</span>
               <span class="metric-chip" v-if="hiddenNodeCount > 0">已折叠 {{ hiddenNodeCount }} 个节点</span>
             </div>
           </template>
@@ -262,7 +272,7 @@
               </div>
             </div>
 
-            <div v-if="selectedActions.length" class="rounded-[24px] border border-[var(--line)] bg-white/82 p-4">
+            <div class="rounded-[24px] border border-[var(--line)] bg-white/82 p-4">
               <div class="text-sm font-bold text-[var(--ink)]">跳转入口</div>
               <div class="mt-3 flex flex-wrap gap-2">
                 <button
@@ -281,6 +291,13 @@
                   @click="switchCenterToSelected"
                 >
                   以此为中心
+                </button>
+                <button
+                  type="button"
+                  class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:border-emerald-500 hover:bg-emerald-100"
+                  @click="goToDecision(selectedNode)"
+                >
+                  → 决策板
                 </button>
               </div>
             </div>
@@ -459,6 +476,8 @@ const displaySummary = computed(() => {
     industry_count: industryCount,
   }
 })
+const readableRelationFilter = computed(() => (relationFilter.value ? relationLabel(relationFilter.value) : '全部关系'))
+const readableViewMode = computed(() => (graphViewMode.value === 'full' ? '展开二级节点' : '只看主干'))
 
 const centerSuggestions = computed(() => {
   if (isIndustryCenterMode.value) {
@@ -681,6 +700,29 @@ function quickSwitchCenter(type: string, label: string) {
   filters.center_type = type === 'industry' ? 'industry' : 'theme'
   filters.keyword = label
   applyFilters()
+}
+
+function goToDecision(node: GraphNode | null) {
+  if (!node) return
+  const query: Record<string, string> = {}
+  const nodeType = String(node.type || '')
+  const label = String(node.label || '').trim()
+  const tsCode = String(node.ts_code || node.id || '').trim()
+  if (nodeType === 'stock' && /^[0-9]{6}\.(SZ|SH|BJ)$/i.test(tsCode)) {
+    query.ts_code = tsCode.toUpperCase()
+  } else if (label) {
+    query.keyword = label.slice(0, 30)
+  }
+  query.from = 'signal_graph'
+  // Structured action template: evidence from signal node context
+  const summary = String(node.summary || node.subtitle || '').trim()
+  const statusLabel = String(node.status || '').trim()
+  const evidenceParts: string[] = [`[信号图谱] ${label.slice(0, 30)}`]
+  if (nodeType) evidenceParts.push(`类型=${nodeType}`)
+  if (statusLabel) evidenceParts.push(`状态=${statusLabel}`)
+  query.evidence = evidenceParts.join(' · ')
+  query.note = `信号触发观察 · ${label.slice(0, 20)}${summary ? ' · ' + summary.slice(0, 20) : ''}`
+  router.push({ path: '/research/decision', query })
 }
 
 function syncRouteFromQuery() {

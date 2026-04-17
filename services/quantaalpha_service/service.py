@@ -35,6 +35,11 @@ ERR_LLM_PROVIDER_UNAVAILABLE = "LLM_PROVIDER_UNAVAILABLE"
 ERR_PROCESS_TIMEOUT = "PROCESS_TIMEOUT"
 ERR_RUNNER_CONFIG_INVALID = "RUNNER_CONFIG_INVALID"
 ERR_UNKNOWN = "UNKNOWN_ERROR"
+ERR_THREAD_LOST = "THREAD_LOST"
+ERR_EXECUTION_EXCEPTION = "EXECUTION_EXCEPTION"
+ERR_EXTERNAL_TIMEOUT = "EXTERNAL_TIMEOUT"
+ERR_INTERRUPTED = ERR_THREAD_LOST
+ERR_EXTERNAL_DEPENDENCY = ERR_EXTERNAL_TIMEOUT
 ENGINE_NAME = "ai_factor_v1"
 BUSINESS_ENGINE = "business_engine"
 RESEARCH_ENGINE = "research_engine"
@@ -44,7 +49,8 @@ DEFAULT_FACTOR_POOL_SIZE = 12
 TOP_FACTOR_COUNT = 3
 WORKER_HEARTBEAT_TTL_SECONDS = max(15, int(os.getenv("QUANTAALPHA_WORKER_HEARTBEAT_TTL_SECONDS", "45") or "45"))
 WORKER_MAX_RETRIES = max(0, int(os.getenv("QUANTAALPHA_WORKER_MAX_RETRIES", "1") or "1"))
-EXECUTION_MODE = str(os.getenv("QUANTAALPHA_EXECUTION_MODE", "hybrid") or "hybrid").strip().lower()
+DEFAULT_EXECUTION_MODE = "hybrid"
+EXECUTION_MODE = str(os.getenv("QUANTAALPHA_EXECUTION_MODE", DEFAULT_EXECUTION_MODE) or DEFAULT_EXECUTION_MODE).strip().lower()
 ALERT_PENDING_THRESHOLD = max(1, int(os.getenv("QUANTAALPHA_ALERT_PENDING_THRESHOLD", "12") or "12"))
 ALERT_ERROR_CONCENTRATION_MIN = max(1, int(os.getenv("QUANTAALPHA_ALERT_ERROR_CONCENTRATION_MIN", "5") or "5"))
 ALERT_ERROR_CONCENTRATION_RATIO = min(1.0, max(0.1, float(os.getenv("QUANTAALPHA_ALERT_ERROR_CONCENTRATION_RATIO", "0.7") or "0.7")))
@@ -774,7 +780,7 @@ def _run_qlib_backtest(*, factor_source: str, factor_json: Path | None, experime
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return False, {"error": ERR_PROCESS_TIMEOUT, "stderr": f"timeout>{timeout_seconds}s"}
+        return False, {"error_code": ERR_EXTERNAL_TIMEOUT, "error_message": f"timeout>{timeout_seconds}s", "stderr": f"timeout>{timeout_seconds}s"}
     except Exception as exc:
         return False, {"error": str(exc)}
     metrics_payload = {}
@@ -1137,6 +1143,33 @@ def _read_retry_count(artifacts: dict[str, Any]) -> int:
         return 0
 
 
+def _classify_runtime_error(*, error_code: str | None = None, error_message: str | None = None, stderr: str | None = None) -> str:
+    explicit = str(error_code or "").strip()
+    if explicit:
+        if explicit in {ERR_UNKNOWN, "UNKNOWN_ERROR"}:
+            explicit = ""
+        elif explicit in {ERR_PROCESS_TIMEOUT, "PROCESS_TIMEOUT", ERR_EXTERNAL_DEPENDENCY}:
+            return ERR_EXTERNAL_TIMEOUT
+        elif explicit in {ERR_INTERRUPTED, "INTERRUPTED"}:
+            return ERR_THREAD_LOST
+        else:
+            return explicit
+    text = " ".join(part for part in [str(error_message or "").strip(), str(stderr or "").strip()] if part).lower()
+    if not text:
+        return ERR_UNKNOWN
+    if "thread" in text or "线程" in text or "restart" in text or "重启" in text or "中断" in text:
+        return ERR_THREAD_LOST
+    if "timeout" in text or "timed out" in text or "超时" in text or "connection" in text or "refused" in text or "network" in text or "urlopen" in text:
+        return ERR_EXTERNAL_TIMEOUT
+    if "config" in text or "missing key" in text or "invalid" in text or "参数非法" in text:
+        return ERR_RUNNER_CONFIG_INVALID
+    if "data" in text or "not found" in text or "no rows" in text or "样本不足" in text:
+        return ERR_DATA_NOT_READY
+    if text:
+        return ERR_EXECUTION_EXCEPTION
+    return ERR_UNKNOWN
+
+
 def _mark_task_retry(conn, task_id: str, *, reason: str, current_output: dict[str, Any], current_artifacts: dict[str, Any], current_metrics: dict[str, Any]) -> None:
     retry_count = _read_retry_count(current_artifacts) + 1
     artifacts = _merge_dict(current_artifacts or {}, {"retry_count": retry_count, "retry_reason": reason})
@@ -1215,7 +1248,7 @@ def _recover_stale_running_task(conn, item: dict[str, Any]) -> dict[str, Any]:
         conn,
         task_id,
         status="error",
-        error_code=ERR_UNKNOWN,
+        error_code=ERR_THREAD_LOST,
         error_message="任务执行线程已丢失（可能因服务重启中断），已自动终止，请重新发起任务。",
         output=output,
         artifacts=artifacts,
@@ -1456,11 +1489,16 @@ def _run_task_thread(*, sqlite3_module, db_path: str, task_id: str):
             }
 
         if not ok:
+            classified_error_code = _classify_runtime_error(
+                error_code=str(out.get("error_code") or "").strip() or None,
+                error_message=str(out.get("error_message") or "").strip() or None,
+                stderr=str(out.get("stderr") or "").strip() or None,
+            )
             _update_task(
                 conn,
                 task_id,
                 status="error",
-                error_code=str(out.get("error_code") or ERR_UNKNOWN),
+                error_code=classified_error_code,
                 error_message=str(out.get("error_message") or "执行失败"),
                 output={
                     "engine": ENGINE_NAME,
@@ -1543,11 +1581,22 @@ def _run_task_thread(*, sqlite3_module, db_path: str, task_id: str):
             metrics=_merge_dict(metrics, {"engine": ENGINE_NAME}),
         )
     except Exception as exc:
+        exc_text = str(exc).lower()
+        if "timeout" in exc_text or "timed out" in exc_text:
+            _exc_error_code = ERR_EXTERNAL_TIMEOUT
+        elif "connection" in exc_text or "refused" in exc_text or "network" in exc_text or "urlopen" in exc_text:
+            _exc_error_code = ERR_EXTERNAL_TIMEOUT
+        elif "config" in exc_text or "missing key" in exc_text or "invalid" in exc_text:
+            _exc_error_code = ERR_RUNNER_CONFIG_INVALID
+        elif "data" in exc_text or "not found" in exc_text or "no rows" in exc_text:
+            _exc_error_code = ERR_DATA_NOT_READY
+        else:
+            _exc_error_code = ERR_EXECUTION_EXCEPTION
         _update_task(
             conn,
             task_id,
             status="error",
-            error_code=ERR_UNKNOWN,
+            error_code=_exc_error_code,
             error_message=f"任务执行异常: {exc}",
             output={
                 "engine": ENGINE_NAME,
@@ -1938,7 +1987,7 @@ def get_quantaalpha_runtime_health(*, sqlite3_module, db_path: str) -> dict[str,
         failed = int(conn.execute("SELECT COUNT(*) FROM quantaalpha_runs WHERE status = 'error'").fetchone()[0] or 0)
         error_rows = conn.execute(
             """
-            SELECT error_code
+            SELECT error_code, error_message, output_json
             FROM quantaalpha_runs
             WHERE status = 'error'
             ORDER BY id DESC
@@ -1946,7 +1995,19 @@ def get_quantaalpha_runtime_health(*, sqlite3_module, db_path: str) -> dict[str,
             """
         ).fetchall()
         for row in error_rows:
-            code = str((row[0] if not isinstance(row, dict) else row.get("error_code")) or "").strip() or "UNKNOWN_ERROR"
+            raw_code = str((row[0] if not isinstance(row, dict) else row.get("error_code")) or "").strip() or None
+            raw_message = str((row[1] if not isinstance(row, dict) else row.get("error_message")) or "").strip() or None
+            raw_output = row[2] if not isinstance(row, dict) else row.get("output_json")
+            output_payload = {}
+            if raw_output:
+                try:
+                    output_payload = json.loads(str(raw_output or "{}"))
+                except Exception:
+                    output_payload = {}
+            raw_stderr = None
+            if isinstance(output_payload, dict):
+                raw_stderr = str(output_payload.get("stderr") or "").strip() or None
+            code = _classify_runtime_error(error_code=raw_code, error_message=raw_message, stderr=raw_stderr)
             recent_error_codes[code] = int(recent_error_codes.get(code, 0) or 0) + 1
     finally:
         conn.close()

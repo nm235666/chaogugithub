@@ -31,6 +31,20 @@
             清除当前任务跟踪
           </button>
         </div>
+        <div v-if="analysisHistory.length" class="mt-3">
+          <div class="mb-1.5 text-xs font-semibold text-[var(--muted)]">最近分析</div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="h in analysisHistory"
+              :key="h.job_id"
+              class="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+              @click="form.keyword = h.ts_code"
+            >
+              {{ h.name || h.ts_code }}
+              <span v-if="h.direction" class="ml-1 opacity-60">· {{ h.direction === 'bullish' ? '看多' : h.direction === 'bearish' ? '看空' : '中性' }}</span>
+            </button>
+          </div>
+        </div>
         <div v-if="restoredTaskHint" class="mt-1 text-sm text-[var(--muted)]">已从会话恢复任务跟踪（{{ restoredTaskHint }}）</div>
         <div v-if="taskPersistenceNotice" class="mt-1 text-sm text-[var(--muted)]">{{ taskPersistenceNotice }}</div>
         <div class="mt-2 text-sm text-[var(--muted)]">实际模型：{{ usedModel }}</div>
@@ -105,6 +119,27 @@
           <div v-if="chiefRisks.length" class="mt-3 flex flex-wrap gap-2">
             <span v-for="risk in chiefRisks" :key="risk" class="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700">
               {{ risk }}
+            </span>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-4">
+            <button
+              class="rounded-full px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              :class="chiefVerdictBadgeClass"
+              :disabled="saveToDecisionBoardPending || saveToDecisionBoardDone"
+              @click="saveToDecisionBoard"
+            >
+              {{ saveToDecisionBoardPending ? '记录中...' : saveToDecisionBoardDone ? '已记录到决策板 ✓' : '记录到决策板' }}
+            </button>
+            <RouterLink
+              v-if="chiefDirection === 'neutral' && currentJobId"
+              :to="`/research/roundtable?source_job_id=${currentJobId}&ts_code=${resolvedStock.ts_code || ''}`"
+              class="rounded-full border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+            >
+              升级到首席圆桌
+            </RouterLink>
+            <span v-if="saveToDecisionBoardError" class="text-xs text-red-600">{{ saveToDecisionBoardError }}</span>
+            <span v-else-if="saveToDecisionBoardDone && saveToDecisionBoardReceipt" class="text-xs text-emerald-700">
+              已写入 {{ saveToDecisionBoardReceipt.source || 'decision_board' }} · {{ saveToDecisionBoardReceipt.trace?.action_id || saveToDecisionBoardReceipt.trace?.run_id || '-' }}
             </span>
           </div>
         </div>
@@ -230,6 +265,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
+import { useRoute } from 'vue-router'
 import MarkdownIt from 'markdown-it'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -245,6 +281,7 @@ import {
   triggerMultiRoleTaskV3,
 } from '../../services/api/stocks'
 import { fetchAuthStatus } from '../../services/api/auth'
+import { recordDecisionAction, type DecisionTraceReceipt } from '../../services/api/decision'
 import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
 import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
 import { useUiStore } from '../../stores/ui'
@@ -300,10 +337,27 @@ const taskProgress = ref(0)
 const stageStartedAtMs = ref(0)
 const clockTick = ref(Date.now())
 const terminalToastKey = ref('')
+
+// Analysis history — persisted in localStorage, max 8 entries
+const HISTORY_KEY = 'multi_role_analysis_history_v1'
+type AnalysisHistoryEntry = { ts_code: string; name: string; direction: string; created_at: string; job_id: string }
+function loadAnalysisHistory(): AnalysisHistoryEntry[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
+}
+function saveAnalysisHistory(entries: AnalysisHistoryEntry[]) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, 8))) } catch { /* ignore */ }
+}
+const analysisHistory = ref<AnalysisHistoryEntry[]>(loadAnalysisHistory())
+function pushAnalysisHistory(entry: AnalysisHistoryEntry) {
+  const next = [entry, ...analysisHistory.value.filter(e => e.ts_code !== entry.ts_code || e.job_id !== entry.job_id)]
+  analysisHistory.value = next.slice(0, 8)
+  saveAnalysisHistory(analysisHistory.value)
+}
 let timer = 0
 let streamController: AbortController | null = null
 let clockTimer = 0
 const ui = useUiStore()
+const route = useRoute()
 const taskScopeKey = computed(() => buildTaskScopeKey('multi-role-research', 'active-task'))
 const {
   restoredHint: restoredTaskHint,
@@ -463,6 +517,50 @@ const chiefRisks = computed(() => {
   return []
 })
 
+// 记录到决策板
+const saveToDecisionBoardPending = ref(false)
+const saveToDecisionBoardDone = ref(false)
+const saveToDecisionBoardError = ref('')
+const saveToDecisionBoardReceipt = ref<DecisionTraceReceipt | null>(null)
+
+async function saveToDecisionBoard() {
+  const tsCode = resolvedStock.value.ts_code
+  if (!tsCode) return
+  saveToDecisionBoardPending.value = true
+  saveToDecisionBoardError.value = ''
+  saveToDecisionBoardReceipt.value = null
+  try {
+    const direction = chiefVerdictLabel.value
+    const claim = chiefCoreClaim.value
+    const note = [
+      `首席裁决：${direction}`,
+      claim ? `核心押注：${claim}` : '',
+      chiefInvalidation.value ? `失效条件：${chiefInvalidation.value}` : '',
+    ].filter(Boolean).join('  |  ')
+    const data = await recordDecisionAction({
+      action_type: chiefDirection.value === 'bullish' ? 'confirm' : chiefDirection.value === 'bearish' ? 'reject' : 'defer',
+      ts_code: tsCode,
+      stock_name: resolvedStock.value.name || tsCode,
+      note,
+      context: {
+        source: 'multi_role_v3',
+        job_id: currentJobId.value,
+        direction: chiefDirection.value,
+        decision: String(portfolioReview.value?.decision || '').trim() || null,
+        confidence: portfolioReview.value?.confidence ?? null,
+        claim,
+        invalidation: chiefInvalidation.value || null,
+      },
+    })
+    saveToDecisionBoardReceipt.value = ((data as Record<string, any>)?.receipt || null) as DecisionTraceReceipt | null
+    saveToDecisionBoardDone.value = true
+  } catch (err: unknown) {
+    saveToDecisionBoardError.value = err instanceof Error ? err.message : '记录失败'
+  } finally {
+    saveToDecisionBoardPending.value = false
+  }
+}
+
 const researchDebateRounds = computed(() => Number((researchDebate.value?.rounds || []).length || 0))
 const riskDebateRounds = computed(() => Number((riskDebate.value?.rounds || []).length || 0))
 const researchDebateText = computed(() => {
@@ -552,6 +650,9 @@ function resetResultViews() {
   taskProgress.value = 0
   stageStartedAtMs.value = 0
   terminalToastKey.value = ''
+  saveToDecisionBoardDone.value = false
+  saveToDecisionBoardError.value = ''
+  saveToDecisionBoardReceipt.value = null
 }
 
 function persistCurrentTaskSnapshot(task: Record<string, any> = {}) {
@@ -618,6 +719,18 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
       terminalToastKey.value = toastKey
     }
     persistCurrentTaskSnapshot(task)
+    // Save to analysis history
+    const histTs = resolvedStock.value.ts_code || String(task.ts_code || '')
+    const histName = resolvedStock.value.name || resolved?.name || histTs
+    if (histTs) {
+      pushAnalysisHistory({
+        ts_code: histTs,
+        name: histName,
+        direction: String(portfolioReview.value?.direction || ''),
+        created_at: new Date().toISOString(),
+        job_id: currentJobId.value,
+      })
+    }
     return true
   }
   if (task.status === 'pending_user_decision') {
@@ -861,6 +974,20 @@ onMounted(async () => {
   clockTimer = window.setInterval(() => {
     clockTick.value = Date.now()
   }, 1000)
+  // ?restore_job=<job_id> — deep-link from calibration table "原始分析"
+  const restoreJobId = String(route.query.restore_job || '').trim()
+  if (restoreJobId) {
+    currentJobId.value = restoreJobId
+    actionMessage.value = '正在加载历史分析...'
+    try {
+      const task = await fetchMultiRoleTaskV3(restoreJobId)
+      applyTaskSnapshot(task as Record<string, any>)
+      if (task.ts_code) form.keyword = String(task.ts_code || '')
+    } catch {
+      actionMessage.value = '加载历史分析失败，任务可能已过期。'
+    }
+    return
+  }
   const restored = restoreTaskSnapshot()
   if (!restored) return
   currentJobId.value = String(restored.jobId || '')

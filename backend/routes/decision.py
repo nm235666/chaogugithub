@@ -171,6 +171,26 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json({"ok": True, **payload})
         return True
 
+    if parsed.path == "/api/decision/calibration":
+        params = parse_qs(parsed.query)
+        try:
+            page = int(params.get("page", ["1"])[0] or 1)
+            page_size = int(params.get("page_size", ["20"])[0] or 20)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "page/page_size 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_decision_calibration"](
+                page=page,
+                page_size=page_size,
+                ts_code=params.get("ts_code", [""])[0].strip().upper(),
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"裁决精准度查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **payload})
+        return True
+
     if parsed.path == "/api/decision/kill-switch":
         try:
             payload = deps["get_decision_kill_switch"]()
@@ -253,12 +273,27 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         note = str(payload.get("note", "") or "").strip()
         snapshot_date = str(payload.get("snapshot_date", "") or "").strip()
         context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+        # Structured evidence and review fields — stored in payload JSON blob
+        evidence_sources_raw = payload.get("evidence_sources")
+        evidence_sources = evidence_sources_raw if isinstance(evidence_sources_raw, list) else []
+        execution_status = str(payload.get("execution_status", "") or "").strip()
+        review_conclusion = str(payload.get("review_conclusion", "") or "").strip()
         if not ts_code:
             handler._send_json({"ok": False, "error": "缺少 ts_code"}, status=400)
             return True
         if not action_type:
             handler._send_json({"ok": False, "error": "缺少 action_type"}, status=400)
             return True
+        action_payload: dict = {
+            "context": context,
+            "source": str(context.get("source") or "decision_board"),
+        }
+        if evidence_sources:
+            action_payload["evidence_sources"] = evidence_sources
+        if execution_status:
+            action_payload["execution_status"] = execution_status
+        if review_conclusion:
+            action_payload["review_conclusion"] = review_conclusion
         try:
             result = deps["record_decision_action"](
                 action_type=action_type,
@@ -267,10 +302,7 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
                 note=note,
                 actor=str(user.get("username") or user.get("display_name") or "anonymous"),
                 snapshot_date=snapshot_date,
-                payload={
-                    "context": context,
-                    "source": "decision_board",
-                },
+                payload=action_payload,
             )
         except Exception as exc:  # pragma: no cover
             handler._send_json({"ok": False, "error": f"动作记录失败: {exc}"}, status=500)

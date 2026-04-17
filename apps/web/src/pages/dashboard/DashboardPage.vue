@@ -66,6 +66,50 @@
         </div>
       </PageSection>
 
+      <!-- 今日决策工作台 -->
+      <PageSection title="今日决策工作台" subtitle="决策待办、风险提示与最新动作，直达执行。">
+        <div class="grid gap-3 sm:grid-cols-3">
+          <!-- Kill Switch 风险 -->
+          <RouterLink to="/research/decision" class="group rounded-xl border border-[var(--line)] bg-white px-4 py-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[var(--brand)]/30 block">
+            <div class="flex items-center justify-between">
+              <div class="text-xs font-bold text-[var(--muted)] uppercase tracking-wide">风险指示</div>
+              <StatusBadge :value="killSwitchTone" :label="killSwitchLabel" />
+            </div>
+            <div class="mt-2 text-sm font-semibold text-[var(--ink)]">{{ killSwitch.reason || '当前无风险备注' }}</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">点击进入决策板确认当前市场模式与仓位策略。</div>
+          </RouterLink>
+          <!-- 决策待办 -->
+          <RouterLink to="/research/decision" class="group rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 shadow-sm transition-all duration-200 hover:shadow-md block">
+            <div class="flex items-center justify-between">
+              <div class="text-xs font-bold text-amber-700 uppercase tracking-wide">决策待办</div>
+              <StatusBadge value="warning" :label="`${pendingActions.length} 项`" />
+            </div>
+            <div v-if="pendingActions.length" class="mt-2 space-y-1">
+              <div v-for="action in pendingActions" :key="action.id" class="flex items-center gap-2 text-xs">
+                <StatusBadge :value="decisionActionTone(action.action_type)" :label="decisionActionLabel(action.action_type)" />
+                <span class="truncate font-semibold text-[var(--ink)]">{{ action.stock_name || action.ts_code || '-' }}</span>
+                <span class="text-[var(--muted)] shrink-0">{{ String(action.created_at || '').slice(5, 16) }}</span>
+              </div>
+            </div>
+            <div v-else class="mt-2 text-sm text-amber-700">暂无待处理观察/复核动作。</div>
+          </RouterLink>
+          <!-- 最新动作 -->
+          <RouterLink to="/research/decision" class="group rounded-xl border border-[var(--line)] bg-white px-4 py-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[var(--brand)]/30 block">
+            <div class="flex items-center justify-between">
+              <div class="text-xs font-bold text-[var(--muted)] uppercase tracking-wide">最新动作</div>
+              <StatusBadge value="brand" :label="`${recentVerdicts.length} 条`" />
+            </div>
+            <div v-if="recentVerdicts.length" class="mt-2 space-y-1">
+              <div v-for="action in recentVerdicts" :key="action.id" class="flex items-center gap-2 text-xs">
+                <StatusBadge :value="decisionActionTone(action.action_type)" :label="decisionActionLabel(action.action_type)" />
+                <span class="truncate font-semibold text-[var(--ink)]">{{ action.stock_name || action.ts_code || '-' }}</span>
+              </div>
+            </div>
+            <div v-else class="mt-2 text-sm text-[var(--muted)]">暂无裁决动作记录。</div>
+          </RouterLink>
+        </div>
+      </PageSection>
+
       <div class="grid gap-4 2xl:grid-cols-[1.35fr_0.65fr]">
         <PageSection title="研究优先队列" subtitle="通过单一队列视角快速切换，把今天先研究什么说清楚。">
           <div class="mb-3 flex flex-wrap gap-2">
@@ -188,6 +232,7 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchDashboard } from '../../services/api/dashboard'
+import { fetchDecisionActions, fetchDecisionKillSwitch } from '../../services/api/decision'
 import { formatDate, formatDateTime } from '../../shared/utils/format'
 import { useUiStore } from '../../stores/ui'
 
@@ -199,6 +244,20 @@ const { data, error, isFetching, refetch } = useQuery({
   queryKey: ['dashboard'],
   queryFn: fetchDashboard,
   refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
+})
+
+const { data: actionsData } = useQuery({
+  queryKey: ['dashboard-actions'],
+  queryFn: () => fetchDecisionActions({ limit: 10 }),
+  staleTime: 120_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 120_000 : 600_000),
+})
+
+const { data: killSwitchData } = useQuery({
+  queryKey: ['dashboard-killswitch'],
+  queryFn: fetchDecisionKillSwitch,
+  staleTime: 120_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 120_000 : 600_000),
 })
 
 const dashboard = computed(() => data.value)
@@ -220,6 +279,32 @@ const dupRiskDescription = computed(() => {
   if (dupRiskValue.value > 0) return '当前存在少量去重记录，先作为审计指标观察。'
   return '当前没有明显的群聊去重风险。'
 })
+
+// Decision workbench computed
+const recentActions = computed<Array<Record<string, any>>>(() => {
+  const raw = actionsData.value
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  return Array.isArray(raw.items) ? raw.items : []
+})
+
+const pendingActions = computed(() =>
+  recentActions.value.filter((a) => ['watch', 'review'].includes(String(a.action_type || '').toLowerCase())).slice(0, 3),
+)
+
+const recentVerdicts = computed(() =>
+  recentActions.value.filter((a) => ['confirm', 'reject', 'defer'].includes(String(a.action_type || '').toLowerCase())).slice(0, 3),
+)
+
+const killSwitch = computed<Record<string, any>>(() => (killSwitchData.value as any) || {})
+const killSwitchAllowTrading = computed(() => Boolean(killSwitch.value.allow_trading ?? killSwitch.value.status === 'ACTIVE'))
+const killSwitchTone = computed(() => (killSwitchAllowTrading.value ? 'success' : 'danger'))
+const killSwitchLabel = computed(() => (killSwitchAllowTrading.value ? '交易正常' : '交易暂停'))
+
+const ACTION_LABEL_MAP: Record<string, string> = { confirm: '确认', reject: '拒绝', defer: '暂缓', watch: '观察', review: '复核' }
+const ACTION_TONE_MAP: Record<string, string> = { confirm: 'success', reject: 'danger', defer: 'warning', watch: 'info', review: 'muted' }
+function decisionActionLabel(type: string) { return ACTION_LABEL_MAP[String(type || '').toLowerCase()] || String(type || '-') }
+function decisionActionTone(type: string) { return ACTION_TONE_MAP[String(type || '').toLowerCase()] || 'muted' }
 
 const quickLinks = [
   { to: '/system/source-monitor', title: '数据源监控', desc: '排查实时链路、进程状态和 worker 健康度。' },

@@ -73,6 +73,28 @@
         </PageSection>
       </div>
 
+      <PageSection title="QuantaAlpha 任务队列健康" subtitle="Worker 在线状态、待处理/运行中队列深度与近期错误集中展示，无需跳转即可完成巡检。">
+        <div class="grid gap-3 xl:grid-cols-5 md:grid-cols-3">
+          <StatCard title="Worker 状态" :value="quantAlive ? '在线' : '离线'" :hint="quantAlive ? `心跳 ${quantHbAge}s 前` : '心跳中断'" />
+          <StatCard title="待处理 (pending)" :value="quantPending" hint="等待执行的任务数" />
+          <StatCard title="运行中 (running)" :value="quantRunning" hint="当前正在执行的任务数" />
+          <StatCard title="近期错误类型" :value="quantErrorTypes" hint="最近 N 条任务的错误码种类" />
+          <StatCard title="执行模式" :value="quantMode" hint="worker 当前执行模式" />
+        </div>
+        <!-- Anomaly guidance: shown when worker is offline or errors present -->
+        <div v-if="quantAnomalyHints.length" class="mt-3 rounded-[18px] border border-amber-200 bg-amber-50/60 px-4 py-3 space-y-1">
+          <div class="text-sm font-semibold text-amber-800">建议下一步操作</div>
+          <div v-for="(hint, i) in quantAnomalyHints" :key="i" class="text-sm text-amber-700">• {{ hint }}</div>
+        </div>
+        <div v-if="quantRecentErrors.length" class="mt-3 space-y-1">
+          <div class="text-sm font-semibold text-[var(--ink)]">近期错误明细</div>
+          <div v-for="(e, i) in quantRecentErrors" :key="i" class="rounded-[14px] border border-[var(--line)] bg-white px-4 py-2 text-sm text-[var(--ink)]">
+            {{ e.error_code || e.type || '-' }}: {{ e.message || e.detail || '-' }}
+          </div>
+        </div>
+        <div v-else class="mt-3 text-sm text-[var(--muted)]">近期无错误记录</div>
+      </PageSection>
+
       <PageSection title="最近错误日志" subtitle="优先看 tail，迅速判断是数据延迟、进程退出还是接口报错。">
         <div class="grid gap-4 xl:grid-cols-2">
           <div
@@ -105,12 +127,49 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchSourceMonitor } from '../../services/api/dashboard'
+import { fetchQuantHealth } from '../../services/api/quantFactors'
 import { formatDateTime } from '../../shared/utils/format'
 
 const { data: monitor, error, refetch } = useQuery({
   queryKey: ['source-monitor'],
   queryFn: fetchSourceMonitor,
   refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
+})
+
+const { data: quantHealth } = useQuery({
+  queryKey: ['quant-health-monitor'],
+  queryFn: fetchQuantHealth,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 30_000 : 120_000),
+  staleTime: 15_000,
+})
+
+const quantAlive = computed(() => Boolean((quantHealth.value?.worker || quantHealth.value?.data?.worker)?.alive))
+const quantHbAge = computed(() => (quantHealth.value?.worker || quantHealth.value?.data?.worker)?.heartbeat_age_seconds ?? '-')
+const quantPending = computed(() => (quantHealth.value?.queue || quantHealth.value?.data?.queue)?.pending ?? 0)
+const quantRunning = computed(() => (quantHealth.value?.queue || quantHealth.value?.data?.queue)?.running ?? 0)
+const quantMode = computed(() => (quantHealth.value?.worker || quantHealth.value?.data?.worker)?.execution_mode || '-')
+const quantRecentErrors = computed(() => quantHealth.value?.recent_errors || quantHealth.value?.data?.recent_errors || [])
+const quantErrorTypes = computed(() => {
+  const errs = quantRecentErrors.value
+  if (!errs.length) return '无'
+  const types = new Set(errs.map((e: Record<string, any>) => e.error_code || e.type || ''))
+  return types.size
+})
+
+const quantAnomalyHints = computed((): string[] => {
+  const hints: string[] = []
+  if (!quantAlive.value) {
+    hints.push('Worker 离线：检查 /tmp/quantaalpha_worker.log，确认 jobs/run_quantaalpha_worker.py 进程在运行。')
+    hints.push('可在任务调度中心（左侧导航 → 任务调度中心）查看 quantaalpha_mine_daily 任务最近状态。')
+  }
+  if (Number(quantPending.value) > 5) {
+    hints.push(`待处理任务积压（${quantPending.value} 条）：请确认 worker 进程正常消费，或检查 Redis 连接是否正常。`)
+  }
+  if (quantRecentErrors.value.length > 0) {
+    hints.push('有近期错误记录：优先查看错误明细，确认是 EXECUTION_EXCEPTION（任务逻辑）还是 THREAD_LOST（进程崩溃）。')
+    hints.push('若错误为 EXTERNAL_TIMEOUT，可检查 LLM 节点管理页（左侧导航 → LLM 节点管理）的节点可用性。')
+  }
+  return hints
 })
 
 const effectiveSummary = computed(() => {

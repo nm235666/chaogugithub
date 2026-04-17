@@ -1,3 +1,7 @@
+---
+name: repo-scan
+---
+
 # Repo Scan
 
 Use this skill when you need to build quick project context before doing work, including the first turn of a new conversation.

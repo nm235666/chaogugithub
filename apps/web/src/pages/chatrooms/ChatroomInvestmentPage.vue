@@ -76,6 +76,14 @@
                   <template #badge>
                     <StatusBadge :value="target.bias" :label="target.bias || '-'" />
                   </template>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <button
+                      class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:border-emerald-500 hover:bg-emerald-100"
+                      @click="goDecisionFromChatroom(target, item)"
+                    >
+                      → 决策板
+                    </button>
+                  </div>
                 </InfoCard>
               </div>
             </div>
@@ -193,6 +201,26 @@ function goNextPage() {
   if (queryFilters.page >= totalPages) return
   queryFilters.page += 1
   syncRouteFromFilters()
+}
+
+function goDecisionFromChatroom(target: Record<string, any>, _roomItem?: Record<string, any>) {
+  const name = String(target.name || target.ts_code || '').trim()
+  const tsCode = String(target.ts_code || '').trim()
+  const bias = String(target.bias || '').trim()
+  const query: Record<string, string> = { from: 'chatroom' }
+  if (tsCode) {
+    query.ts_code = tsCode
+    query.keyword = tsCode
+  } else if (name) {
+    query.keyword = name.slice(0, 20)
+  }
+  // Structured action template: pre-fill evidence source and note from chatroom context
+  if (name) {
+    const biasLabel = bias ? `偏向=${bias}` : ''
+    query.evidence = `[群聊倾向] ${name.slice(0, 30)}${biasLabel ? ' · ' + biasLabel : ''}`
+    query.note = `群聊触发观察 · ${name.slice(0, 20)}${bias ? ' · ' + bias : ''}`
+  }
+  router.push({ path: '/research/decision', query })
 }
 
 watch(
