@@ -170,6 +170,14 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 
 ## 数据抓取与回填
 
+## 本地归档与禁提交治理
+
+| 命令 | 作用 |
+| --- | --- |
+| `git config core.hooksPath .githooks` | 启用仓库内置 hooks（pre-commit/pre-push） |
+| `bash /home/zanbo/zanbotest/scripts/git_guard_no_archive_upload.sh` | 手工检查暂存区是否包含禁止提交路径 |
+| `git check-ignore -v local_archive/test.txt` | 验证本地归档路径命中忽略规则 |
+
 ### 股票、行情、估值、资金流
 
 | 命令 | 作用 |

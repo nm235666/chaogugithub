@@ -33,3 +33,19 @@ backups/
 
 # Local runtime env overrides
 .env
+
+# Local archive layer (kept on disk, never uploaded)
+local_archive/
+
+# Frontend generated reports/artifacts
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/tmp_*
+
+# Runtime/high-noise generated directories
+runtime/
+tmp/
+logs/
+
+# External synced datasource (local-only)
+external/strategy/
