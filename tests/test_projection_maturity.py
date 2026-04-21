@@ -94,6 +94,23 @@ class ProjectionMaturityTest(unittest.TestCase):
         self.assertIn("evidence_sources", content)
         self.assertIn("actionEvidenceSources", content)
 
+    def test_decision_board_displays_priority(self):
+        """DecisionBoardPage.vue must read and display priority on recent-action cards (§6.2)."""
+        content = _read("apps/web/src/pages/research/DecisionBoardPage.vue")
+        self.assertIn("item?.payload?.priority", content, "priority readback must be present")
+        self.assertIn("actionPriorityLabel", content, "actionPriorityLabel helper must render 高/中/低")
+
+    def test_decision_board_displays_expiry_condition(self):
+        """DecisionBoardPage.vue must read and display expiry_condition on recent-action cards (§6.2)."""
+        content = _read("apps/web/src/pages/research/DecisionBoardPage.vue")
+        self.assertIn("item?.payload?.expiry_condition", content, "expiry_condition readback must be present")
+        self.assertIn("失效", content, "失效 label must render next to expiry_condition value")
+
+    def test_decision_board_displays_position_pct_range(self):
+        """DecisionBoardPage.vue must read and display position_pct_range on recent-action cards (§6.2)."""
+        content = _read("apps/web/src/pages/research/DecisionBoardPage.vue")
+        self.assertIn("item?.payload?.position_pct_range", content, "position_pct_range readback must be present")
+
     # ───────────────────────────────────────────────
     # Criterion 3: 闭环完成率 — cross-module bridges
     # ───────────────────────────────────────────────

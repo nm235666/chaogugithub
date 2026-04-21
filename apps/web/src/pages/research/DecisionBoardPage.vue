@@ -505,9 +505,23 @@
               <span class="font-semibold text-[var(--muted)]">证据：</span>
               <span v-for="(ev, ei) in actionEvidenceSources(item)" :key="ei" class="metric-chip text-[11px]">{{ ev }}</span>
             </div>
-            <div v-if="item?.payload?.position_recommendation || item?.action_payload?.position_recommendation"
-              class="mt-0.5 text-xs text-sky-700">
-              仓位: {{ item?.payload?.position_recommendation || item?.action_payload?.position_recommendation }}
+            <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
+              <span v-if="item?.payload?.position_recommendation || item?.action_payload?.position_recommendation"
+                class="metric-chip text-sky-700">
+                仓位 {{ item?.payload?.position_recommendation || item?.action_payload?.position_recommendation }}
+              </span>
+              <span v-if="item?.payload?.position_pct_range || item?.action_payload?.position_pct_range"
+                class="metric-chip text-sky-700">
+                目标 {{ item?.payload?.position_pct_range || item?.action_payload?.position_pct_range }}
+              </span>
+              <span v-if="item?.payload?.priority || item?.action_payload?.priority"
+                class="metric-chip text-violet-700">
+                优先级 {{ actionPriorityLabel(item?.payload?.priority || item?.action_payload?.priority) }}
+              </span>
+              <span v-if="item?.payload?.expiry_condition || item?.action_payload?.expiry_condition"
+                class="metric-chip text-rose-700">
+                失效 {{ item?.payload?.expiry_condition || item?.action_payload?.expiry_condition }}
+              </span>
             </div>
             <div v-if="actionReviewConclusion(item)" class="mt-2 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
               <span class="font-semibold">复盘：</span>{{ actionReviewConclusion(item) }}
@@ -1129,6 +1143,14 @@ function actionLabel(type: string) {
 
 function actionTone(type: string) {
   return ACTION_TONE_MAP[String(type || '').toLowerCase()] || 'muted'
+}
+
+function actionPriorityLabel(value: unknown): string {
+  const key = String(value || '').toLowerCase()
+  if (key === 'high') return '高'
+  if (key === 'low') return '低'
+  if (key === 'medium' || key === 'med' || key === 'normal') return '中'
+  return key || '-'
 }
 
 function formatReturn(val: number | null | undefined): string {
