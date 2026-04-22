@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import unittest
 
-from services.chatrooms_service import query_chatroom_candidate_pool, query_wechat_chatlog
+from services.chatrooms_service import (
+    query_chatroom_candidate_pool,
+    query_chatroom_room_detail,
+    query_chatroom_sender_detail,
+    query_chatroom_signal_accuracy,
+    query_wechat_chatlog,
+)
 
 
 class _ConnStub:
@@ -71,3 +77,41 @@ class ChatroomsServiceTest(unittest.TestCase):
         )
         self.assertEqual(payload["total"], 0)
         self.assertIn("filters", payload)
+
+    def test_query_chatroom_signal_accuracy_empty_table(self):
+        sqlite_stub = _SQLiteStub([(0,)])
+        payload = query_chatroom_signal_accuracy(
+            sqlite3_module=sqlite_stub,
+            db_path="mock.db",
+            entity_type="room",
+            keyword="",
+            page=1,
+            page_size=20,
+        )
+        self.assertEqual(payload["total"], 0)
+        self.assertIn("summary", payload)
+
+    def test_query_chatroom_room_detail_empty_table(self):
+        sqlite_stub = _SQLiteStub([(0,)])
+        payload = query_chatroom_room_detail(
+            sqlite3_module=sqlite_stub,
+            db_path="mock.db",
+            room_id="abc@chatroom",
+            talker="测试群",
+            page=1,
+            page_size=20,
+        )
+        self.assertEqual(payload["total"], 0)
+        self.assertIn("summary", payload)
+
+    def test_query_chatroom_sender_detail_empty_table(self):
+        sqlite_stub = _SQLiteStub([(0,)])
+        payload = query_chatroom_sender_detail(
+            sqlite3_module=sqlite_stub,
+            db_path="mock.db",
+            sender_name="张三",
+            page=1,
+            page_size=20,
+        )
+        self.assertEqual(payload["total"], 0)
+        self.assertIn("summary", payload)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collectors.chatrooms import (
     run_chatroom_analysis_pipeline,
     run_chatroom_list_refresh,
+    run_chatroom_signal_accuracy_refresh,
     run_chatroom_sentiment_refresh,
     run_monitored_chatlog_fetch,
 )
@@ -34,6 +35,12 @@ def get_chatroom_job_target(job_key: str) -> dict:
             "runner_type": "collector",
             "target": "collectors.chatrooms.run_chatroom_list_refresh",
         },
+        "chatroom_signal_accuracy_refresh": {
+            "job_key": "chatroom_signal_accuracy_refresh",
+            "category": "chatrooms",
+            "runner_type": "collector",
+            "target": "collectors.chatrooms.run_chatroom_signal_accuracy_refresh",
+        },
     }
     if job_key not in registry:
         raise KeyError(job_key)
@@ -49,4 +56,6 @@ def run_chatroom_job(job_key: str) -> dict:
         return run_monitored_chatlog_fetch()
     if job_key == "chatroom_list_refresh":
         return run_chatroom_list_refresh()
+    if job_key == "chatroom_signal_accuracy_refresh":
+        return run_chatroom_signal_accuracy_refresh()
     raise KeyError(job_key)

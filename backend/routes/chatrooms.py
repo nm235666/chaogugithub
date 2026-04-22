@@ -131,4 +131,71 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json(payload)
         return True
 
+    if parsed.path == "/api/chatrooms/accuracy":
+        params = parse_qs(parsed.query)
+        entity_type = params.get("entity_type", [""])[0]
+        keyword = params.get("keyword", [""])[0]
+        try:
+            page = int(params.get("page", ["1"])[0])
+            page_size = int(params.get("page_size", ["20"])[0])
+        except ValueError:
+            handler._send_json({"error": "page/page_size 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_chatroom_signal_accuracy"](
+                entity_type=entity_type,
+                keyword=keyword,
+                page=page,
+                page_size=page_size,
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"error": f"查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
+    if parsed.path == "/api/chatrooms/room-detail":
+        params = parse_qs(parsed.query)
+        room_id = params.get("room_id", [""])[0]
+        talker = params.get("talker", [""])[0]
+        try:
+            page = int(params.get("page", ["1"])[0])
+            page_size = int(params.get("page_size", ["20"])[0])
+        except ValueError:
+            handler._send_json({"error": "page/page_size 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_chatroom_room_detail"](
+                room_id=room_id,
+                talker=talker,
+                page=page,
+                page_size=page_size,
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"error": f"查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
+    if parsed.path == "/api/chatrooms/sender-detail":
+        params = parse_qs(parsed.query)
+        sender_name = params.get("sender_name", [""])[0]
+        try:
+            page = int(params.get("page", ["1"])[0])
+            page_size = int(params.get("page_size", ["20"])[0])
+        except ValueError:
+            handler._send_json({"error": "page/page_size 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_chatroom_sender_detail"](
+                sender_name=sender_name,
+                page=page,
+                page_size=page_size,
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"error": f"查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
     return False

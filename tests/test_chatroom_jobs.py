@@ -20,6 +20,7 @@ class ChatroomJobsTest(unittest.TestCase):
             "chatroom_sentiment_refresh",
             "monitored_chatlog_fetch",
             "chatroom_list_refresh",
+            "chatroom_signal_accuracy_refresh",
         ):
             target = get_chatroom_job_target(job_key)
             self.assertEqual(target["job_key"], job_key)

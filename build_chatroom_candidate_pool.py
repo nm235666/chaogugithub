@@ -18,6 +18,45 @@ def normalize_text(value: str) -> str:
     return str(value or "").strip().upper()
 
 
+def strip_st_prefix(name: str) -> str:
+    import re
+
+    text = str(name or "").strip()
+    text = re.sub(r"^\*?ST", "", text, flags=re.IGNORECASE).strip()
+    return text
+
+
+def add_alias(alias_map: dict[str, dict], aliases: set[str], alias: str, ts_code: str, stock_name: str, *, alias_type: str = "derived") -> None:
+    text = str(alias or "").strip()
+    if not text:
+        return
+    key = normalize_text(text)
+    aliases.add(key)
+    alias_map.setdefault(
+        key,
+        {
+            "ts_code": str(ts_code or "").strip().upper(),
+            "stock_name": str(stock_name or "").strip() or str(ts_code or "").strip().upper(),
+            "alias": text,
+            "alias_type": alias_type,
+            "confidence": 1.0,
+            "source": "name_variant",
+        },
+    )
+
+
+def add_name_variants(alias_map: dict[str, dict], aliases: set[str], ts_code: str, stock_name: str) -> None:
+    name = str(stock_name or "").strip()
+    if not name:
+        return
+    add_alias(alias_map, aliases, name, ts_code, name, alias_type="official_name")
+    stripped = strip_st_prefix(name)
+    if stripped and normalize_text(stripped) != normalize_text(name):
+        add_alias(alias_map, aliases, stripped, ts_code, stripped, alias_type="name_st_stripped")
+        add_alias(alias_map, aliases, f"ST{stripped}", ts_code, name, alias_type="name_st_prefixed")
+        add_alias(alias_map, aliases, f"*ST{stripped}", ts_code, name, alias_type="name_st_prefixed")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="把群聊投资倾向分析汇总成股票/主题候选池")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH), help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）")
@@ -114,19 +153,8 @@ def load_stock_aliases(conn: sqlite3.Connection) -> tuple[set[str], dict[str, di
         ]:
             text = str(value or "").strip()
             if text:
-                key = normalize_text(text)
-                aliases.add(key)
-                alias_map.setdefault(
-                    key,
-                    {
-                        "ts_code": ts_code,
-                        "stock_name": name or ts_code,
-                        "alias": text,
-                        "alias_type": alias_type,
-                        "confidence": 1.0,
-                        "source": "stock_codes",
-                    },
-                )
+                add_alias(alias_map, aliases, text, ts_code, name or ts_code, alias_type=alias_type)
+        add_name_variants(alias_map, aliases, ts_code, name or ts_code)
         if name:
             alias_map[normalize_text(ts_code)] = {
                 "ts_code": ts_code,
@@ -145,6 +173,20 @@ def load_stock_aliases(conn: sqlite3.Connection) -> tuple[set[str], dict[str, di
                     "confidence": 1.0,
                     "source": "stock_codes",
                 }
+    if table_exists(conn, "stock_scores_daily"):
+        for row in conn.execute(
+            """
+            SELECT ts_code, name
+            FROM stock_scores_daily
+            WHERE COALESCE(ts_code, '') <> '' AND COALESCE(name, '') <> ''
+            GROUP BY ts_code, name
+            """
+        ).fetchall():
+            ts_code = str(row[0] or "").strip().upper()
+            name = str(row[1] or "").strip()
+            if not ts_code or not name:
+                continue
+            add_name_variants(alias_map, aliases, ts_code, name)
 
     alias_table_exists = conn.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='stock_alias_dictionary'"

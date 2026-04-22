@@ -68,3 +68,19 @@ def run_chatroom_list_refresh() -> dict:
         timeout_s=1800,
         meta={"kind": "chatroom_list_refresh"},
     )
+
+
+def run_chatroom_signal_accuracy_refresh() -> dict:
+    return run_python_script(
+        "build_chatroom_signal_accuracy.py",
+        "--room-scope",
+        "all",
+        "--lookback-days",
+        "3",
+        "--window-days",
+        "30",
+        "--min-sample",
+        "3",
+        timeout_s=1800,
+        meta={"kind": "chatroom_signal_accuracy_refresh"},
+    )

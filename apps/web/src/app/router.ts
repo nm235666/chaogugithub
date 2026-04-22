@@ -90,6 +90,8 @@ export const router = createRouter({
     { path: '/app/chatrooms/candidates', component: () => import('../pages/chatrooms/ChatroomCandidatesPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced', surface: 'app' } as RouteMetaAuth },
     { path: '/app/chatrooms/chatlog', component: () => import('../pages/chatrooms/ChatlogPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced', surface: 'app' } as RouteMetaAuth },
     { path: '/app/chatrooms/investment', component: () => import('../pages/chatrooms/ChatroomInvestmentPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced', surface: 'app' } as RouteMetaAuth },
+    { path: '/app/chatrooms/investment/room', component: () => import('../pages/chatrooms/ChatroomRoomDetailPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced', surface: 'app' } as RouteMetaAuth },
+    { path: '/app/chatrooms/investment/sender', component: () => import('../pages/chatrooms/ChatroomSenderDetailPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced', surface: 'app' } as RouteMetaAuth },
 
     { path: '/admin/dashboard', component: () => import('../pages/dashboard/DashboardPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin' } as RouteMetaAuth },
     { path: '/admin/system/source-monitor', component: () => import('../pages/system/SourceMonitorPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin' } as RouteMetaAuth },
@@ -138,6 +140,8 @@ export const router = createRouter({
     { path: '/chatrooms/candidates', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/chatrooms/chatlog', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/chatrooms/investment', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
+    { path: '/chatrooms/investment/room', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
+    { path: '/chatrooms/investment/sender', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/system/source-monitor', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/system/jobs-ops', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/system/llm-providers', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },

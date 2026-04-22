@@ -89,6 +89,7 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py dry-run <job_key>` | 展开任务命令但不执行（回归/排障首选） |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py runs --job-key <job_key> --limit 20` | 查看任务运行记录 |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py alerts --job-key <job_key> --limit 20` | 查看任务失败告警（默认仅未确认） |
+| `python3 /home/zanbo/zanbotest/job_orchestrator.py cleanup-alerts [--job-key <job_key>] [--dry-run]` | 清理“已恢复任务”的历史未确认告警；`--dry-run` 仅统计不落库 |
 
 ## 回归与 Smoke
 

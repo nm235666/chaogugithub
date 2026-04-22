@@ -292,6 +292,55 @@ def insert_job_alert(
     return int(row[0] or 0)
 
 
+def resolve_recovered_alerts(
+    conn: sqlite3.Connection,
+    *,
+    job_key: str = "",
+    success_run_id: int = 0,
+    dry_run: bool = False,
+) -> int:
+    now = utc_now()
+    where: list[str] = ["COALESCE(acknowledged, 0) = 0"]
+    params: list[object] = []
+    if job_key.strip():
+        where.append("job_key = ?")
+        params.append(job_key.strip())
+    if success_run_id > 0:
+        where.append("(run_id IS NULL OR run_id < ?)")
+        params.append(int(success_run_id))
+    else:
+        where.append(
+            f"""EXISTS (
+                SELECT 1
+                FROM {JOB_RUN_TABLE} r
+                WHERE r.job_key = {JOB_ALERT_TABLE}.job_key
+                  AND r.status = 'success'
+                  AND (
+                    ({JOB_ALERT_TABLE}.run_id IS NOT NULL AND r.id > {JOB_ALERT_TABLE}.run_id)
+                    OR ({JOB_ALERT_TABLE}.run_id IS NULL AND r.created_at >= {JOB_ALERT_TABLE}.created_at)
+                  )
+            )"""
+        )
+    where_sql = f"WHERE {' AND '.join(where)}"
+    count_sql = f"SELECT COUNT(*) FROM {JOB_ALERT_TABLE} {where_sql}"
+    row = conn.execute(count_sql, tuple(params)).fetchone()
+    count = int((row[0] if row else 0) or 0)
+    if count <= 0 or dry_run:
+        return count
+    conn.execute(
+        f"""
+        UPDATE {JOB_ALERT_TABLE}
+        SET acknowledged = 1,
+            acknowledged_at = ?,
+            update_time = ?
+        {where_sql}
+        """,
+        (now, now, *params),
+    )
+    conn.commit()
+    return count
+
+
 def insert_job_skip(conn: sqlite3.Connection, *, job_key: str, trigger_mode: str, reason: str, command_json: str = "[]") -> int:
     now = utc_now()
     conn.execute(
@@ -414,6 +463,7 @@ def run_job(job_key: str, trigger_mode: str = "manual", max_retries_per_command:
             error_text=error_text,
         )
         alert_id = 0
+        resolved_alerts = 0
         if status != "success":
             alert_id = insert_job_alert(
                 conn,
@@ -428,6 +478,9 @@ def run_job(job_key: str, trigger_mode: str = "manual", max_retries_per_command:
                 payload={"job_key": job.job_key, "run_id": run_id, "alert_id": alert_id, "status": status},
                 producer="job_orchestrator.py",
             )
+        else:
+            # 成功后自动回收该任务的历史未恢复告警，只保留持续失败项。
+            resolved_alerts = resolve_recovered_alerts(conn, job_key=job.job_key, success_run_id=run_id)
         publish_app_event(event="job_run_update", payload={"job_key": job.job_key, "run_id": run_id, "status": status, "exit_code": exit_code}, producer="job_orchestrator.py")
         return {
             "ok": exit_code == 0,
@@ -436,6 +489,7 @@ def run_job(job_key: str, trigger_mode: str = "manual", max_retries_per_command:
             "status": status,
             "exit_code": exit_code,
             "alert_id": alert_id,
+            "resolved_alerts": resolved_alerts,
         }
     except Exception as exc:
         # 兜底：无论出现什么未捕获异常，都必须把 running 回写为 error，避免僵尸状态。
@@ -598,6 +652,9 @@ def parse_args() -> argparse.Namespace:
     alerts_p.add_argument("--job-key", default="", help="按 job_key 过滤")
     alerts_p.add_argument("--all", action="store_true", help="包含已确认告警")
     alerts_p.add_argument("--limit", type=int, default=20, help="返回条数")
+    cleanup_p = sub.add_parser("cleanup-alerts", help="清理已恢复任务的历史告警")
+    cleanup_p.add_argument("--job-key", default="", help="仅清理指定 job_key")
+    cleanup_p.add_argument("--dry-run", action="store_true", help="仅统计待清理数量，不执行更新")
     return parser.parse_args()
 
 
@@ -651,6 +708,31 @@ def main() -> int:
             )
         )
         return 0
+    if args.cmd == "cleanup-alerts":
+        conn = sqlite3.connect(str(ROOT_DIR / "stock_codes.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_tables(conn)
+            cleaned = resolve_recovered_alerts(
+                conn,
+                job_key=str(args.job_key or "").strip(),
+                success_run_id=0,
+                dry_run=bool(args.dry_run),
+            )
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "job_key": str(args.job_key or "").strip(),
+                        "dry_run": bool(args.dry_run),
+                        "cleaned": int(cleaned),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        finally:
+            conn.close()
     return 1
 
 

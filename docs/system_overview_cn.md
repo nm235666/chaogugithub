@@ -153,6 +153,8 @@
 | `wechat_chatlog_clean_items` | 清洗后的群聊消息。 |
 | `chatroom_investment_analysis` | 群聊投资倾向分析结果。 |
 | `chatroom_stock_candidate_pool` | 群聊股票/主题候选池。 |
+| `chatroom_stock_signal_predictions` | 群聊荐股方向信号与次日收盘校验结果。 |
+| `chatroom_signal_accuracy_labels` | 群聊/荐股人滚动命中率标签（30 日）。 |
 
 ### 2.5 信号系统与映射
 
@@ -200,7 +202,9 @@
 | `/macro` | 用户模式 | 宏观数据展示。 |
 | `/chatrooms/overview` | 用户模式 | 群聊总览。 |
 | `/chatrooms/chatlog` | 用户模式 | 群聊聊天记录查询。 |
-| `/chatrooms/investment` | 用户模式 | 群聊投资倾向总览。 |
+| `/chatrooms/investment` | 用户模式 | 群聊投资倾向总览（含荐股准确率标注）。 |
+| `/chatrooms/investment/room` | 用户模式 | 单群聊荐股方向与校验详情。 |
+| `/chatrooms/investment/sender` | 用户模式 | 单荐股人方向与校验详情。 |
 | `/chatrooms/candidates` | 用户模式 | 股票候选池（近 7 天累计）。 |
 | `/signals/overview` | 用户模式 | 投资信号总览。 |
 | `/signals/themes` | 用户模式 | 主题热点与主题维度信号。 |

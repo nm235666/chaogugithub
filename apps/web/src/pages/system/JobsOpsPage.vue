@@ -380,12 +380,15 @@ function refreshAll() {
 }
 
 async function copyCommand(command: string) {
-  try {
-    await navigator.clipboard.writeText(command)
+  const copied = await copyTextWithFallback(command)
+  if (copied) {
     ui.showToast('命令已复制', 'success')
-  } catch {
-    ui.showToast('复制失败，请手动复制', 'error')
+    return
   }
+  if (typeof window !== 'undefined') {
+    window.prompt('复制失败，请手动复制以下命令：', command)
+  }
+  ui.showToast('复制失败，已弹出手动复制框', 'error')
 }
 
 function buildDebugCommand(item: Record<string, any>) {
@@ -401,5 +404,36 @@ function copyDebugCommand(item: Record<string, any>) {
     return
   }
   copyCommand(command)
+}
+
+async function copyTextWithFallback(text: string): Promise<boolean> {
+  if (!text) return false
+  try {
+    if (typeof window !== 'undefined' && window.isSecureContext && navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
+    if (typeof document === 'undefined') return false
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    textarea.style.top = '0'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    textarea.setSelectionRange(0, textarea.value.length)
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return ok
+  } catch {
+    return false
+  }
 }
 </script>

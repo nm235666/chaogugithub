@@ -7,6 +7,7 @@ BACKEND_LOG="/tmp/stock_backend.log"
 BACKEND_LLM2_LOG="/tmp/stock_backend_llm2.log"
 BACKEND_MACRO_LOG="/tmp/stock_backend_macro.log"
 BACKEND_MULTI_ROLE_LOG="/tmp/stock_backend_multi_role.log"
+STATE_DIR="/tmp/zanbo_watchdog_state"
 
 is_running() {
   local pattern="$1"
@@ -18,13 +19,34 @@ ts() {
 }
 
 mkdir -p /tmp
+mkdir -p "$STATE_DIR"
+
+record_health_ok() {
+  local name="$1"
+  rm -f "$STATE_DIR/${name}.fail_count"
+}
+
+record_health_fail() {
+  local name="$1"
+  local file="$STATE_DIR/${name}.fail_count"
+  local count=0
+  if [[ -f "$file" ]]; then
+    count="$(cat "$file" 2>/dev/null || echo 0)"
+  fi
+  if ! [[ "$count" =~ ^[0-9]+$ ]]; then
+    count=0
+  fi
+  count=$((count + 1))
+  echo "$count" >"$file"
+  echo "$count"
+}
 
 backend_port_alive() {
   lsof -ti tcp:8002 >/dev/null 2>&1
 }
 
 backend_health_ok() {
-  curl -fsS --max-time 4 "http://127.0.0.1:8002/api/health" >/dev/null 2>&1
+  curl -fsS --max-time 8 "http://127.0.0.1:8002/api/health" >/dev/null 2>&1
 }
 
 restart_backend() {
@@ -51,15 +73,15 @@ backend_multi_role_port_alive() {
 }
 
 backend_llm2_health_ok() {
-  curl -fsS --max-time 4 "http://127.0.0.1:8004/api/health" >/dev/null 2>&1
+  curl -fsS --max-time 8 "http://127.0.0.1:8004/api/health" >/dev/null 2>&1
 }
 
 backend_macro_health_ok() {
-  curl -fsS --max-time 4 "http://127.0.0.1:8005/api/health" >/dev/null 2>&1
+  curl -fsS --max-time 8 "http://127.0.0.1:8005/api/health" >/dev/null 2>&1
 }
 
 backend_multi_role_health_ok() {
-  curl -fsS --max-time 4 "http://127.0.0.1:8006/api/health" >/dev/null 2>&1
+  curl -fsS --max-time 8 "http://127.0.0.1:8006/api/health" >/dev/null 2>&1
 }
 
 restart_backend_llm2() {
@@ -105,18 +127,58 @@ if ! is_running "stream_news_worker.py"; then
   echo "[$(ts)] restarted stream_news_worker.py" >>"$LOG"
 fi
 
-if ! backend_port_alive || ! backend_health_ok; then
+if ! backend_port_alive; then
+  record_health_ok "backend_8002"
   restart_backend
+elif backend_health_ok; then
+  record_health_ok "backend_8002"
+else
+  fails="$(record_health_fail "backend_8002")"
+  echo "[$(ts)] backend_8002 health failed ($fails/3), skip restart this round" >>"$LOG"
+  if [[ "$fails" -ge 3 ]]; then
+    restart_backend
+    record_health_ok "backend_8002"
+  fi
 fi
 
-if ! backend_llm2_port_alive || ! backend_llm2_health_ok; then
+if ! backend_llm2_port_alive; then
+  record_health_ok "backend_8004"
   restart_backend_llm2
+elif backend_llm2_health_ok; then
+  record_health_ok "backend_8004"
+else
+  fails="$(record_health_fail "backend_8004")"
+  echo "[$(ts)] backend_8004 health failed ($fails/3), skip restart this round" >>"$LOG"
+  if [[ "$fails" -ge 3 ]]; then
+    restart_backend_llm2
+    record_health_ok "backend_8004"
+  fi
 fi
 
-if ! backend_macro_port_alive || ! backend_macro_health_ok; then
+if ! backend_macro_port_alive; then
+  record_health_ok "backend_8005"
   restart_backend_macro
+elif backend_macro_health_ok; then
+  record_health_ok "backend_8005"
+else
+  fails="$(record_health_fail "backend_8005")"
+  echo "[$(ts)] backend_8005 health failed ($fails/3), skip restart this round" >>"$LOG"
+  if [[ "$fails" -ge 3 ]]; then
+    restart_backend_macro
+    record_health_ok "backend_8005"
+  fi
 fi
 
-if ! backend_multi_role_port_alive || ! backend_multi_role_health_ok; then
+if ! backend_multi_role_port_alive; then
+  record_health_ok "backend_8006"
   restart_backend_multi_role
+elif backend_multi_role_health_ok; then
+  record_health_ok "backend_8006"
+else
+  fails="$(record_health_fail "backend_8006")"
+  echo "[$(ts)] backend_8006 health failed ($fails/3), skip restart this round" >>"$LOG"
+  if [[ "$fails" -ge 3 ]]; then
+    restart_backend_multi_role
+    record_health_ok "backend_8006"
+  fi
 fi

@@ -26,3 +26,18 @@ export async function fetchCandidatePool(params: Record<string, any>) {
   const { data } = await http.get('/api/chatrooms/candidate-pool', { params })
   return data
 }
+
+export async function fetchChatroomAccuracy(params: Record<string, any>) {
+  const { data } = await http.get('/api/chatrooms/accuracy', { params })
+  return data
+}
+
+export async function fetchChatroomRoomDetail(params: Record<string, any>) {
+  const { data } = await http.get('/api/chatrooms/room-detail', { params })
+  return data
+}
+
+export async function fetchChatroomSenderDetail(params: Record<string, any>) {
+  const { data } = await http.get('/api/chatrooms/sender-detail', { params })
+  return data
+}

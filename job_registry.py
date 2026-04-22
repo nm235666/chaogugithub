@@ -166,6 +166,14 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         commands=((PYTHON_BIN, str(ROOT_DIR / "jobs" / "run_chatroom_job.py"), "--job-key", "chatroom_list_refresh"),),
     ),
     JobDefinition(
+        job_key="chatroom_signal_accuracy_refresh",
+        name="群聊荐股准确率校验",
+        category="chatrooms",
+        schedule_expr="30 8 * * 1-5",
+        description="对群聊荐股方向做下一交易日收盘校验，并生成群聊/荐股人准确率标注",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "jobs" / "run_chatroom_job.py"), "--job-key", "chatroom_signal_accuracy_refresh"),),
+    ),
+    JobDefinition(
         job_key="stock_news_score_refresh",
         name="个股新闻评分刷新",
         category="stock_news",
@@ -297,6 +305,16 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         commands=((PYTHON_BIN, str(ROOT_DIR / "db_health_check.py")),),
     ),
     JobDefinition(
+        job_key="job_alerts_auto_cleanup",
+        name="任务告警自动清理",
+        category="maintenance",
+        schedule_expr="5 0 * * *",
+        description="每日清理已恢复任务的历史告警，仅保留持续失败项",
+        commands=(
+            py_cmd(str(ROOT_DIR / "job_orchestrator.py"), "cleanup-alerts"),
+        ),
+    ),
+    JobDefinition(
         job_key="collect_daily_metrics",
         name="每日指标证据化",
         category="metrics",
@@ -360,22 +378,19 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="盘后更新流水线",
         category="market_data",
         schedule_expr="40 7 * * 1-5",
-        description="盘后刷新行情、估值、财务与评分（市场资金流与风险场景独立任务）",
+        description="盘后刷新行情、估值、核心财务与评分（重型财务缺口回填移至夜间批次）",
         commands=(
-            bash_cmd(
-                "python3 auto_update_stocks_and_prices.py --pause 0.02;"
-                " python3 backfill_stock_valuation_daily.py --lookback-days 5 --pause 0.02;"
-                " python3 backfill_capital_flow_stock.py --lookback-days 5 --pause 0.02;"
-                " python3 backfill_capital_flow_stock_akshare.py --only-bj --missing-only --pause 0.05;"
-                " python3 backfill_fx_daily.py --lookback-days 10 --pause 0.02;"
-                " python3 backfill_rate_curve_points.py --lookback-days 10 --pause 0.02;"
-                " python3 backfill_spread_daily.py --lookback-days 10;"
-                " python3 fast_backfill_stock_financials.py --recent-periods 4 --pause 0.02;"
-                " python3 backfill_missing_stock_financials.py --recent-periods 4 --pause 0.05;"
-                " python3 update_daily_stock_events.py;"
-                " python3 backfill_stock_scores_daily.py --truncate-date;"
-                " python3 build_stock_daily_price_rollups.py --window-days 30,90,365"
-            ),
+            py_cmd(str(ROOT_DIR / "auto_update_stocks_and_prices.py"), "--pause", "0.02"),
+            py_cmd(str(ROOT_DIR / "backfill_stock_valuation_daily.py"), "--lookback-days", "5", "--pause", "0.02"),
+            py_cmd(str(ROOT_DIR / "backfill_capital_flow_stock.py"), "--lookback-days", "5", "--pause", "0.02"),
+            py_cmd(str(ROOT_DIR / "backfill_capital_flow_stock_akshare.py"), "--only-bj", "--missing-only", "--pause", "0.05"),
+            py_cmd(str(ROOT_DIR / "backfill_fx_daily.py"), "--lookback-days", "10", "--pause", "0.02"),
+            py_cmd(str(ROOT_DIR / "backfill_rate_curve_points.py"), "--lookback-days", "10", "--pause", "0.02"),
+            py_cmd(str(ROOT_DIR / "backfill_spread_daily.py"), "--lookback-days", "10"),
+            py_cmd(str(ROOT_DIR / "fast_backfill_stock_financials.py"), "--recent-periods", "4", "--pause", "0.02"),
+            py_cmd(str(ROOT_DIR / "update_daily_stock_events.py")),
+            py_cmd(str(ROOT_DIR / "backfill_stock_scores_daily.py"), "--truncate-date"),
+            py_cmd(str(ROOT_DIR / "build_stock_daily_price_rollups.py"), "--window-days", "30,90,365"),
         ),
     ),
     JobDefinition(

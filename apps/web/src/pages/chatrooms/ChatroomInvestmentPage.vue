@@ -10,6 +10,39 @@
         </div>
       </PageSection>
 
+      <PageSection title="荐股准确率标注（30日）" subtitle="群聊方向信号在次日收盘后的命中率标注。">
+        <div class="grid gap-3 xl:grid-cols-2">
+          <InfoCard title="群聊准确率 Top" :meta="accuracyMeta('room')">
+            <div class="space-y-2 text-sm">
+              <button
+                v-for="row in (roomAccuracy?.items || []).slice(0, 6)"
+                :key="`room-${row.entity_key}`"
+                class="flex w-full items-center justify-between rounded-xl border border-[var(--line)] px-3 py-2 text-left transition hover:border-[var(--brand)] hover:bg-[rgba(15,118,110,0.05)]"
+                @click="goRoomDetailByAccuracy(row)"
+              >
+                <div class="truncate pr-3">{{ row.entity_name || row.entity_key }}</div>
+                <div class="shrink-0">{{ formatAccuracy(row.hit_rate, row.sample_size) }} · {{ row.accuracy_label || '无样本' }}</div>
+              </button>
+              <div v-if="!(roomAccuracy?.items || []).length" class="text-[var(--muted)]">暂无群聊方向准确率样本。</div>
+            </div>
+          </InfoCard>
+          <InfoCard title="荐股人准确率 Top" :meta="accuracyMeta('sender')">
+            <div class="space-y-2 text-sm">
+              <button
+                v-for="row in (senderAccuracy?.items || []).slice(0, 6)"
+                :key="`sender-${row.entity_key}`"
+                class="flex w-full items-center justify-between rounded-xl border border-[var(--line)] px-3 py-2 text-left transition hover:border-[var(--brand)] hover:bg-[rgba(15,118,110,0.05)]"
+                @click="goSenderDetailByAccuracy(row)"
+              >
+                <div class="truncate pr-3">{{ row.entity_name || row.entity_key }}</div>
+                <div class="shrink-0">{{ formatAccuracy(row.hit_rate, row.sample_size) }} · {{ row.accuracy_label || '无样本' }}</div>
+              </button>
+              <div v-if="!(senderAccuracy?.items || []).length" class="text-[var(--muted)]">暂无荐股人方向准确率样本。</div>
+            </div>
+          </InfoCard>
+        </div>
+      </PageSection>
+
       <PageSection title="筛选条件" subtitle="按群名、整体偏向和目标关键词检索。">
         <fieldset class="grid gap-3 xl:grid-cols-5 md:grid-cols-2">
           <legend class="sr-only">投资倾向筛选条件</legend>
@@ -66,8 +99,18 @@
               <div class="metric-chip">成员数 <strong>{{ item.user_count ?? '-' }}</strong></div>
               <div class="metric-chip">情绪分 <strong>{{ item.llm_sentiment_score ?? '-' }}</strong></div>
               <div class="metric-chip">情绪标签 <strong>{{ item.llm_sentiment_label || '未评' }}</strong></div>
+              <div class="metric-chip">方向准确率(30d) <strong>{{ formatAccuracy(item.room_accuracy_hit_rate, item.room_accuracy_sample_size) }}</strong></div>
+              <div class="metric-chip">准确率标注 <strong>{{ item.room_accuracy_label || '无样本' }}</strong></div>
             </div>
             <div class="mt-3 text-sm text-[var(--muted)]">{{ item.llm_sentiment_reason || '暂无情绪原因说明。' }}</div>
+            <div class="mt-2 text-xs text-[var(--muted)]" v-if="item.room_accuracy_as_of_date">
+              校验截至 {{ item.room_accuracy_as_of_date }}（群聊荐股方向次日收盘）
+            </div>
+            <div class="mt-2">
+              <button class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)]" @click="goRoomDetail(item)">
+                查看群聊详情
+              </button>
+            </div>
             <div class="mt-3 space-y-2">
               <div class="text-sm font-semibold text-[var(--ink)]">投资标的</div>
               <div class="max-h-[220px] space-y-2 overflow-auto pr-1">
@@ -113,7 +156,7 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
-import { fetchChatroomInvestment } from '../../services/api/chatrooms'
+import { fetchChatroomAccuracy, fetchChatroomInvestment } from '../../services/api/chatrooms'
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 
 function joinParts(parts: Array<unknown>) {
@@ -129,6 +172,19 @@ function parseTargets(raw: unknown): Array<Record<string, any>> {
   } catch {
     return []
   }
+}
+
+function formatAccuracy(rate: unknown, sample: unknown) {
+  const numRate = Number(rate)
+  const sampleNum = Number(sample || 0)
+  if (!Number.isFinite(numRate) || sampleNum <= 0) return '无样本'
+  return `${(numRate * 100).toFixed(1)}% (n=${sampleNum})`
+}
+
+function accuracyMeta(kind: 'room' | 'sender') {
+  const payload = kind === 'room' ? roomAccuracy.value : senderAccuracy.value
+  const asOf = String(payload?.summary?.latest_as_of_date || '').trim()
+  return asOf ? `截至 ${asOf}` : '暂无校验结果'
 }
 
 const filters = reactive({
@@ -151,6 +207,18 @@ const router = useRouter()
 const { data: result } = useQuery({
   queryKey: computed(() => ['chatroom-investment', { ...queryFilters }]),
   queryFn: () => fetchChatroomInvestment({ ...queryFilters }),
+  placeholderData: keepPreviousData,
+})
+
+const { data: roomAccuracy } = useQuery({
+  queryKey: ['chatroom-accuracy', 'room'],
+  queryFn: () => fetchChatroomAccuracy({ entity_type: 'room', page: 1, page_size: 20 }),
+  placeholderData: keepPreviousData,
+})
+
+const { data: senderAccuracy } = useQuery({
+  queryKey: ['chatroom-accuracy', 'sender'],
+  queryFn: () => fetchChatroomAccuracy({ entity_type: 'sender', page: 1, page_size: 20 }),
   placeholderData: keepPreviousData,
 })
 
@@ -224,6 +292,35 @@ function goDecisionFromChatroom(target: Record<string, any>, _roomItem?: Record<
     query.note = `群聊触发观察 · ${name.slice(0, 20)}${bias ? ' · ' + bias : ''}`
   }
   router.push({ path: '/app/decision', query })
+}
+
+function goRoomDetail(item: Record<string, any>) {
+  router.push({
+    path: '/app/chatrooms/investment/room',
+    query: {
+      room_id: String(item.room_id || '').trim(),
+      talker: String(item.talker || item.remark || item.nick_name || '').trim(),
+    },
+  })
+}
+
+function goRoomDetailByAccuracy(row: Record<string, any>) {
+  router.push({
+    path: '/app/chatrooms/investment/room',
+    query: {
+      room_id: String(row.entity_key || '').trim(),
+      talker: String(row.entity_name || '').trim(),
+    },
+  })
+}
+
+function goSenderDetailByAccuracy(row: Record<string, any>) {
+  router.push({
+    path: '/app/chatrooms/investment/sender',
+    query: {
+      sender_name: String(row.entity_key || row.entity_name || '').trim(),
+    },
+  })
 }
 
 watch(

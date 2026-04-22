@@ -3,6 +3,9 @@ from .service import (
     fetch_single_chatroom_now,
     query_chatroom_candidate_pool,
     query_chatroom_investment_analysis,
+    query_chatroom_room_detail,
+    query_chatroom_signal_accuracy,
+    query_chatroom_sender_detail,
     query_chatroom_overview,
     query_wechat_chatlog,
 )
@@ -13,5 +16,8 @@ __all__ = [
     "fetch_single_chatroom_now",
     "query_chatroom_investment_analysis",
     "query_chatroom_candidate_pool",
+    "query_chatroom_signal_accuracy",
+    "query_chatroom_room_detail",
+    "query_chatroom_sender_detail",
     "build_chatrooms_service_deps",
 ]
