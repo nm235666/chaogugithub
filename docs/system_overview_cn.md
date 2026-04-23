@@ -27,6 +27,7 @@
 - 4 层 Tab：`用户决策 / 数据资产 / 验证研究 / 后台治理`，命中所在前缀的 Tab 默认高亮（`data-layer-active`）。
 - 点击 Tab：跳转到该层默认页（取自 [apps/web/src/app/layers.ts](apps/web/src/app/layers.ts) 的 `defaultPath`）；权限不足时跳转到 `/upgrade?reason=permission` 并保留来源。
 - 侧栏：从 11 个独立分组聚合为 4 个分层分组（`layer1-desk` / `layer2-data` / `layer3-lab` / `layer4-admin`），评分总览归位到第二层数据资产层。
+- 侧栏按层折叠：默认只展开当前 URL 所属层下的分组（`data-nav-group-expanded`），其余层仅显示分组标题行；点击折叠层的标题会 `router` 到该层 `defaultPath`（与顶部 Tab 一致）。若当前路径无法解析到任一层（极少见），则三个用户侧分组全部展开以免无入口。
 - 路径迁移：所有旧 `/app/*` URL 通过 [apps/web/src/app/router.ts](apps/web/src/app/router.ts) 的 `redirect` 与 `migrateLegacyAppPath` 一次跳转到新前缀，不再有"既能用旧 URL 也能用新 URL"的双口径。
 
 ## 1. 目前系统已经具备的能力

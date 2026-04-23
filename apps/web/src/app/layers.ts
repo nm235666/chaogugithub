@@ -130,3 +130,39 @@ export function layerForSurface(surface: NavSurface): LayerDef[] {
 export function getLayerById(id: LayerId): LayerDef | null {
   return LAYER_DEFS.find((def) => def.id === id) || null
 }
+
+/** Minimal nav group shape for layer mapping (avoids importing NavGroupConfig from navigation.ts). */
+export type NavGroupLayerRef = {
+  id: string
+  items: Array<{ to: string }>
+}
+
+const NAV_GROUP_ID_TO_LAYER: Record<string, LayerId> = {
+  'layer1-desk': 'l1',
+  'layer2-data': 'l2',
+  'layer3-lab': 'l3',
+  'layer4-admin': 'l4',
+}
+
+export function layerIdForNavGroupId(groupId: string): LayerId | null {
+  return NAV_GROUP_ID_TO_LAYER[String(groupId || '').trim()] ?? null
+}
+
+export function layerIdForNavGroup(group: NavGroupLayerRef): LayerId | null {
+  const byId = layerIdForNavGroupId(group.id)
+  if (byId) return byId
+  const first = group.items?.[0]?.to
+  if (!first) return null
+  const pathname = String(first).split(/[?#]/)[0] || ''
+  const def = resolveLayerByPath(migrateLegacyAppPath(pathname))
+  return def?.id ?? null
+}
+
+/** When true, sidebar shows all nav groups expanded (e.g. unknown /app/* path). */
+export function sidebarExpandAllGroups(pathname: string): boolean {
+  return resolveLayerByPath(pathname) === null
+}
+
+export function defaultPathForLayerId(id: LayerId): string {
+  return getLayerById(id)?.defaultPath ?? '/app/desk/workbench'
+}

@@ -85,6 +85,25 @@ test.describe('四层壳层结构', () => {
   })
 })
 
+test.describe('侧栏按层折叠', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 })
+    await login(page, 'pro')
+  })
+
+  test('数据层页仅当前层分组展开，点击折叠的第一层标题进入 desk 默认页', async ({ page }) => {
+    await page.goto('/app/data/scoreboard')
+    const nav = page.locator('[data-shell-nav="app"]').first()
+    await expect(nav.locator('[data-nav-group="layer2-data"]')).toHaveAttribute('data-nav-group-expanded', 'true')
+    await expect(nav.locator('[data-nav-group="layer1-desk"]')).toHaveAttribute('data-nav-group-expanded', 'false')
+    await expect(nav.locator('[data-nav-group="layer3-lab"]')).toHaveAttribute('data-nav-group-expanded', 'false')
+    await expect(nav.locator('[data-nav-group="layer2-data"]')).toContainText('评分总览')
+    await expect(nav.locator('[data-nav-group="layer1-desk"]')).not.toContainText('研究工作台')
+    await nav.locator('[data-nav-group="layer1-desk"] a').first().click()
+    await expect(page).toHaveURL(/\/app\/desk\/workbench$/)
+  })
+})
+
 test.describe('旧路径兼容', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, 'admin')

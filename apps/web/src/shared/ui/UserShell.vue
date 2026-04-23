@@ -13,17 +13,35 @@
             <div class="mt-2 text-sm text-white/70">今天该看什么、为什么、下一步做什么</div>
           </div>
           <nav class="relative space-y-5">
-            <div v-for="group in navGroups" :key="group.id" class="space-y-2">
-              <div class="px-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">{{ group.title }}</div>
+            <div
+              v-for="group in navGroups"
+              :key="group.id"
+              class="space-y-2"
+              :data-nav-group="group.id"
+              :data-nav-group-expanded="isNavGroupExpanded(group) ? 'true' : 'false'"
+            >
+              <template v-if="isNavGroupExpanded(group)">
+                <div class="px-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">{{ group.title }}</div>
+                <RouterLink
+                  v-for="item in group.items"
+                  :key="item.to"
+                  :to="item.to"
+                  class="block rounded-[var(--radius-md)] border border-transparent px-3 py-2.5 text-sm transition-all duration-200"
+                  :class="isNavActive(item.to) ? 'border-emerald-300/70 bg-white/14 text-white shadow-[0_0_0_1px_rgba(167,243,208,0.18)]' : 'text-white/74 hover:border-white/10 hover:bg-white/8 hover:text-white'"
+                >
+                  <div class="font-semibold">{{ item.label }}</div>
+                  <div class="mt-0.5 text-xs text-white/55">{{ item.desc }}</div>
+                </RouterLink>
+              </template>
               <RouterLink
-                v-for="item in group.items"
-                :key="item.to"
-                :to="item.to"
-                class="block rounded-[var(--radius-md)] border border-transparent px-3 py-2.5 text-sm transition-all duration-200"
-                :class="isNavActive(item.to) ? 'border-emerald-300/70 bg-white/14 text-white shadow-[0_0_0_1px_rgba(167,243,208,0.18)]' : 'text-white/74 hover:border-white/10 hover:bg-white/8 hover:text-white'"
+                v-else
+                :to="navGroupLayerDefaultPath(group)"
+                class="flex w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border border-white/10 bg-white/5 px-3 py-2.5 text-left text-sm text-white/85 transition hover:border-white/15 hover:bg-white/10"
+                :aria-expanded="'false'"
+                :aria-label="`${group.title}，前往该层入口`"
               >
-                <div class="font-semibold">{{ item.label }}</div>
-                <div class="mt-0.5 text-xs text-white/55">{{ item.desc }}</div>
+                <span class="text-xs font-semibold uppercase tracking-[0.14em]">{{ group.title }}</span>
+                <span class="shrink-0 text-white/45" aria-hidden="true">›</span>
               </RouterLink>
             </div>
           </nav>
@@ -108,18 +126,37 @@
             <button class="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/10" @click="ui.closeMobileNav()">关闭</button>
           </div>
           <nav class="space-y-5">
-            <div v-for="group in navGroups" :key="`mobile-${group.id}`" class="space-y-2">
-              <div class="px-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">{{ group.title }}</div>
+            <div
+              v-for="group in navGroups"
+              :key="`mobile-${group.id}`"
+              class="space-y-2"
+              :data-nav-group="group.id"
+              :data-nav-group-expanded="isNavGroupExpanded(group) ? 'true' : 'false'"
+            >
+              <template v-if="isNavGroupExpanded(group)">
+                <div class="px-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">{{ group.title }}</div>
+                <RouterLink
+                  v-for="item in group.items"
+                  :key="`mobile-${item.to}`"
+                  :to="item.to"
+                  class="block rounded-[var(--radius-md)] border border-transparent px-3 py-2.5 text-sm transition-all"
+                  :class="isNavActive(item.to) ? 'border-emerald-300/70 bg-white/14 text-white' : 'text-white/74 hover:border-white/10 hover:bg-white/8 hover:text-white'"
+                  @click="ui.closeMobileNav()"
+                >
+                  <div class="font-semibold">{{ item.label }}</div>
+                  <div class="mt-0.5 text-xs text-white/55">{{ item.desc }}</div>
+                </RouterLink>
+              </template>
               <RouterLink
-                v-for="item in group.items"
-                :key="`mobile-${item.to}`"
-                :to="item.to"
-                class="block rounded-[var(--radius-md)] border border-transparent px-3 py-2.5 text-sm transition-all"
-                :class="isNavActive(item.to) ? 'border-emerald-300/70 bg-white/14 text-white' : 'text-white/74 hover:border-white/10 hover:bg-white/8 hover:text-white'"
+                v-else
+                :to="navGroupLayerDefaultPath(group)"
+                class="flex w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border border-white/10 bg-white/5 px-3 py-2.5 text-left text-sm text-white/85 transition hover:border-white/15 hover:bg-white/10"
+                :aria-expanded="'false'"
+                :aria-label="`${group.title}，前往该层入口`"
                 @click="ui.closeMobileNav()"
               >
-                <div class="font-semibold">{{ item.label }}</div>
-                <div class="mt-0.5 text-xs text-white/55">{{ item.desc }}</div>
+                <span class="text-xs font-semibold uppercase tracking-[0.14em]">{{ group.title }}</span>
+                <span class="shrink-0 text-white/45" aria-hidden="true">›</span>
               </RouterLink>
             </div>
           </nav>
@@ -139,6 +176,21 @@ defineProps<{
   subtitle?: string
 }>()
 
-const { hasAdminToken, navGroups, shellBadge, shellModeDescription, realtime, ui, canSwitchMode, switchLabel, switchMode, sidebarOpen, sidebarWidthClass, isNavActive, logout } =
-  useShellFrame('app')
+const {
+  hasAdminToken,
+  navGroups,
+  shellBadge,
+  shellModeDescription,
+  realtime,
+  ui,
+  canSwitchMode,
+  switchLabel,
+  switchMode,
+  sidebarOpen,
+  sidebarWidthClass,
+  isNavActive,
+  isNavGroupExpanded,
+  navGroupLayerDefaultPath,
+  logout,
+} = useShellFrame('app')
 </script>

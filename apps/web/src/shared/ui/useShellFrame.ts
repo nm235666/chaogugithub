@@ -6,6 +6,12 @@ import { fetchNavigationGroups } from '../../services/api/system'
 import { hasPermissionByEffective } from '../../app/permissions'
 import { NAV_GROUPS, resolveNavigationGroups, type NavGroupConfig, type NavSurface } from '../../app/navigation'
 import { describeCrossModeContext, extractCrossModeContext } from '../../app/crossModeContext'
+import {
+  defaultPathForLayerId,
+  layerIdForNavGroup,
+  resolveLayerByPath,
+  sidebarExpandAllGroups,
+} from '../../app/layers'
 import { useAuthStore } from '../../stores/auth'
 import { useRealtimeStore } from '../../stores/realtime'
 import { useUiStore } from '../../stores/ui'
@@ -75,6 +81,20 @@ export function useShellFrame(surface: NavSurface) {
       return route.path.startsWith('/app/data/chatrooms/investment')
     }
     return false
+  }
+
+  function isNavGroupExpanded(group: NavGroupConfig): boolean {
+    if (sidebarExpandAllGroups(route.path)) return true
+    const gid = layerIdForNavGroup(group)
+    const cur = resolveLayerByPath(route.path)
+    if (!gid || !cur) return true
+    return gid === cur.id
+  }
+
+  function navGroupLayerDefaultPath(group: NavGroupConfig): string {
+    const gid = layerIdForNavGroup(group)
+    if (gid) return defaultPathForLayerId(gid)
+    return group.items[0]?.to || (surface === 'admin' ? '/admin/dashboard' : '/app/desk/workbench')
   }
 
   async function switchMode() {
@@ -149,6 +169,8 @@ export function useShellFrame(surface: NavSurface) {
     sidebarOpen,
     sidebarWidthClass,
     isNavActive,
+    isNavGroupExpanded,
+    navGroupLayerDefaultPath,
     logout,
   }
 }
