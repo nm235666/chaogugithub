@@ -1,0 +1,5156 @@
+{
+  "config": {
+    "configFile": "/home/zanbo/zanbotest/apps/web/playwright.smoke.config.ts",
+    "rootDir": "/home/zanbo/zanbotest/apps/web/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 4
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/zanbo/zanbotest/apps/web/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/zanbo/zanbotest/apps/web/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 45000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.59.1",
+    "workers": 4,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "auth.spec.ts",
+      "file": "auth.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "认证模块",
+          "file": "auth.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "登录页面展示正常",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9112,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:15.095Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-c9235c5b8744eb0ac241",
+              "file": "auth.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "管理员账号登录成功",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8537,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:30.227Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-f0484a13c429b1b11c26",
+              "file": "auth.spec.ts",
+              "line": 18,
+              "column": 3
+            },
+            {
+              "title": "Pro账号登录成功",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 10902,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:38.879Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-837658a7f0e8e90a65fd",
+              "file": "auth.spec.ts",
+              "line": 28,
+              "column": 3
+            },
+            {
+              "title": "错误密码登录失败",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6165,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:49.839Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-a23b7c8e050c3c9d2ec2",
+              "file": "auth.spec.ts",
+              "line": 38,
+              "column": 3
+            },
+            {
+              "title": "空密码验证",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6091,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:56.074Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-482e7a80e59dda59a42e",
+              "file": "auth.spec.ts",
+              "line": 48,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "chatrooms.spec.ts",
+      "file": "chatrooms.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "群聊模块",
+          "file": "chatrooms.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "群聊总览页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 16427,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:15.230Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "633422adcd581c68a871-ffaadca25b47edd20fd3",
+              "file": "chatrooms.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "候选池页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 13635,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:37.356Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "633422adcd581c68a871-b1308065f79229d15942",
+              "file": "chatrooms.spec.ts",
+              "line": 41,
+              "column": 3
+            },
+            {
+              "title": "聊天记录页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 14519,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:51.069Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "633422adcd581c68a871-26844bc273895870be94",
+              "file": "chatrooms.spec.ts",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "投研结论页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 16912,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:05.655Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "633422adcd581c68a871-bed6de648b0600eb5740",
+              "file": "chatrooms.spec.ts",
+              "line": 53,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "dual-mode.spec.ts",
+      "file": "dual-mode.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "双模式 smoke",
+          "file": "dual-mode.spec.ts",
+          "line": 27,
+          "column": 6,
+          "specs": [
+            {
+              "title": "admin 壳层与用户壳层的导航互不混入",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 17105,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:16.222Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-454e62222ca26830917c",
+              "file": "dual-mode.spec.ts",
+              "line": 28,
+              "column": 3
+            },
+            {
+              "title": "admin 登录后默认落点为 /admin/dashboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6744,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:38.159Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-a2fd15163c4ccc56e4d4",
+              "file": "dual-mode.spec.ts",
+              "line": 41,
+              "column": 3
+            },
+            {
+              "title": "pro 登录后默认落点为 /app/workbench",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7593,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:44.955Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-014dba7af11e484c3905",
+              "file": "dual-mode.spec.ts",
+              "line": 46,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "旧路径兼容",
+          "file": "dual-mode.spec.ts",
+          "line": 52,
+          "column": 6,
+          "specs": [
+            {
+              "title": "/dashboard 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 9517,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:52.640Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-879a13964046bc36ae9b",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/research/workbench 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 13796,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:02.181Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-2aa127eee44e3c75d9b6",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/research/funnel 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7649,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:16.045Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-cfb125f83011908e6e17",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/research/decision 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 9835,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:23.858Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-c8d09bd9d3e3d00bf4c8",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/portfolio/positions 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6241,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:33.932Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-7d57c1dd44bde619dea3",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/portfolio/orders 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6710,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:40.220Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-dd65f9446e43cde9633e",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/portfolio/review 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7351,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:46.963Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-5d98560ecc12bc43bd05",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/portfolio/allocation 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8973,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:54.351Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-89f4ec8f59aa2f1bee6b",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/market/conclusion 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 11202,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:03.350Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-03afc46ec41947b804b3",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/macro 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 10385,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:14.680Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-7bc508d1e452ede8f743",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/macro/regime 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7096,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:25.219Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-50e924be43b731f81c64",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/stocks/list 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 9028,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:32.360Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-94315cc81264df98d101",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/stocks/scores 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8670,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:41.443Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-35389d31c256d7c8fe4d",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/intelligence/global-news 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 9257,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:50.210Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-ad0d3358e98c19a6f342",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/intelligence/cn-news 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 11354,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:59.507Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-f9fd81a1b03eedee0a78",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/signals/overview 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7014,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:10.958Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-109f7b6aa1a7e895e10e",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/signals/themes 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8061,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:18.002Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-f8a52e58668d31fd5618",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/signals/timeline 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7788,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:26.164Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-376c21a8205a794d754c",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/signals/audit 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8277,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:34.011Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-92ae2005aaa90591107d",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/signals/quality-config 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 10014,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:42.412Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-71a3e38301e425b5f5b5",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/signals/state-timeline 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6780,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:52.472Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-d56b523c937998ec9e3f",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/system/source-monitor 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6720,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:59.326Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-4619f659029279082718",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/system/jobs-ops 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 11516,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:06.271Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-9690aeb543516c6f517a",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/system/llm-providers 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8096,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:17.924Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-ce21cec2787212ccbd3d",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/system/permissions 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6831,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:26.069Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-d3a88e9dde8b18bafd68",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/system/database-audit 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6025,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:32.991Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-20571bc4b611c01657be",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/system/invites 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 9222,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:39.160Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-4d84bda06cdd4137e022",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/system/users 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 12328,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:48.438Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-397a7ffcfedc26cd1640",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/chatrooms/overview 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 21599,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:05:00.793Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-3bb9d1ae3f6ba0c9bffb",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/chatrooms/candidates 转向新地址",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "timedOut",
+                      "duration": 48903,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts:53:8",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts",
+                          "column": 8,
+                          "line": 53
+                        },
+                        "snippet": "  51 |\n  52 | test.describe('旧路径兼容', () => {\n> 53 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  54 |     await login(page, 'admin')\n  55 |   })\n  56 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts",
+                            "column": 8,
+                            "line": 53
+                          },
+                          "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  51 |\n  52 | test.describe('旧路径兼容', () => {\n> 53 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  54 |     await login(page, 'admin')\n  55 |   })\n  56 |\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts:53:8"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts",
+                            "column": 14,
+                            "line": 24
+                          },
+                          "message": "Error: page.waitForURL: Test timeout of 45000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation until \"load\"\n============================================================\n\n  22 |   await page.getByPlaceholder('请输入密码（至少6位）').fill(account.password)\n  23 |   await page.locator('button').filter({ hasText: /^登录$/ }).last().click()\n> 24 |   await page.waitForURL((url) => !url.pathname.endsWith('/login'))\n     |              ^\n  25 | }\n  26 |\n  27 | test.describe('双模式 smoke', () => {\n    at login (/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts:24:14)\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts:54:5"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:05:22.418Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-旧路径兼容-chatrooms-candidates-转向新地址-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-旧路径兼容-chatrooms-candidates-转向新地址-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-旧路径兼容-chatrooms-candidates-转向新地址-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-旧路径兼容-chatrooms-candidates-转向新地址-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts",
+                        "column": 8,
+                        "line": 53
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-976758310af6c190b546",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "/chatrooms/investment 转向新地址",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 43262,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:06:14.726Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-1cfc68ecd495bb41e940",
+              "file": "dual-mode.spec.ts",
+              "line": 92,
+              "column": 5
+            },
+            {
+              "title": "旧路径带查询参数时参数保留",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8793,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:06:58.256Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-771aa85e6fe31fd45fba",
+              "file": "dual-mode.spec.ts",
+              "line": 98,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "模式切换与上下文保留",
+          "file": "dual-mode.spec.ts",
+          "line": 104,
+          "column": 6,
+          "specs": [
+            {
+              "title": "admin 由 app 切到 admin，保留可共享上下文，丢弃 admin 内部参数",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 10380,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:07.131Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-50dc1bf42046cba374ae",
+              "file": "dual-mode.spec.ts",
+              "line": 105,
+              "column": 3
+            },
+            {
+              "title": "admin 由 admin 切回 app，对象上下文保留并落到对象页",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7245,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:17.595Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-dfc8ecc728d3c73d933f",
+              "file": "dual-mode.spec.ts",
+              "line": 120,
+              "column": 3
+            },
+            {
+              "title": "模式切换后弹出提示 toast",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8690,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:24.894Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-434f4ccd55aa009a57a9",
+              "file": "dual-mode.spec.ts",
+              "line": 134,
+              "column": 3
+            },
+            {
+              "title": "pro 无 admin 权限时不显示模式切换按钮",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4697,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:33.616Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-006dfd9091706ee92fe7",
+              "file": "dual-mode.spec.ts",
+              "line": 141,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "权限分流与 upgrade 模式解释",
+          "file": "dual-mode.spec.ts",
+          "line": 148,
+          "column": 6,
+          "specs": [
+            {
+              "title": "limited 账号访问 admin 页跳到 upgrade 并指示 admin 模式",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7608,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:38.382Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-1e7e0148b030c8ce0dc2",
+              "file": "dual-mode.spec.ts",
+              "line": 149,
+              "column": 3
+            },
+            {
+              "title": "limited 账号访问 app 研究页跳到 upgrade 并指示 app 模式",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 2,
+                      "status": "failed",
+                      "duration": 13746,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/upgrade/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:8002/app/workbench\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    13 × unexpected value \"http://127.0.0.1:8002/app/workbench\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/upgrade/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:8002/app/workbench\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    13 × unexpected value \"http://127.0.0.1:8002/app/workbench\"\u001b[22m\n\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts:162:24",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts",
+                          "column": 24,
+                          "line": 162
+                        },
+                        "snippet": "  160 |     await login(page, 'limited')\n  161 |     await page.goto('/app/workbench')\n> 162 |     await expect(page).toHaveURL(/\\/upgrade/)\n      |                        ^\n  163 |     const banner = page.locator('[data-upgrade-blocked=\"true\"]')\n  164 |     await expect(banner).toBeVisible()\n  165 |     await expect(banner).toHaveAttribute('data-upgrade-mode', 'app')"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts",
+                            "column": 24,
+                            "line": 162
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/upgrade/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:8002/app/workbench\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    13 × unexpected value \"http://127.0.0.1:8002/app/workbench\"\u001b[22m\n\n\n  160 |     await login(page, 'limited')\n  161 |     await page.goto('/app/workbench')\n> 162 |     await expect(page).toHaveURL(/\\/upgrade/)\n      |                        ^\n  163 |     const banner = page.locator('[data-upgrade-blocked=\"true\"]')\n  164 |     await expect(banner).toBeVisible()\n  165 |     await expect(banner).toHaveAttribute('data-upgrade-mode', 'app')\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts:162:24"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:46.036Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-权限分流与-upgrade-模式-4e204-pp-研究页跳到-upgrade-并指示-app-模式-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-权限分流与-upgrade-模式-4e204-pp-研究页跳到-upgrade-并指示-app-模式-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-权限分流与-upgrade-模式-4e204-pp-研究页跳到-upgrade-并指示-app-模式-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/dual-mode-权限分流与-upgrade-模式-4e204-pp-研究页跳到-upgrade-并指示-app-模式-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/dual-mode.spec.ts",
+                        "column": 24,
+                        "line": 162
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-9c237ae27bf9e93aee6e",
+              "file": "dual-mode.spec.ts",
+              "line": 159,
+              "column": 3
+            },
+            {
+              "title": "研究角色主链 CTA 不借道 admin 页",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7839,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:08:02.351Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-fb0e20d137efb9a9a009",
+              "file": "dual-mode.spec.ts",
+              "line": 169,
+              "column": 3
+            },
+            {
+              "title": "研究角色决策板主链 CTA 不借道 admin 页",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4367,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:08:10.584Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-5a9d2b4a7c054a55954f",
+              "file": "dual-mode.spec.ts",
+              "line": 175,
+              "column": 3
+            },
+            {
+              "title": "admin 主链 CTA 不借道 app 页",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4497,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:08:15.025Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-af8f5c76aeeff6336d3b",
+              "file": "dual-mode.spec.ts",
+              "line": 181,
+              "column": 3
+            },
+            {
+              "title": "admin jobs-ops 主链 CTA 不借道 app 页",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6075,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:08:19.575Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fdd663d3f5f8aa584c58-61ced58b2a5083a6c419",
+              "file": "dual-mode.spec.ts",
+              "line": 187,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "intelligence.spec.ts",
+      "file": "intelligence.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "情报模块",
+          "file": "intelligence.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "国际新闻页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 16370,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:15.431Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a82a5a962b8e4225f46d-a8a98d018aaa05e12ebd",
+              "file": "intelligence.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "国内新闻页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 11902,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:37.298Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a82a5a962b8e4225f46d-732e0b284227e30b31f2",
+              "file": "intelligence.spec.ts",
+              "line": 40,
+              "column": 3
+            },
+            {
+              "title": "个股新闻页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 14184,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:00:49.292Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a82a5a962b8e4225f46d-3db2e635499e22aa30af",
+              "file": "intelligence.spec.ts",
+              "line": 45,
+              "column": 3
+            },
+            {
+              "title": "新闻筛选功能",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 14735,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:03.561Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a82a5a962b8e4225f46d-6400016aba78b0fb7883",
+              "file": "intelligence.spec.ts",
+              "line": 51,
+              "column": 3
+            },
+            {
+              "title": "日报汇总页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 14876,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:18.348Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a82a5a962b8e4225f46d-07066c7cb1c9ea5f6d17",
+              "file": "intelligence.spec.ts",
+              "line": 61,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "mainline.spec.ts",
+      "file": "mainline.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "workbench 首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 11843,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:01:02.420Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-eb7246bf9eaf65d10978",
+          "file": "mainline.spec.ts",
+          "line": 29,
+          "column": 1
+        },
+        {
+          "title": "市场结论页首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 9221,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:01:14.387Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-46305cc994c439ac970f",
+          "file": "mainline.spec.ts",
+          "line": 40,
+          "column": 1
+        },
+        {
+          "title": "单标的详情页包含决策动作时间线收口区",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13031,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:01:23.731Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-e7d0d0a50cc1177aab30",
+          "file": "mainline.spec.ts",
+          "line": 48,
+          "column": 1
+        },
+        {
+          "title": "候选漏斗页首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6999,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:01:36.799Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-ebf81a2a2ff4f6afe766",
+          "file": "mainline.spec.ts",
+          "line": 61,
+          "column": 1
+        },
+        {
+          "title": "组合持仓页首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5190,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:01:43.827Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-8d58f145d30b4a3f4165",
+          "file": "mainline.spec.ts",
+          "line": 69,
+          "column": 1
+        },
+        {
+          "title": "组合订单页首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6864,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:01:49.055Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-20b55dd9b0c2c2fc1329",
+          "file": "mainline.spec.ts",
+          "line": 77,
+          "column": 1
+        },
+        {
+          "title": "组合复盘页首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 7660,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:01:56.094Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-268d7b6cfb6fd802d4ed",
+          "file": "mainline.spec.ts",
+          "line": 84,
+          "column": 1
+        },
+        {
+          "title": "任务收件箱首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 12006,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:02:03.951Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-a87464ccfd1a15a0eceb",
+          "file": "mainline.spec.ts",
+          "line": 91,
+          "column": 1
+        },
+        {
+          "title": "宏观三周期状态页首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10055,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:02:16.065Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-e5daa2a2c00a8b3aca96",
+          "file": "mainline.spec.ts",
+          "line": 99,
+          "column": 1
+        },
+        {
+          "title": "长线配置动作页首屏渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 8300,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:02:26.164Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-0c514f4e59d7c9381b9f",
+          "file": "mainline.spec.ts",
+          "line": 107,
+          "column": 1
+        },
+        {
+          "title": "workbench 今日6问链接可见",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10539,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:02:34.613Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-c0c7a0012cc3f5a8018f",
+          "file": "mainline.spec.ts",
+          "line": 115,
+          "column": 1
+        },
+        {
+          "title": "workbench Top N 选择器可见",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10952,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:02:45.231Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-9eff1bb8fb5b51316151",
+          "file": "mainline.spec.ts",
+          "line": 124,
+          "column": 1
+        },
+        {
+          "title": "workbench 主链 CTA 不借道 admin 页面",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 9566,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:02:56.226Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-9d0f8247b249c730e0c3",
+          "file": "mainline.spec.ts",
+          "line": 134,
+          "column": 1
+        },
+        {
+          "title": "决策板建议仓位区间字段可见",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 11468,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:05.840Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-4de35a26a8cbc6ee4f03",
+          "file": "mainline.spec.ts",
+          "line": 141,
+          "column": 1
+        },
+        {
+          "title": "宏观状态页复盘入口可见",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 7130,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:17.388Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-2730af23ea7d6308462a",
+          "file": "mainline.spec.ts",
+          "line": 151,
+          "column": 1
+        },
+        {
+          "title": "长线配置动作页规则约束卡片可见",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6246,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:24.641Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-2192fccad0e3b467faf2",
+          "file": "mainline.spec.ts",
+          "line": 161,
+          "column": 1
+        },
+        {
+          "title": "批次 A 旧路径会显式跳到新前缀",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 11331,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:30.923Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-b965b3a44d06c5ff6195",
+          "file": "mainline.spec.ts",
+          "line": 171,
+          "column": 1
+        },
+        {
+          "title": "后台 inner page 使用 admin shell",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 8453,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:42.369Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-5b8bd291aa1578bfe176",
+          "file": "mainline.spec.ts",
+          "line": 179,
+          "column": 1
+        },
+        {
+          "title": "dashboard 主链 CTA 不借道 app 页面",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 9337,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:50.855Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-c821ec6660d65aac2273",
+          "file": "mainline.spec.ts",
+          "line": 188,
+          "column": 1
+        },
+        {
+          "title": "upgrade 对 app/admin 来源保持模式语义",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14335,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:04:00.241Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e656a587268ce3dfaa4-ad47fd23384aabb55b29",
+          "file": "mainline.spec.ts",
+          "line": 195,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "market-conclusion.spec.ts",
+      "file": "market-conclusion.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "R30 市场结论冲突裁决可视化",
+          "file": "market-conclusion.spec.ts",
+          "line": 19,
+          "column": 6,
+          "specs": [
+            {
+              "title": "confidence 徽章带 data-confidence 属性且数值为真实百分比",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 8269,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:22.626Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8ffaf47255b6dda35699-2d80747188b37bd67b32",
+              "file": "market-conclusion.spec.ts",
+              "line": 20,
+              "column": 3
+            },
+            {
+              "title": "规则链表格可展开且 winner 行带标记",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 24893,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\u001b[22m\n\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/market-conclusion.spec.ts:44:26",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/market-conclusion.spec.ts",
+                          "column": 26,
+                          "line": 44
+                        },
+                        "snippet": "  42 |     await page.goto('/app/market')\n  43 |     const toggle = page.locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\n> 44 |     await expect(toggle).toBeVisible({ timeout: 20_000 })\n     |                          ^\n  45 |     await toggle.click()\n  46 |\n  47 |     const breakdown = page.locator('[data-testid=\"conclusion-score-breakdown\"]')"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/market-conclusion.spec.ts",
+                            "column": 26,
+                            "line": 44
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\u001b[22m\n\n\n  42 |     await page.goto('/app/market')\n  43 |     const toggle = page.locator('[data-testid=\"conclusion-rule-trace-toggle\"]')\n> 44 |     await expect(toggle).toBeVisible({ timeout: 20_000 })\n     |                          ^\n  45 |     await toggle.click()\n  46 |\n  47 |     const breakdown = page.locator('[data-testid=\"conclusion-score-breakdown\"]')\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/market-conclusion.spec.ts:44:26"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:30.940Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/market-conclusion-R30-市场结论冲突裁决可视化-规则链表格可展开且-winner-行带标记-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/market-conclusion-R30-市场结论冲突裁决可视化-规则链表格可展开且-winner-行带标记-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/market-conclusion-R30-市场结论冲突裁决可视化-规则链表格可展开且-winner-行带标记-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/market-conclusion-R30-市场结论冲突裁决可视化-规则链表格可展开且-winner-行带标记-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/market-conclusion.spec.ts",
+                        "column": 26,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "8ffaf47255b6dda35699-8d794707624cdfc43b08",
+              "file": "market-conclusion.spec.ts",
+              "line": 40,
+              "column": 3
+            },
+            {
+              "title": "低可信场景下 needs_review 告警与异议来源展示共存",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 12495,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:00.014Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8ffaf47255b6dda35699-3f61342b9f3bd915a17f",
+              "file": "market-conclusion.spec.ts",
+              "line": 61,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "navigation.spec.ts",
+      "file": "navigation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "导航与菜单",
+          "file": "navigation.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "首页加载正常",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 10369,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:33.572Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5d2868f7d23420c27cca-c2ec4a9f2a4d32553d7b",
+              "file": "navigation.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "页面跳转正常",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 12885,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:44.027Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5d2868f7d23420c27cca-20fd1f170dea03d9ee52",
+              "file": "navigation.spec.ts",
+              "line": 45,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "research.spec.ts",
+      "file": "research.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "投研模块",
+          "file": "research.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "评分总览页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 19255,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:01:56.972Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cdcdb9c009151254af97-4916c2975ff3050e60ee",
+              "file": "research.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "决策板页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 15485,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:16.361Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cdcdb9c009151254af97-5e044b699d1db1cb7dbe",
+              "file": "research.spec.ts",
+              "line": 43,
+              "column": 3
+            },
+            {
+              "title": "研究报告页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 11235,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:31.915Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cdcdb9c009151254af97-041b797c45bc97051ee8",
+              "file": "research.spec.ts",
+              "line": 51,
+              "column": 3
+            },
+            {
+              "title": "多角色研究页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 11261,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:43.229Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cdcdb9c009151254af97-6a4e27576368611d07d4",
+              "file": "research.spec.ts",
+              "line": 56,
+              "column": 3
+            },
+            {
+              "title": "趋势分析页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 11893,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:54.551Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cdcdb9c009151254af97-0052f7791155cd4ef129",
+              "file": "research.spec.ts",
+              "line": 61,
+              "column": 3
+            },
+            {
+              "title": "决策快照按钮具备 pending 状态与结果反馈",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 19541,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:06.527Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cdcdb9c009151254af97-5d108727e6ad19264ab4",
+              "file": "research.spec.ts",
+              "line": 66,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "responsive.spec.ts",
+      "file": "responsive.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "响应式布局测试",
+          "file": "responsive.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "移动端视图 - 信号总览",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 14405,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:13.021Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e0223b006feb3d306446-1e9dffcf91c3fc2fcfb2",
+              "file": "responsive.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "平板视图 - 股票列表",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 13417,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:27.479Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e0223b006feb3d306446-696986efc672e29cb1c5",
+              "file": "responsive.spec.ts",
+              "line": 41,
+              "column": 3
+            },
+            {
+              "title": "桌面端视图 - 决策板",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 17823,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:40.958Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e0223b006feb3d306446-6a45d314cd281b32a255",
+              "file": "responsive.spec.ts",
+              "line": 48,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "signals.spec.ts",
+      "file": "signals.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "信号模块",
+          "file": "signals.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "信号总览页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 12799,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:02:58.929Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-05f9ce3b4aaa4020cfc2",
+              "file": "signals.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "信号列表数据加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 14428,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:11.814Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-7938467d4819355bb9e2",
+              "file": "signals.spec.ts",
+              "line": 41,
+              "column": 3
+            },
+            {
+              "title": "主题热点页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 16140,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:26.374Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-171d9dad8d701e30e143",
+              "file": "signals.spec.ts",
+              "line": 49,
+              "column": 3
+            },
+            {
+              "title": "信号筛选功能",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 17219,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:42.549Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-981fc9d9ee1ef588f4d2",
+              "file": "signals.spec.ts",
+              "line": 55,
+              "column": 3
+            },
+            {
+              "title": "信号时间线页面",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 15391,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:03:59.878Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-9f45a640e7d34cce783b",
+              "file": "signals.spec.ts",
+              "line": 66,
+              "column": 3
+            },
+            {
+              "title": "产业链图谱交互可用",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 18307,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:15.317Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-29b4410fb0b9d9078479",
+              "file": "signals.spec.ts",
+              "line": 72,
+              "column": 3
+            },
+            {
+              "title": "图谱主干模式切换会改变节点与折叠统计",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 19245,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:33.659Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-daf926c31bd2cefdd50b",
+              "file": "signals.spec.ts",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "无二级节点时主干按钮禁用并给出提示",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 15097,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:52.962Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e02ab06dbad060658a45-949687405950770e2a95",
+              "file": "signals.spec.ts",
+              "line": 123,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "smoke.spec.ts",
+      "file": "smoke.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "admin 登录后落到 admin dashboard",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 9185,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:26.166Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4219922fea2e2bd3c691-7488d38af826d648970e",
+          "file": "smoke.spec.ts",
+          "line": 27,
+          "column": 1
+        },
+        {
+          "title": "pro 默认落点正确且可打开评分总览",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 14622,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:35.418Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4219922fea2e2bd3c691-92c98d040a079368d713",
+          "file": "smoke.spec.ts",
+          "line": 35,
+          "column": 1
+        },
+        {
+          "title": "limited 默认落点正确且无权限页跳 upgrade",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 8486,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:50.380Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4219922fea2e2bd3c691-331e879c900f98fa08b6",
+          "file": "smoke.spec.ts",
+          "line": 48,
+          "column": 1
+        },
+        {
+          "title": "三个主研究页首屏可渲染",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 22572,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:03:58.964Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4219922fea2e2bd3c691-fbe9f684de9cb3a11870",
+          "file": "smoke.spec.ts",
+          "line": 59,
+          "column": 1
+        },
+        {
+          "title": "旧路径访问会显式跳到新语义地址",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 11836,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-22T23:04:21.588Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4219922fea2e2bd3c691-90923ffe9d5759d561fe",
+          "file": "smoke.spec.ts",
+          "line": 70,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "stocks.spec.ts",
+      "file": "stocks.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "股票模块",
+          "file": "stocks.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "股票列表页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16314,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:14.685Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-455f40fc48b88d9d9020",
+              "file": "stocks.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "股票评分页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 14329,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:31.104Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-7ffbe799c7567010425c",
+              "file": "stocks.spec.ts",
+              "line": 43,
+              "column": 3
+            },
+            {
+              "title": "股票价格页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12756,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:45.590Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-f71ca60a6cdc4e4f26a3",
+              "file": "stocks.spec.ts",
+              "line": 49,
+              "column": 3
+            },
+            {
+              "title": "股票搜索功能",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 57472,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:30:8",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                          "column": 8,
+                          "line": 30
+                        },
+                        "snippet": "  28 |\n  29 | test.describe('股票模块', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                            "column": 8,
+                            "line": 30
+                          },
+                          "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  28 |\n  29 | test.describe('股票模块', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:30:8"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                            "column": 9,
+                            "line": 26
+                          },
+                          "message": "Error: admin login failed after retries\n\n  24 |     }\n  25 |   }\n> 26 |   throw new Error('admin login failed after retries')\n     |         ^\n  27 | }\n  28 |\n  29 | test.describe('股票模块', () => {\n    at loginAsAdmin (/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:26:9)\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:31:5"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:58.403Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-股票搜索功能-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-股票搜索功能-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-股票搜索功能-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                        "column": 8,
+                        "line": 30
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-3d95999b6d91ef0bd967",
+              "file": "stocks.spec.ts",
+              "line": 55,
+              "column": 3
+            },
+            {
+              "title": "股票详情页面加载",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 75913,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:30:8",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                          "column": 8,
+                          "line": 30
+                        },
+                        "snippet": "  28 |\n  29 | test.describe('股票模块', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                            "column": 8,
+                            "line": 30
+                          },
+                          "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  28 |\n  29 | test.describe('股票模块', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:30:8"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:06:03.053Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-股票详情页面加载-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-股票详情页面加载-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-股票详情页面加载-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                        "column": 8,
+                        "line": 30
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-2e07ae19658edc071f06",
+              "file": "stocks.spec.ts",
+              "line": 67,
+              "column": 3
+            },
+            {
+              "title": "分页超界自动回收并同步 URL",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 13323,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:21.913Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-1813ea96763f2dd535df",
+              "file": "stocks.spec.ts",
+              "line": 73,
+              "column": 3
+            },
+            {
+              "title": "评分页跳转决策工作台时携带上下文",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 23209,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveAttribute\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('link', { name: '进入决策工作台' }).first()\nExpected pattern: \u001b[32m/\\/research\\/workbench/\u001b[39m\nReceived string:  \u001b[31m\"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveAttribute\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('link', { name: '进入决策工作台' }).first()\u001b[22m\n\u001b[2m    13 × locator resolved to <a id=\"scores-workbench-cta\" class=\"rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]\" href=\"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"> 进入决策工作台 </a>\u001b[22m\n\u001b[2m       - unexpected value \"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveAttribute\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('link', { name: '进入决策工作台' }).first()\nExpected pattern: \u001b[32m/\\/research\\/workbench/\u001b[39m\nReceived string:  \u001b[31m\"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveAttribute\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('link', { name: '进入决策工作台' }).first()\u001b[22m\n\u001b[2m    13 × locator resolved to <a id=\"scores-workbench-cta\" class=\"rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]\" href=\"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"> 进入决策工作台 </a>\u001b[22m\n\u001b[2m       - unexpected value \"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"\u001b[22m\n\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:93:33",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                          "column": 33,
+                          "line": 93
+                        },
+                        "snippet": "  91 |     await page.waitForTimeout(3000)\n  92 |     const workbenchLink = page.getByRole('link', { name: '进入决策工作台' }).first()\n> 93 |     await expect(workbenchLink).toHaveAttribute('href', /\\/research\\/workbench/)\n     |                                 ^\n  94 |     await expect(workbenchLink).toHaveAttribute('href', /industry=%E9%93%B6%E8%A1%8C/)\n  95 |     await expect(workbenchLink).toHaveAttribute('href', /keyword=%E5%B9%B3%E5%AE%89/)\n  96 |     await expect(workbenchLink).toHaveAttribute('href', /score_date=20260414/)"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                            "column": 33,
+                            "line": 93
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveAttribute\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('link', { name: '进入决策工作台' }).first()\nExpected pattern: \u001b[32m/\\/research\\/workbench/\u001b[39m\nReceived string:  \u001b[31m\"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveAttribute\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('link', { name: '进入决策工作台' }).first()\u001b[22m\n\u001b[2m    13 × locator resolved to <a id=\"scores-workbench-cta\" class=\"rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]\" href=\"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"> 进入决策工作台 </a>\u001b[22m\n\u001b[2m       - unexpected value \"/app/workbench?from=stock_scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414\"\u001b[22m\n\n\n  91 |     await page.waitForTimeout(3000)\n  92 |     const workbenchLink = page.getByRole('link', { name: '进入决策工作台' }).first()\n> 93 |     await expect(workbenchLink).toHaveAttribute('href', /\\/research\\/workbench/)\n     |                                 ^\n  94 |     await expect(workbenchLink).toHaveAttribute('href', /industry=%E9%93%B6%E8%A1%8C/)\n  95 |     await expect(workbenchLink).toHaveAttribute('href', /keyword=%E5%B9%B3%E5%AE%89/)\n  96 |     await expect(workbenchLink).toHaveAttribute('href', /score_date=20260414/)\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts:93:33"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:35.724Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-评分页跳转决策工作台时携带上下文-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-评分页跳转决策工作台时携带上下文-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-评分页跳转决策工作台时携带上下文-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/stocks-股票模块-评分页跳转决策工作台时携带上下文-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/stocks.spec.ts",
+                        "column": 33,
+                        "line": 93
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-48a35b48c327feb8c27f",
+              "file": "stocks.spec.ts",
+              "line": 89,
+              "column": 3
+            },
+            {
+              "title": "空结果时分页固定显示 1/1 且 URL 回到 page=1",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11760,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:08:01.440Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fb37daa07c3da57700e9-0bc4250d1bdc4617072c",
+              "file": "stocks.spec.ts",
+              "line": 102,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "system.spec.ts",
+      "file": "system.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "系统管理模块（Admin）",
+          "file": "system.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "数据源监控页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 11483,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:33.497Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "19fec53437319cd87246-9e879754f54e2ee5d0dd",
+              "file": "system.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "任务调度页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 12037,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:45.005Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "19fec53437319cd87246-7603c0f3dcb780f69951",
+              "file": "system.spec.ts",
+              "line": 42,
+              "column": 3
+            },
+            {
+              "title": "LLM提供商页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 23868,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:04:57.060Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "19fec53437319cd87246-ca4ba9471388d1f4e869",
+              "file": "system.spec.ts",
+              "line": 48,
+              "column": 3
+            },
+            {
+              "title": "用户管理页面加载",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "timedOut",
+                      "duration": 59399,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts:30:8",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts",
+                          "column": 8,
+                          "line": 30
+                        },
+                        "snippet": "  28 |\n  29 | test.describe('系统管理模块（Admin）', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts",
+                            "column": 8,
+                            "line": 30
+                          },
+                          "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  28 |\n  29 | test.describe('系统管理模块（Admin）', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts:30:8"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts",
+                            "column": 9,
+                            "line": 26
+                          },
+                          "message": "Error: admin login failed after retries\n\n  24 |     }\n  25 |   }\n> 26 |   throw new Error('admin login failed after retries')\n     |         ^\n  27 | }\n  28 |\n  29 | test.describe('系统管理模块（Admin）', () => {\n    at loginAsAdmin (/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts:26:9)\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts:31:5"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:05:21.021Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/system-系统管理模块（Admin）-用户管理页面加载-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/system-系统管理模块（Admin）-用户管理页面加载-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/system-系统管理模块（Admin）-用户管理页面加载-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts",
+                        "column": 8,
+                        "line": 30
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "19fec53437319cd87246-7e4322438e53ed301cc1",
+              "file": "system.spec.ts",
+              "line": 54,
+              "column": 3
+            },
+            {
+              "title": "权限策略页面加载",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 28348,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:06:23.279Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "19fec53437319cd87246-2c4aea8abf20a7c13bdc",
+              "file": "system.spec.ts",
+              "line": 60,
+              "column": 3
+            },
+            {
+              "title": "LLM 默认限速保存后显示成功反馈与最近保存时间",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 12114,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:06:51.837Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "19fec53437319cd87246-47eec31f2664ae509cf5",
+              "file": "system.spec.ts",
+              "line": 66,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Limited 账号权限测试",
+          "file": "system.spec.ts",
+          "line": 87,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Limited 账号登录后受限路由都有上下文化解释",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 3,
+                      "status": "failed",
+                      "duration": 25372,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/upgrade\\?from=/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:8002/app/macro\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    12 × unexpected value \"http://127.0.0.1:8002/app/macro\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/upgrade\\?from=/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:8002/app/macro\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    12 × unexpected value \"http://127.0.0.1:8002/app/macro\"\u001b[22m\n\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts:105:26",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts",
+                          "column": 26,
+                          "line": 105
+                        },
+                        "snippet": "  103 |       await page.goto(target)\n  104 |       await page.waitForTimeout(1600)\n> 105 |       await expect(page).toHaveURL(/\\/upgrade\\?from=/)\n      |                          ^\n  106 |       await expect(page.locator('text=当前受限任务').first()).toBeVisible()\n  107 |       await expect(page.locator('text=需要权限').first()).toBeVisible()\n  108 |     }"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts",
+                            "column": 26,
+                            "line": 105
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/upgrade\\?from=/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:8002/app/macro\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    12 × unexpected value \"http://127.0.0.1:8002/app/macro\"\u001b[22m\n\n\n  103 |       await page.goto(target)\n  104 |       await page.waitForTimeout(1600)\n> 105 |       await expect(page).toHaveURL(/\\/upgrade\\?from=/)\n      |                          ^\n  106 |       await expect(page.locator('text=当前受限任务').first()).toBeVisible()\n  107 |       await expect(page.locator('text=需要权限').first()).toBeVisible()\n  108 |     }\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts:105:26"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:04.065Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/system-Limited-账号权限测试-Limited-账号登录后受限路由都有上下文化解释-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/system-Limited-账号权限测试-Limited-账号登录后受限路由都有上下文化解释-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/system-Limited-账号权限测试-Limited-账号登录后受限路由都有上下文化解释-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/system-Limited-账号权限测试-Limited-账号登录后受限路由都有上下文化解释-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/system.spec.ts",
+                        "column": 26,
+                        "line": 105
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "19fec53437319cd87246-e48e0addb3f52a2f52b8",
+              "file": "system.spec.ts",
+              "line": 88,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "write-boundary.spec.ts",
+      "file": "write-boundary.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "写操作专项",
+          "file": "write-boundary.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "任务触发 + 重试触发可执行",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "timedOut",
+                      "duration": 57148,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts:30:8",
+                        "location": {
+                          "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts",
+                          "column": 8,
+                          "line": 30
+                        },
+                        "snippet": "  28 |\n  29 | test.describe('写操作专项', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts",
+                            "column": 8,
+                            "line": 30
+                          },
+                          "message": "\u001b[31mTest timeout of 45000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  28 |\n  29 | test.describe('写操作专项', () => {\n> 30 |   test.beforeEach(async ({ page }) => {\n     |        ^\n  31 |     await loginAsAdmin(page)\n  32 |   })\n  33 |\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts:30:8"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts",
+                            "column": 9,
+                            "line": 26
+                          },
+                          "message": "Error: admin login failed after retries\n\n  24 |     }\n  25 |   }\n> 26 |   throw new Error('admin login failed after retries')\n     |         ^\n  27 | }\n  28 |\n  29 | test.describe('写操作专项', () => {\n    at loginAsAdmin (/home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts:26:9)\n    at /home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts:31:5"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:05:08.104Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/write-boundary-写操作专项-任务触发-重试触发可执行-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/write-boundary-写操作专项-任务触发-重试触发可执行-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/write-boundary-写操作专项-任务触发-重试触发可执行-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/zanbo/zanbotest/apps/web/tests/e2e/write-boundary.spec.ts",
+                        "column": 8,
+                        "line": 30
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-87ca389e8c3783cdda8e",
+              "file": "write-boundary.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "LLM 默认限速保存可执行",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 1,
+                      "status": "timedOut",
+                      "duration": 47254,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 45000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 45000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 45000ms exceeded.\u001b[39m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:06:09.546Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/write-boundary-写操作专项-LLM-默认限速保存可执行-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/write-boundary-写操作专项-LLM-默认限速保存可执行-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/write-boundary-写操作专项-LLM-默认限速保存可执行-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/zanbo/zanbotest/apps/web/test-results/write-boundary-写操作专项-LLM-默认限速保存可执行-chromium/trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-2626f2c9bced1145c671",
+              "file": "write-boundary.spec.ts",
+              "line": 59,
+              "column": 3
+            },
+            {
+              "title": "用户管理保存（不改值）可执行",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 19581,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:01.223Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-2a0fc3924e6ff0cc7470",
+              "file": "write-boundary.spec.ts",
+              "line": 77,
+              "column": 3
+            },
+            {
+              "title": "用户管理真实改值后恢复原值（全闭环）",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 24647,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:21.107Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-f9e93bb04be7f7be10b8",
+              "file": "write-boundary.spec.ts",
+              "line": 93,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "边界输入专项",
+          "file": "write-boundary.spec.ts",
+          "line": 143,
+          "column": 6,
+          "specs": [
+            {
+              "title": "超长输入不会导致用户页崩溃",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 12161,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:45.792Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-5eb25202220444d842fd",
+              "file": "write-boundary.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "非法日期输入能给出可见提示",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 13837,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:07:57.984Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-4ac7100ad1fdd840142e",
+              "file": "write-boundary.spec.ts",
+              "line": 162,
+              "column": 3
+            },
+            {
+              "title": "重复提交时按钮会进入进行中状态",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 14220,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:08:11.895Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-9b3da4223c7810d9c8ba",
+              "file": "write-boundary.spec.ts",
+              "line": 173,
+              "column": 3
+            },
+            {
+              "title": "慢接口超时后会显示失败反馈",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 29880,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-22T23:08:26.240Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d12bb2cafdd2ba3064d5-7f4d1fc977189741c196",
+              "file": "write-boundary.spec.ts",
+              "line": 186,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-04-22T23:00:12.622Z",
+    "duration": 523778.656,
+    "expected": 119,
+    "skipped": 0,
+    "unexpected": 10,
+    "flaky": 0
+  }
+}
