@@ -33,6 +33,20 @@
       </div>
 
       <template v-else-if="data">
+        <div class="mb-4 rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">可用性分级</span>
+            <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="availabilityBadgeClass">{{ availabilityLabel }}</span>
+            <span class="text-xs text-[var(--muted)]">{{ pageStatusDescription }}</span>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-2 text-xs">
+            <span class="metric-chip">数据源 {{ sourcesCount }}</span>
+            <span class="metric-chip">候选 {{ candidateDirections.length }}</span>
+            <span class="metric-chip">风险 {{ mainRisks.length }}</span>
+            <span v-for="item in missingInputs" :key="item" class="metric-chip text-amber-700">{{ item }}</span>
+          </div>
+        </div>
+
         <StatePanel
           v-if="pageStatus !== 'ready'"
           class="mb-4"
@@ -343,6 +357,18 @@ const {
 const apiData = computed(() => (data.value as any) || {})
 const pageStatus = computed(() => String(apiData.value?.status || '').trim() || 'empty')
 const missingInputs = computed<string[]>(() => Array.isArray(apiData.value?.missing_inputs) ? apiData.value.missing_inputs : [])
+const availabilityLabel = computed(() => {
+  if (pageStatus.value === 'ready') return 'ready'
+  if (pageStatus.value === 'insufficient_evidence') return 'degraded'
+  if (pageStatus.value === 'not_initialized') return 'not_initialized'
+  return pageStatus.value || 'unknown'
+})
+const availabilityBadgeClass = computed(() => {
+  if (pageStatus.value === 'ready') return 'border border-emerald-200 bg-emerald-100 text-emerald-800'
+  if (pageStatus.value === 'insufficient_evidence') return 'border border-amber-200 bg-amber-100 text-amber-800'
+  if (pageStatus.value === 'not_initialized') return 'border border-rose-200 bg-rose-100 text-rose-700'
+  return 'border border-[var(--line)] bg-[var(--panel-soft)] text-[var(--muted)]'
+})
 const pageStatusTitle = computed(() => {
   if (pageStatus.value === 'insufficient_evidence') return '当前结论为降级输出'
   if (pageStatus.value === 'not_initialized') return '关键来源尚未初始化'

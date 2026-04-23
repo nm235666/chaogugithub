@@ -1,6 +1,20 @@
 <template>
   <AppShell title="候选漏斗" subtitle="候选股票从进入到执行的完整状态机管理，支持按阶段过滤与流转操作。">
     <div class="space-y-4">
+      <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">可用性分级</span>
+          <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="availabilityBadgeClass">{{ availabilityLabel }}</span>
+          <span class="text-xs text-[var(--muted)]">{{ availabilityReason }}</span>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-2 text-xs">
+          <span v-if="upstreamScoreDate" class="metric-chip">上游评分日期 {{ upstreamScoreDate }}</span>
+          <span class="metric-chip">上游评分样本 {{ upstreamScoreCount }}</span>
+          <span class="metric-chip">漏斗总量 {{ funnelTotal }}</span>
+          <span v-for="item in availabilityMissingInputs" :key="item" class="metric-chip text-amber-700">{{ item }}</span>
+        </div>
+      </div>
+
       <!-- 漏斗概览 stat cards -->
       <PageSection title="漏斗概览" subtitle="各阶段候选数量统计。">
         <div class="grid gap-3 grid-cols-2 sm:grid-cols-4 xl:grid-cols-5">
@@ -257,12 +271,26 @@ const {
 const allCandidates = computed<FunnelCandidate[]>(() => {
   const raw = candidatesData.value
   if (!raw) return []
-  if (Array.isArray(raw)) return raw
-  if (Array.isArray(raw.candidates)) return raw.candidates
-  return []
+  const rows = Array.isArray(raw) ? raw : Array.isArray(raw.items) ? raw.items : Array.isArray(raw.candidates) ? raw.candidates : []
+  return rows.map((item: any) => ({
+    id: String(item?.id || ''),
+    ts_code: String(item?.ts_code || '').toUpperCase(),
+    name: String(item?.name || ''),
+    current_state: String(item?.current_state || item?.state || ''),
+    last_transition_reason: String(item?.last_transition_reason || item?.reason || ''),
+    last_updated: String(item?.last_updated || item?.updated_at || ''),
+    created_at: String(item?.created_at || ''),
+  }))
 })
 
+const metricsPayload = computed<Record<string, any>>(() => (metricsData.value || {}) as Record<string, any>)
+const candidatesPayload = computed<Record<string, any>>(() => (candidatesData.value || {}) as Record<string, any>)
+
 const stateCountMap = computed(() => {
+  const apiCounts = metricsPayload.value?.state_counts
+  if (apiCounts && typeof apiCounts === 'object') {
+    return Object.fromEntries(Object.entries(apiCounts).map(([k, v]) => [k, Number(v || 0)]))
+  }
   const map: Record<string, number> = {}
   for (const c of allCandidates.value) {
     map[c.current_state] = (map[c.current_state] || 0) + 1
@@ -283,12 +311,51 @@ const listSubtitle = computed(() => {
 
 const metricsItems = computed<MetricGridItem[]>(() => {
   const m: FunnelMetrics = metricsData.value || {}
+  const total = Number((metricsPayload.value.total ?? m.candidate_count ?? allCandidates.value.length) || 0)
+  const decisionReady = Number(stateCountMap.value.decision_ready || 0)
+  const executed = Number(stateCountMap.value.executed || 0)
+  const conversion = total > 0 ? executed / total : 0
   return [
-    { label: '候选总数', value: m.candidate_count ?? '-' },
+    { label: '候选总数', value: total || '-' },
     { label: '平均决策天数', value: m.avg_days_to_decision != null ? `${m.avg_days_to_decision.toFixed(1)} 天` : '-' },
-    { label: '转化率', value: m.conversion_rate != null ? `${(m.conversion_rate * 100).toFixed(1)}%` : '-' },
+    { label: '待决策', value: decisionReady },
+    { label: '转化率', value: m.conversion_rate != null ? `${(m.conversion_rate * 100).toFixed(1)}%` : `${(conversion * 100).toFixed(1)}%` },
   ]
 })
+
+const availabilityStatus = computed(() => {
+  const fromMetrics = String(metricsPayload.value.status || '').trim()
+  if (fromMetrics) return fromMetrics
+  return String(candidatesPayload.value.status || '').trim() || 'unknown'
+})
+const availabilityReason = computed(() => {
+  const reason = String(metricsPayload.value.status_reason || candidatesPayload.value.status_reason || '').trim()
+  if (reason) return reason
+  if (availabilityStatus.value === 'ready') return '漏斗链路可用于筛选与流转。'
+  if (availabilityStatus.value === 'degraded') return '部分上游已就绪，但漏斗候选仍需补齐。'
+  if (availabilityStatus.value === 'not_initialized') return '漏斗表尚未初始化。'
+  return '当前缺少稳定漏斗输入。'
+})
+const availabilityLabel = computed(() => {
+  if (availabilityStatus.value === 'ready') return 'ready'
+  if (availabilityStatus.value === 'degraded') return 'degraded'
+  if (availabilityStatus.value === 'not_initialized') return 'not_initialized'
+  if (availabilityStatus.value === 'empty') return 'empty'
+  return 'unknown'
+})
+const availabilityBadgeClass = computed(() => {
+  if (availabilityStatus.value === 'ready') return 'border border-emerald-200 bg-emerald-100 text-emerald-800'
+  if (availabilityStatus.value === 'degraded') return 'border border-amber-200 bg-amber-100 text-amber-800'
+  if (availabilityStatus.value === 'not_initialized') return 'border border-rose-200 bg-rose-100 text-rose-700'
+  return 'border border-[var(--line)] bg-[var(--panel-soft)] text-[var(--muted)]'
+})
+const availabilityMissingInputs = computed<string[]>(() => {
+  const v = metricsPayload.value.missing_inputs || candidatesPayload.value.missing_inputs
+  return Array.isArray(v) ? v.slice(0, 5).map((item) => String(item)) : []
+})
+const upstreamScoreDate = computed(() => String(metricsPayload.value?.upstream_scores?.latest_score_date || candidatesPayload.value?.upstream_scores?.latest_score_date || '').trim())
+const upstreamScoreCount = computed(() => Number(metricsPayload.value?.upstream_scores?.latest_count ?? candidatesPayload.value?.upstream_scores?.latest_count ?? 0))
+const funnelTotal = computed(() => Number(metricsPayload.value.total ?? candidatesPayload.value.total ?? allCandidates.value.length))
 
 const nextStates = computed(() => {
   if (!selectedCandidate.value) return []

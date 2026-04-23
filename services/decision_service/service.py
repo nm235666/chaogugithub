@@ -18,6 +18,8 @@ DECISION_CONTROL_TABLE = "decision_controls"
 DECISION_ACTION_TABLE = "decision_actions"
 DECISION_STRATEGY_RUN_TABLE = "decision_strategy_runs"
 DECISION_STRATEGY_CANDIDATE_TABLE = "decision_strategy_candidates"
+FUNNEL_CANDIDATES_TABLE = "funnel_candidates"
+FUNNEL_TRANSITIONS_TABLE = "funnel_transitions"
 DEFAULT_CONTROL_KEY = "global_kill_switch"
 
 
@@ -691,6 +693,35 @@ def _build_stock_risk(item: dict[str, Any]) -> str:
     return "；".join(pieces)
 
 
+def _build_actionable_fields(
+    *,
+    total_score: float,
+    trend_score: float,
+    risk_score: float,
+    position_label: str,
+    market_mode: str,
+    trade_mode: str,
+    allow_trading: bool,
+) -> dict[str, str]:
+    trigger = "总分≥65 且趋势分≥50，配合市场模式确认后再执行。"
+    if total_score >= 80 and trend_score >= 60:
+        trigger = "总分与趋势分均处于高位，可在分时确认后优先跟踪。"
+    invalidation = "若趋势分跌破50或风险分跌破45，则撤销本次入场计划。"
+    if risk_score < 45:
+        invalidation = "当前风险分偏低，优先降级为观察，不执行新增仓位。"
+    hint = f"{position_label} · 模式 {trade_mode or market_mode or 'unknown'}"
+    budget_source = "risk_budget: 决策板 trade_plan 仓位上限 + kill_switch 风控开关。"
+    if not allow_trading:
+        trigger = "Kill Switch 关闭，仅保留观察与复核，不执行新增仓位。"
+        invalidation = "风控开关关闭即失效，需先恢复交易权限。"
+    return {
+        "entry_trigger": trigger,
+        "invalidation": invalidation,
+        "position_hint": hint,
+        "risk_budget_source": budget_source,
+    }
+
+
 def _aggregate_market_regime(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not rows:
         return {
@@ -965,6 +996,53 @@ def _build_trade_plan_packet(board: dict[str, Any], *, conn, ts_code: str = "", 
         ],
         "ts_code": ts_code,
         "keyword": keyword,
+    }
+
+
+def _build_pipeline_health(conn, *, latest_score_date: str, universe_size: int, shortlist_size: int) -> dict[str, Any]:
+    score_ready = bool(str(latest_score_date or "").strip()) and int(universe_size or 0) > 0
+    snapshot_ready = False
+    latest_snapshot_date = ""
+    if _table_exists(conn, DECISION_SNAPSHOT_TABLE):
+        snapshot_row = conn.execute(
+            f"SELECT snapshot_date FROM {DECISION_SNAPSHOT_TABLE} ORDER BY snapshot_date DESC, id DESC LIMIT 1"
+        ).fetchone()
+        latest_snapshot_date = str(snapshot_row[0] if snapshot_row else "").strip()
+        snapshot_ready = bool(latest_snapshot_date)
+
+    funnel_total = 0
+    if _table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+        funnel_row = conn.execute(f"SELECT COUNT(*) FROM {FUNNEL_CANDIDATES_TABLE}").fetchone()
+        funnel_total = int(funnel_row[0] or 0) if funnel_row else 0
+    funnel_ready = funnel_total > 0
+
+    missing_inputs: list[str] = []
+    if not score_ready:
+        missing_inputs.append("stock_scores_daily")
+    if not snapshot_ready:
+        missing_inputs.append(DECISION_SNAPSHOT_TABLE)
+    if not funnel_ready:
+        missing_inputs.append(FUNNEL_CANDIDATES_TABLE)
+
+    if score_ready and snapshot_ready and funnel_ready:
+        status = "ready"
+        status_reason = "评分、决策快照和漏斗候选均已就绪。"
+    elif score_ready and (snapshot_ready or funnel_ready):
+        status = "degraded"
+        status_reason = "主评分已就绪，但决策快照或漏斗候选仍不完整。"
+    else:
+        status = "empty"
+        status_reason = "主评分链路尚未就绪，先补齐 scores->decision->funnel。"
+
+    return {
+        "status": status,
+        "status_reason": status_reason,
+        "missing_inputs": missing_inputs,
+        "score_date": str(latest_score_date or ""),
+        "universe_size": int(universe_size or 0),
+        "shortlist_size": int(shortlist_size or 0),
+        "latest_snapshot_date": latest_snapshot_date,
+        "funnel_total": funnel_total,
     }
 
 
@@ -1964,6 +2042,24 @@ def _board_payload(*, conn, sqlite3_module, db_path: str, page: int, page_size: 
     kill_switch = _get_control_row(conn)
     trade_plan = _build_trade_plan(market_regime, industries, shortlist, kill_switch)
     validation = _validation_snapshot(conn)
+    allow_trading = bool(int(kill_switch.get("allow_trading") or 0))
+    for item in shortlist:
+        actionable = _build_actionable_fields(
+            total_score=_as_float(item.get("total_score")),
+            trend_score=_as_float(item.get("trend_score")),
+            risk_score=_as_float(item.get("risk_score")),
+            position_label=str(item.get("position_label") or ""),
+            market_mode=str(market_regime.get("mode") or ""),
+            trade_mode=str(trade_plan.get("mode") or ""),
+            allow_trading=allow_trading,
+        )
+        item.update(actionable)
+    pipeline_health = _build_pipeline_health(
+        conn,
+        latest_score_date=str(latest_score_date or ""),
+        universe_size=total,
+        shortlist_size=len(shortlist),
+    )
     payload: dict[str, Any] = {
         "generated_at": _utc_now(),
         "snapshot_date": latest_score_date or "",
@@ -1980,6 +2076,7 @@ def _board_payload(*, conn, sqlite3_module, db_path: str, page: int, page_size: 
         "trade_plan": trade_plan,
         "validation": validation,
         "kill_switch": kill_switch,
+        "pipeline_health": pipeline_health,
     }
     if ts_code:
         payload["focus_stock"] = query_decision_stock(sqlite3_module=sqlite3_module, db_path=db_path, ts_code=ts_code, keyword=keyword)
@@ -2206,6 +2303,16 @@ def query_decision_stock(*, sqlite3_module, db_path: str, ts_code: str, keyword:
             risk.append("行业相对评分偏弱")
         if not risk:
             risk.append("保持仓位纪律，等待右侧确认")
+        allow_entry = total_score >= 65
+        actionable = _build_actionable_fields(
+            total_score=total_score,
+            trend_score=_as_float((score_row or {}).get("trend_score")),
+            risk_score=_as_float((score_row or {}).get("risk_score"), 60.0),
+            position_label=position_label,
+            market_mode="single_stock",
+            trade_mode="single_stock",
+            allow_trading=allow_entry,
+        )
         return {
             "generated_at": _utc_now(),
             "ts_code": ts_code,
@@ -2221,8 +2328,9 @@ def query_decision_stock(*, sqlite3_module, db_path: str, ts_code: str, keyword:
             "risk": "；".join(risk),
             "trade_plan": {
                 "suggestion": position_label,
-                "allow_entry": total_score >= 65,
+                "allow_entry": allow_entry,
                 "watchlist_priority": "high" if total_score >= 75 else "medium" if total_score >= 65 else "low",
+                **actionable,
             },
             "detail": stock_detail,
         }
@@ -2617,9 +2725,129 @@ def run_decision_snapshot(*, sqlite3_module, db_path: str, snapshot_date: str = 
         conn.close()
 
 
+def _ensure_funnel_tables_for_sync(conn) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {FUNNEL_CANDIDATES_TABLE} (
+            id TEXT PRIMARY KEY,
+            ts_code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            trigger_source TEXT NOT NULL DEFAULT '',
+            reason TEXT NOT NULL DEFAULT '',
+            evidence_ref TEXT NOT NULL DEFAULT '',
+            state TEXT NOT NULL DEFAULT 'ingested',
+            state_version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {FUNNEL_TRANSITIONS_TABLE} (
+            id TEXT PRIMARY KEY,
+            candidate_id TEXT NOT NULL,
+            from_state TEXT NOT NULL DEFAULT '',
+            to_state TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            evidence_ref TEXT NOT NULL DEFAULT '',
+            trigger_source TEXT NOT NULL DEFAULT '',
+            operator TEXT NOT NULL DEFAULT '',
+            idempotency_key TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _sync_shortlist_to_funnel(conn, *, shortlist: list[dict[str, Any]], snapshot_date: str) -> dict[str, Any]:
+    _ensure_funnel_tables_for_sync(conn)
+    inserted = 0
+    updated = 0
+    now = _utc_now()
+    for item in shortlist:
+        ts_code = str(item.get("ts_code") or "").strip().upper()
+        if not ts_code:
+            continue
+        name = str(item.get("name") or ts_code).strip()
+        reason = str(item.get("decision_reason") or "").strip()
+        evidence_ref = f"decision_snapshot:{snapshot_date}"
+        exists = conn.execute(
+            f"SELECT id, state_version FROM {FUNNEL_CANDIDATES_TABLE} WHERE ts_code = ? LIMIT 1",
+            (ts_code,),
+        ).fetchone()
+        if exists:
+            candidate_id = str(exists[0] or "")
+            version = int(exists[1] or 1) + 1
+            conn.execute(
+                f"""
+                UPDATE {FUNNEL_CANDIDATES_TABLE}
+                SET name = ?, source = ?, trigger_source = ?, reason = ?, evidence_ref = ?,
+                    state = ?, state_version = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    name,
+                    "decision_daily_snapshot",
+                    "decision_action",
+                    reason,
+                    evidence_ref,
+                    "decision_ready",
+                    version,
+                    now,
+                    candidate_id,
+                ),
+            )
+            updated += 1
+        else:
+            candidate_id = str(uuid.uuid4())
+            conn.execute(
+                f"""
+                INSERT INTO {FUNNEL_CANDIDATES_TABLE}
+                    (id, ts_code, name, source, trigger_source, reason, evidence_ref, state, state_version, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'decision_ready', 1, ?, ?)
+                """,
+                (candidate_id, ts_code, name, "decision_daily_snapshot", "decision_action", reason, evidence_ref, now, now),
+            )
+            inserted += 1
+        conn.execute(
+            f"""
+            INSERT INTO {FUNNEL_TRANSITIONS_TABLE}
+                (id, candidate_id, from_state, to_state, reason, evidence_ref, trigger_source, operator, idempotency_key, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (str(uuid.uuid4()), candidate_id, "", "decision_ready", reason, evidence_ref, "decision_action", "scheduler", "", now),
+        )
+    conn.commit()
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "total_synced": inserted + updated,
+    }
+
+
 def run_decision_scheduled_job(*, sqlite3_module, db_path: str, job_key: str) -> dict[str, Any]:
     snapshot_date = _today_cn()
     result = run_decision_snapshot(sqlite3_module=sqlite3_module, db_path=db_path, snapshot_date=snapshot_date)
+    if result.get("ok"):
+        board = query_decision_board(sqlite3_module=sqlite3_module, db_path=db_path, page=1, page_size=20)
+        conn = sqlite3_module.connect(db_path)
+        conn.row_factory = sqlite3_module.Row
+        try:
+            sync_summary = _sync_shortlist_to_funnel(
+                conn,
+                shortlist=list(board.get("shortlist") or []),
+                snapshot_date=str(board.get("snapshot_date") or snapshot_date),
+            )
+        finally:
+            conn.close()
+        result["pipeline_sync"] = {
+            "scores_stage": "ready" if board.get("snapshot_date") else "empty",
+            "decision_stage": "ready",
+            "funnel_stage": "ready" if int(sync_summary.get("total_synced") or 0) > 0 else "degraded",
+            **sync_summary,
+        }
     result["job_key"] = job_key
     return result
 

@@ -270,8 +270,8 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         job_key="decision_daily_snapshot",
         name="投研决策快照",
         category="research",
-        schedule_expr="15 1 * * 1-5",
-        description="生成宏观-行业-个股-计划书的每日决策快照",
+        schedule_expr="30 8 * * 1-5",
+        description="在 stock_scores_daily 与风险场景刷新后生成每日决策快照，并同步候选漏斗",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_decision_job.py"), "--job-key", "decision_daily_snapshot"),
         ),

@@ -207,6 +207,13 @@ class DecisionServiceTest(unittest.TestCase):
                 self.assertEqual(board["summary"]["top_score"], 91.5)
                 self.assertEqual(board["shortlist"][0]["ts_code"], "000001.SZ")
                 self.assertEqual(board["trade_plan"]["mode"], "aggressive")
+                self.assertIn("entry_trigger", board["shortlist"][0])
+                self.assertIn("invalidation", board["shortlist"][0])
+                self.assertIn("position_hint", board["shortlist"][0])
+                self.assertIn("risk_budget_source", board["shortlist"][0])
+                self.assertIn("pipeline_health", board)
+                self.assertIn(board["pipeline_health"]["status"], {"empty", "degraded", "ready"})
+                self.assertEqual(board["pipeline_health"]["score_date"], "2026-04-08")
 
                 conn = sqlite3.connect(db_path)
                 try:
@@ -302,6 +309,8 @@ class DecisionServiceTest(unittest.TestCase):
                 stock = decision_service.query_decision_stock(sqlite3_module=sqlite3, db_path=db_path, ts_code="000001.SZ")
                 self.assertEqual(stock["score"]["total_score"], 91.5)
                 self.assertTrue(stock["trade_plan"]["allow_entry"])
+                self.assertIn("entry_trigger", stock["trade_plan"])
+                self.assertIn("invalidation", stock["trade_plan"])
                 self.assertIn("平安银行", stock["detail"]["profile"]["name"])
 
                 history_empty = decision_service.query_decision_history(sqlite3_module=sqlite3, db_path=db_path, page=1, page_size=10)
@@ -505,6 +514,10 @@ class DecisionServiceTest(unittest.TestCase):
         result = decision_service.run_decision_scheduled_job(sqlite3_module=sqlite3, db_path=db_path, job_key="decision_daily_snapshot")
         self.assertEqual(result["job_key"], "decision_daily_snapshot")
         self.assertRegex(result["snapshot_date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertIn("pipeline_sync", result)
+        self.assertIn(result["pipeline_sync"]["scores_stage"], {"empty", "ready"})
+        self.assertIn(result["pipeline_sync"]["decision_stage"], {"ready"})
+        self.assertIn(result["pipeline_sync"]["funnel_stage"], {"degraded", "ready"})
 
 
 if __name__ == "__main__":

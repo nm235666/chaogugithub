@@ -56,7 +56,67 @@ def _first_existing_table(conn, table_names: list[str]) -> str:
     return ""
 
 
-def _summary_markdown_excerpt(markdown: str, *, limit: int = 180) -> str:
+def _conflict_row_identity(row: dict) -> tuple[str, str]:
+    """用于合并多轮 lookback 拉取时的去重键。"""
+    src = str(row.get("source") or "").strip()
+    subj = str(
+        row.get("subject")
+        or row.get("theme_name")
+        or row.get("subject_name")
+        or row.get("ts_code")
+        or row.get("summary_date")
+        or "",
+    ).strip()
+    return (src, subj)
+
+
+def _merge_distinct_conflict_rows(target: list[dict], extra: list[dict]) -> int:
+    """将 extra 合并进 target，按 (source, subject) 去重。返回新增条数。"""
+    seen = {_conflict_row_identity(r) for r in target}
+    added = 0
+    for r in extra:
+        key = _conflict_row_identity(r)
+        if key in seen or not key[0]:
+            continue
+        seen.add(key)
+        target.append(dict(r))
+        added += 1
+    return added
+
+
+def _hydrate_conflict_sources_for_arbitration(
+    conn,
+    conflict_source_rows: list[dict],
+    *,
+    base_lookback_hours: int,
+) -> None:
+    """
+    叙事区块可能已从全表取到主题/日报，但 R30 裁决仅用 72h lookback，数据稍旧即无行 → 可信度 0%。
+    在源过稀时自动放宽 lookback（168h → 720h）并合并去重，尽量让 composite / needs_review 有意义。
+    """
+    if len(conflict_source_rows) >= 4:
+        return
+    widen_steps = []
+    h = max(int(base_lookback_hours or 72), 72)
+    for mult in (2, 4, 8, 12):
+        nxt = min(h * mult, 720)
+        if nxt not in widen_steps and nxt > h:
+            widen_steps.append(nxt)
+    for widen in widen_steps:
+        if len(conflict_source_rows) >= 8:
+            break
+        before = len(conflict_source_rows)
+        _merge_distinct_conflict_rows(conflict_source_rows, _fetch_theme_hotspot_rows(conn, widen))
+        _merge_distinct_conflict_rows(conflict_source_rows, _fetch_investment_signal_rows(conn, widen))
+        _merge_distinct_conflict_rows(conflict_source_rows, _fetch_news_summary_rows(conn, widen))
+        _merge_distinct_conflict_rows(conflict_source_rows, _fetch_stock_news_rows(conn, widen))
+        _merge_distinct_conflict_rows(conflict_source_rows, _fetch_macro_series_rows(conn, widen))
+        _merge_distinct_conflict_rows(conflict_source_rows, _fetch_risk_scenario_rows(conn, widen))
+        if len(conflict_source_rows) <= before:
+            continue
+
+
+def _summary_markdown_excerpt(markdown: str, *, limit: int = 320) -> str:
     text = str(markdown or "").strip()
     if not text:
         return ""
@@ -830,42 +890,50 @@ def _get_market_conclusion(lookback_hours: int = 72) -> dict[str, Any]:
                     "SELECT MAX(scenario_date) AS dt FROM risk_scenarios"
                 ).fetchone()
                 latest_risk_date = _safe_str(_row_to_dict(latest_risk_date_row).get("dt") if latest_risk_date_row else "")
+                risk_rows: list = []
                 if latest_risk_date:
+                    risk_rows = conn.execute(
+                        """
+                        SELECT scenario_name, max_drawdown, pnl_impact, horizon
+                        FROM risk_scenarios
+                        WHERE scenario_date = ?
+                        ORDER BY COALESCE(max_drawdown, 0) ASC,
+                                 COALESCE(pnl_impact, 0) ASC
+                        LIMIT 5
+                        """,
+                        (latest_risk_date,),
+                    ).fetchall()
+                # 仅有 MAX(scenario_date) 但当日无行时（稀疏写入 / 日期口径漂移），回退为最近情景，避免「主要风险」整块只剩占位句
+                if not risk_rows:
                     if _db.using_postgres():
                         risk_rows = conn.execute(
                             """
                             SELECT scenario_name, max_drawdown, pnl_impact, horizon
                             FROM risk_scenarios
-                            WHERE scenario_date = %s
-                            ORDER BY COALESCE(max_drawdown, 0) ASC,
-                                     COALESCE(pnl_impact, 0) ASC
+                            ORDER BY scenario_date DESC NULLS LAST, id DESC
                             LIMIT 5
-                            """,
-                            (latest_risk_date,),
+                            """
                         ).fetchall()
                     else:
                         risk_rows = conn.execute(
                             """
                             SELECT scenario_name, max_drawdown, pnl_impact, horizon
                             FROM risk_scenarios
-                            WHERE scenario_date = ?
-                            ORDER BY COALESCE(max_drawdown, 0) ASC,
-                                     COALESCE(pnl_impact, 0) ASC
+                            ORDER BY scenario_date DESC, id DESC
                             LIMIT 5
-                            """,
-                            (latest_risk_date,),
+                            """
                         ).fetchall()
-                    risk_count = len(risk_rows or [])
-                    if risk_count > 0:
-                        generated_from.append("risk_scenarios")
-                    for raw in risk_rows or []:
-                        item = _row_to_dict(raw)
-                        main_risks.append(
-                            f"{_safe_str(item.get('scenario_name'), '压力情景')}："
-                            f"{_safe_str(item.get('horizon'), '默认周期')} "
-                            f"最大回撤 {float(item.get('max_drawdown') or 0.0):.2%}，"
-                            f"收益冲击 {float(item.get('pnl_impact') or 0.0):.2%}"
-                        )
+                risk_count = len(risk_rows or [])
+                if risk_count > 0:
+                    generated_from.append("risk_scenarios")
+                for raw in risk_rows or []:
+                    item = _row_to_dict(raw)
+                    main_risks.append(
+                        f"{_safe_str(item.get('scenario_name'), '压力情景')}："
+                        f"{_safe_str(item.get('horizon'), '默认周期')} "
+                        f"最大回撤 {float(item.get('max_drawdown') or 0.0):.2%}，"
+                        f"收益冲击 {float(item.get('pnl_impact') or 0.0):.2%}"
+                    )
                 sources.append({
                     "key": "risk_scenarios",
                     "label": "风险情景",
@@ -902,6 +970,7 @@ def _get_market_conclusion(lookback_hours: int = 72) -> dict[str, Any]:
             conflict_source_rows.extend(_fetch_stock_news_rows(conn, lookback_hours))
             conflict_source_rows.extend(_fetch_macro_series_rows(conn, lookback_hours))
             conflict_source_rows.extend(_fetch_risk_scenario_rows(conn, lookback_hours))
+            _hydrate_conflict_sources_for_arbitration(conn, conflict_source_rows, base_lookback_hours=lookback_hours)
 
         finally:
             conn.close()

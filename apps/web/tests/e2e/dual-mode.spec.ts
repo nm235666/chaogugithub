@@ -74,6 +74,8 @@ test.describe('旧路径兼容', () => {
     { legacy: '/signals/overview', expect: /\/app\/signals\/overview$/ },
     { legacy: '/signals/themes', expect: /\/app\/signals\/themes$/ },
     { legacy: '/signals/timeline', expect: /\/app\/signals\/timeline$/ },
+    { legacy: '/app/themes', expect: /\/app\/signals\/themes$/ },
+    { legacy: '/app/stocks', expect: /\/app\/stocks\/list$/ },
     { legacy: '/signals/audit', expect: /\/admin\/system\/signals-audit$/ },
     { legacy: '/signals/quality-config', expect: /\/admin\/system\/signals-quality$/ },
     { legacy: '/signals/state-timeline', expect: /\/admin\/system\/signals-state-timeline$/ },

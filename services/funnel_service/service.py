@@ -76,6 +76,53 @@ def _row_to_dict(row) -> dict:
         return {}
 
 
+def _load_upstream_scores_hint(conn) -> dict[str, Any]:
+    if not _db.table_exists(conn, "stock_scores_daily"):
+        return {"status": "missing_source", "latest_score_date": "", "latest_count": 0}
+    latest_row = conn.execute("SELECT MAX(score_date) AS dt FROM stock_scores_daily").fetchone()
+    latest_score_date = str(_row_to_dict(latest_row).get("dt") if latest_row else "").strip()
+    if not latest_score_date:
+        return {"status": "empty", "latest_score_date": "", "latest_count": 0}
+    count_row = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM stock_scores_daily WHERE score_date = ?",
+        (latest_score_date,),
+    ).fetchone()
+    latest_count = int(_row_to_dict(count_row).get("cnt") if count_row else 0)
+    return {
+        "status": "ready" if latest_count > 0 else "empty",
+        "latest_score_date": latest_score_date,
+        "latest_count": latest_count,
+    }
+
+
+def _derive_funnel_status(*, total: int, table_exists: bool, upstream_hint: dict[str, Any], error: str = "") -> dict[str, Any]:
+    missing_inputs: list[str] = []
+    if not table_exists:
+        missing_inputs.append(FUNNEL_CANDIDATES_TABLE)
+    if str(upstream_hint.get("status") or "") in {"missing_source", "empty"}:
+        missing_inputs.append("stock_scores_daily")
+    if error:
+        status = "degraded"
+        status_reason = "漏斗查询异常，建议检查数据库连接与表结构。"
+    elif total > 0:
+        status = "ready"
+        status_reason = "漏斗候选已就绪，可继续执行筛选与状态流转。"
+    elif upstream_hint.get("latest_count"):
+        status = "degraded"
+        status_reason = "上游评分已就绪，但漏斗候选仍为空，请检查入池同步任务。"
+    elif table_exists:
+        status = "empty"
+        status_reason = "漏斗表存在但暂无候选。"
+    else:
+        status = "not_initialized"
+        status_reason = "漏斗表尚未初始化。"
+    return {
+        "status": status,
+        "status_reason": status_reason,
+        "missing_inputs": missing_inputs,
+    }
+
+
 def list_candidates(
     *,
     state: str = "",
@@ -86,8 +133,11 @@ def list_candidates(
         conn = _db.connect()
         try:
             _db.apply_row_factory(conn)
-            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
-                return {"items": [], "total": 0, "limit": limit, "offset": offset}
+            table_exists = _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE)
+            upstream_hint = _load_upstream_scores_hint(conn)
+            if not table_exists:
+                status_payload = _derive_funnel_status(total=0, table_exists=False, upstream_hint=upstream_hint)
+                return {"items": [], "total": 0, "limit": limit, "offset": offset, "upstream_scores": upstream_hint, **status_payload}
             where_clause = ""
             params: list[Any] = []
             if state and state in VALID_STATES:
@@ -108,11 +158,27 @@ def list_candidates(
             params_page = params + [limit, offset]
             rows = conn.execute(sql, params_page).fetchall()
             items = [_row_to_dict(r) for r in rows]
-            return {"items": items, "total": total, "limit": limit, "offset": offset}
+            status_payload = _derive_funnel_status(total=total, table_exists=True, upstream_hint=upstream_hint)
+            return {
+                "items": items,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "upstream_scores": upstream_hint,
+                **status_payload,
+            }
         finally:
             conn.close()
     except Exception as exc:
-        return {"items": [], "total": 0, "limit": limit, "offset": offset, "error": str(exc)}
+        return {
+            "items": [],
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "upstream_scores": {"status": "unknown", "latest_score_date": "", "latest_count": 0},
+            **_derive_funnel_status(total=0, table_exists=False, upstream_hint={"status": "unknown"}, error=str(exc)),
+            "error": str(exc),
+        }
 
 
 def get_candidate(candidate_id: str) -> dict[str, Any] | None:
@@ -352,8 +418,11 @@ def get_funnel_metrics() -> dict[str, Any]:
         conn = _db.connect()
         try:
             _db.apply_row_factory(conn)
-            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
-                return {"state_counts": {}, "total": 0}
+            table_exists = _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE)
+            upstream_hint = _load_upstream_scores_hint(conn)
+            if not table_exists:
+                status_payload = _derive_funnel_status(total=0, table_exists=False, upstream_hint=upstream_hint)
+                return {"state_counts": {}, "total": 0, "upstream_scores": upstream_hint, **status_payload}
             rows = conn.execute(
                 f"SELECT state, COUNT(*) as cnt FROM {FUNNEL_CANDIDATES_TABLE} GROUP BY state"
             ).fetchall()
@@ -365,11 +434,18 @@ def get_funnel_metrics() -> dict[str, Any]:
                 cnt = int(d.get("cnt") or 0)
                 state_counts[state] = cnt
                 total += cnt
-            return {"state_counts": state_counts, "total": total}
+            status_payload = _derive_funnel_status(total=total, table_exists=True, upstream_hint=upstream_hint)
+            return {"state_counts": state_counts, "total": total, "upstream_scores": upstream_hint, **status_payload}
         finally:
             conn.close()
     except Exception as exc:
-        return {"state_counts": {}, "total": 0, "error": str(exc)}
+        return {
+            "state_counts": {},
+            "total": 0,
+            "upstream_scores": {"status": "unknown", "latest_score_date": "", "latest_count": 0},
+            **_derive_funnel_status(total=0, table_exists=False, upstream_hint={"status": "unknown"}, error=str(exc)),
+            "error": str(exc),
+        }
 
 
 def _ensure_funnel_tables(conn) -> None:

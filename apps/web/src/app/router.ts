@@ -131,6 +131,14 @@ export const router = createRouter({
     { path: '/research/multi-role', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/research/roundtable', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/research/trend', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
+    {
+      path: '/app/themes',
+      redirect: (to) => ({ path: '/app/signals/themes', query: to.query, hash: to.hash }),
+    },
+    {
+      path: '/app/stocks',
+      redirect: (to) => ({ path: '/app/stocks/list', query: to.query, hash: to.hash }),
+    },
     { path: '/market/conclusion', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/portfolio/positions', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/portfolio/orders', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },

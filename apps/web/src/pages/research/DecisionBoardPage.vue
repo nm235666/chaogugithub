@@ -114,6 +114,16 @@
           <StatusBadge :value="marketRegime.mode || 'muted'" :label="marketRegime.label || '数据不足'" />
           <StatusBadge value="info" :label="`短名单 ${shortlist.length}`" />
           <StatusBadge value="muted" :label="`行业 ${industries.length}`" />
+          <StatusBadge
+            :value="pipelineHealthStatusTone"
+            :label="`链路 ${pipelineHealth.status || 'unknown'}`"
+          />
+        </div>
+        <div class="mt-2 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
+          <span class="metric-chip">score_date {{ pipelineHealth.score_date || '-' }}</span>
+          <span class="metric-chip">漏斗候选 {{ pipelineHealth.funnel_total ?? 0 }}</span>
+          <span class="metric-chip">快照日期 {{ pipelineHealth.latest_snapshot_date || '-' }}</span>
+          <span v-for="item in pipelineHealthMissingInputs" :key="item" class="metric-chip text-amber-700">{{ item }}</span>
         </div>
         <div v-if="lastTraceFeedback.action_id || lastTraceFeedback.run_id || lastTraceFeedback.snapshot_id || latestSnapshotId || latestActionId || snapshotDate" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -390,6 +400,13 @@
             <template #cell-total_score="{ row }">{{ formatNumber(row.total_score, 2) }}</template>
             <template #cell-industry_total_score="{ row }">{{ formatNumber(row.industry_total_score, 2) }}</template>
             <template #cell-position_label="{ row }"><StatusBadge :value="row.position_label || 'muted'" :label="row.position_label || '-'"/></template>
+            <template #cell-actionable="{ row }">
+              <div class="space-y-1 text-xs text-[var(--muted)] leading-5">
+                <div><span class="font-semibold text-[var(--ink)]">触发：</span>{{ row.entry_trigger || '-' }}</div>
+                <div><span class="font-semibold text-[var(--ink)]">失效：</span>{{ row.invalidation || '-' }}</div>
+                <div><span class="font-semibold text-[var(--ink)]">仓位：</span>{{ row.position_hint || '-' }}</div>
+              </div>
+            </template>
             <template #cell_actions="{ row }">
               <div class="flex flex-wrap gap-2">
                 <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
@@ -863,6 +880,7 @@ const industries = computed<Array<Record<string, any>>>(() => (board.value.indus
 const shortlist = computed<Array<Record<string, any>>>(() => (board.value.shortlist || []) as Array<Record<string, any>>)
 const tradePlan = computed<Record<string, any>>(() => (board.value.trade_plan || {}) as Record<string, any>)
 const validation = computed<Record<string, any>>(() => (board.value.validation || {}) as Record<string, any>)
+const pipelineHealth = computed<Record<string, any>>(() => (board.value.pipeline_health || {}) as Record<string, any>)
 const focusStock = computed<Record<string, any> | null>(() => (board.value.focus_stock || null) as Record<string, any> | null)
 const killSwitch = computed<Record<string, any>>(() => (board.value.kill_switch || {}) as Record<string, any>)
 const historyItems = computed<Array<Record<string, any>>>(() => (historyQuery.data.value?.items || []) as Array<Record<string, any>>)
@@ -934,6 +952,17 @@ const latestActionId = computed(() => {
 const topIndustryName = computed(() => String(industries.value[0]?.industry || '').trim())
 const killSwitchLabel = computed(() => (Number(killSwitch.value.allow_trading ?? 1) === 1 ? '交易允许' : '交易暂停'))
 const killSwitchTone = computed(() => (Number(killSwitch.value.allow_trading ?? 1) === 1 ? 'success' : 'danger'))
+const pipelineHealthStatusTone = computed(() => {
+  const status = String(pipelineHealth.value.status || '').trim()
+  if (status === 'ready') return 'success'
+  if (status === 'degraded') return 'warning'
+  if (status === 'empty' || status === 'not_initialized') return 'danger'
+  return 'muted'
+})
+const pipelineHealthMissingInputs = computed<string[]>(() => {
+  const inputs = pipelineHealth.value.missing_inputs
+  return Array.isArray(inputs) ? inputs.slice(0, 5).map((item) => String(item)) : []
+})
 const isTogglePending = computed(() => Boolean(toggleKillSwitchMutation.isPending.value))
 const isSnapshotPending = computed(() => Boolean(runSnapshotMutation.isPending.value))
 const isActionPending = computed(() => Boolean(actionMutation.isPending.value))
@@ -984,6 +1013,7 @@ const stockColumns = [
   { key: 'total_score', label: '总分' },
   { key: 'industry_total_score', label: '行业分' },
   { key: 'position_label', label: '位置' },
+  { key: 'actionable', label: '执行参数' },
   { key: 'decision_risk', label: '风险' },
   { key: 'actions', label: '动作' },
 ]
