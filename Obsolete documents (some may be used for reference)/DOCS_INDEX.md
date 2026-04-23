@@ -11,9 +11,10 @@
 | --- | --- | --- | --- | --- |
 | `AGENTS.txt` | 工程治理 | 开发流程/规则变更（由原 AGENTS.md / AGENTs.md / AGENT.md 合并） | 规则与实际执行不一致 | 2026-04-23 |
 | `README_WEB.md` | 平台工程 | 启动、部署、运行链路变更 | 按文档无法跑起主链 | 2026-04-18 |
-| `docs/system_overview_cn.md` | 产品+后端 | 新增/下线模块、主链改动 | 页面/API/流程描述失真 | 2026-04-18 |
+| `docs/user_manual_cn.md` | 产品 + 平台工程 | 核心页面、动作链路、启动/排障流程变更 | 新用户无法按手册完成主链操作 | 2026-04-23 |
+| `docs/system_overview_cn.md` | 产品+后端 | 新增/下线模块、主链改动 | 页面/API/流程描述失真 | 2026-04-23 |
 | `docs/command_line_reference.md` | 平台工程 | 新增/废弃脚本命令 | 命令不可执行或误导 | 2026-04-18 |
-| `docs/database_dictionary.md` | 数据层 | 表结构/字段语义变化 | 字段解释与真实库不一致 | 2026-04-18 |
+| `docs/database_dictionary.md` | 数据层 | 表结构/字段语义变化 | 字段解释与真实库不一致 | 2026-04-23 |
 | `docs/database_audit_report.md` | 数据层 | 审计结果更新 | 审计结论过期 | 2026-04-18 |
 | `docs/scheduler_matrix_2026-04-06.md` | 调度系统 | 任务编排和 cron 调整 | 与 `job_registry` 不一致 | 2026-04-18 |
 | `docs/repo_structure_rules.md` | 工程治理 | 目录治理策略调整 | 新增目录未纳入规则 | 2026-04-18 |

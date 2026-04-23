@@ -297,9 +297,6 @@
 | `/api/funnel/metrics` | 漏斗统计面 | 候选状态分布与阶段统计 |
 | `/api/metrics/summary` | 系统级统计面 | 全局趋势、运营监控、汇总展示 |
 
-接口分层契约已固化在 `backend/layers/api_contracts.py`，用于统一维护“路径 -> 层级 -> 允许方法”的机器可检查规则。
-关键写入范围（`decision_actions` / `funnel_*` / `portfolio_*` / `jobs.*`）已在 `backend/layers/write_policies.py` 通过“scope -> layer”白名单约束，路由写入口会在执行前进行层级校验。
-
 ### 4.7 指标真源矩阵（统计口径统一）
 
 | 指标 | 真源 |
@@ -323,11 +320,10 @@
 ### 4.9 页面 smoke 线
 
 1. 保留 `tests/test_frontend_api_smoke.py` 与 `run_minimal_regression.sh` 做静态/接口回归
-2. 新增 `tests/test_api_write_boundary_smoke.py`，覆盖分层契约方法边界（405）与关键写入守卫（403）负例
-3. 新增 `apps/web/tests/e2e/smoke.spec.ts` 做浏览器级主流程 smoke
-4. 覆盖登录、默认落点、升级页权限展示、评分总览和关键研究页首屏渲染
-5. 默认通过 `cd apps/web && npm run smoke:e2e` 运行，目标地址由 `PLAYWRIGHT_BASE_URL` 指定
-6. 分层 smoke：`smoke:e2e:core`（主链路）/ `smoke:e2e:write-boundary`（写操作与边界）/ `smoke:e2e:all`（全量）
+2. 新增 `apps/web/tests/e2e/smoke.spec.ts` 做浏览器级主流程 smoke
+3. 覆盖登录、默认落点、升级页权限展示、评分总览和关键研究页首屏渲染
+4. 默认通过 `cd apps/web && npm run smoke:e2e` 运行，目标地址由 `PLAYWRIGHT_BASE_URL` 指定
+5. 分层 smoke：`smoke:e2e:core`（主链路）/ `smoke:e2e:write-boundary`（写操作与边界）/ `smoke:e2e:all`（全量）
 
 ### 4.10 LLM 分析线（走势 + 多角色）
 

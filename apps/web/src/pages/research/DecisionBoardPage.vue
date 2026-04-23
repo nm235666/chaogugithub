@@ -1,5 +1,5 @@
 <template>
-  <AppShell title="投研决策板" subtitle="宏观-行业-个股评分、短名单、交易计划与验证结果统一闭环。">
+  <AppShell title="投研决策板" subtitle="方向验证层主入口：聚焦动作编排、闭环回执与复盘验证。">
     <div class="space-y-4">
       <div class="page-hero-grid">
         <div class="page-hero-card">
@@ -58,6 +58,22 @@
           </div>
         </div>
         <div class="mt-1.5 text-xs text-[var(--muted)]">当前阶段：<span class="font-semibold text-[var(--ink)]">{{ currentDecisionStageLabel }}</span> · {{ currentDecisionStageHint }}</div>
+      </div>
+
+      <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="text-[var(--muted)]">
+            统计证据（宏观评分卡、行业排序、入选理由包）已收敛到
+            <RouterLink to="/app/research/scoreboard" class="font-semibold text-[var(--brand)] hover:underline">评分总览</RouterLink>
+            。本页只保留动作与验证闭环所需字段。
+          </div>
+          <RouterLink
+            to="/app/research/scoreboard"
+            class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+          >
+            打开评分总览
+          </RouterLink>
+        </div>
       </div>
 
       <PageSection title="决策输入" subtitle="输入单票聚焦代码，或直接刷新全局决策板。">
@@ -186,6 +202,48 @@
         <StatCard title="验证层" :value="validation.status || 'idle'" :hint="`done ${validation.done ?? 0} · error ${validation.error ?? 0}`" />
       </div>
 
+      <PageSection title="明日候选建议卡" subtitle="把短名单直接收口为可执行建议：触发、失效、仓位和风险预算来源。">
+        <div v-if="tomorrowCandidates.length === 0" class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-8 text-center text-sm text-[var(--muted)]">
+          当前没有可用候选。请先确认评分链路和漏斗状态是否为 ready。
+        </div>
+        <div v-else class="grid gap-3 lg:grid-cols-3 md:grid-cols-2">
+          <div
+            v-for="candidate in tomorrowCandidates"
+            :key="candidate.ts_code"
+            class="rounded-[var(--radius-card)] border border-[var(--line)] bg-white p-4 shadow-[var(--shadow-soft)]"
+          >
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-[15px] font-bold text-[var(--ink)]">{{ candidate.name || candidate.ts_code }}</div>
+                <div class="mt-0.5 text-xs text-[var(--muted)]">{{ candidate.ts_code || '-' }}</div>
+              </div>
+              <StatusBadge :value="candidate.position_label || 'muted'" :label="candidate.position_label || '-'" />
+            </div>
+            <div class="mt-3 space-y-1.5 text-xs leading-5 text-[var(--muted)]">
+              <div><span class="font-semibold text-[var(--ink)]">买入触发：</span>{{ candidate.entry_trigger || '-' }}</div>
+              <div><span class="font-semibold text-[var(--ink)]">失效条件：</span>{{ candidate.invalidation || '-' }}</div>
+              <div><span class="font-semibold text-[var(--ink)]">仓位建议：</span>{{ candidate.position_hint || '-' }}</div>
+              <div><span class="font-semibold text-[var(--ink)]">风险预算：</span>{{ candidate.risk_budget_source || '-' }}</div>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <RouterLink
+                :to="`/app/stocks/detail/${candidate.ts_code}`"
+                class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+              >
+                股票详情
+              </RouterLink>
+              <button
+                class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)] disabled:opacity-60"
+                :disabled="isActionPending"
+                @click="submitManualAction('confirm', candidate.ts_code, `候选确认：${candidate.name || candidate.ts_code || '-'}`, candidate.name || candidate.ts_code || '')"
+              >
+                确认入池
+              </button>
+            </div>
+          </div>
+        </div>
+      </PageSection>
+
       <PageSection v-if="recentVerdicts.length" title="近期首席裁决" subtitle="来自多角色分析的方向性判断，按时间倒序排列。">
         <div class="flex flex-wrap gap-3">
           <div
@@ -237,8 +295,13 @@
       <PageSection
         v-if="calibrationSummary.total_count > 0 || calibrationQuery.isFetched.value"
         title="裁决精准度"
-        subtitle="历史看多/看空裁决的 5 日胜率，用于评估判断质量。"
+        subtitle="第三层验证入口：历史看多/看空裁决的收益与命中率，用于评估判断质量。"
       >
+        <div class="mb-3 flex flex-wrap gap-2 text-xs">
+          <RouterLink to="/app/research/quant-factors" class="metric-chip font-semibold text-[var(--brand)]">
+            进入验证与研究层（因子/回测）
+          </RouterLink>
+        </div>
         <div class="grid gap-3 md:grid-cols-3">
           <StatCard
             title="看多命中率"
@@ -361,33 +424,16 @@
         </PageSection>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <PageSection title="行业排序" subtitle="按最新行业评分从高到低排列。">
+      <div class="grid gap-4">
+        <PageSection title="股票短名单（动作视角）" subtitle="按执行优先级展示候选。行业统计与评分解释请查看评分总览。">
           <div class="table-lead">
-            <div class="table-lead-copy">行业排序用于判断资金和评分正在向哪里集中，适合作为短名单排序前的方向性参考。</div>
-            <div class="flex flex-wrap gap-2 text-xs">
-              <span class="metric-chip">行业数 {{ industries.length }}</span>
-              <span class="metric-chip">Top 行业 {{ topIndustryName || '-' }}</span>
-            </div>
-          </div>
-          <DataTable :columns="industryColumns" :rows="industries" row-key="industry" empty-text="暂无行业评分数据" caption="行业排序">
-            <template #cell-score="{ row }">{{ formatNumber(row.score, 2) }}</template>
-            <template #cell-top_stocks="{ row }">
-              <div class="space-y-1">
-                <div v-for="stock in row.top_stocks || []" :key="stock.ts_code" class="text-xs text-[var(--muted)]">
-                  {{ stock.name || stock.ts_code || '-' }} · {{ formatNumber(stock.score, 1) }}
-                </div>
-              </div>
-            </template>
-          </DataTable>
-        </PageSection>
-
-        <PageSection title="股票短名单" subtitle="先看高分样本，再决定要不要下钻股票详情。">
-          <div class="table-lead">
-            <div class="table-lead-copy">短名单是本页最接近执行的一层。优先点击股票详情核对理由，再做确认、暂缓或拒绝动作。</div>
+            <div class="table-lead-copy">本表只保留动作相关字段：触发、失效、仓位与动作按钮。统计类明细不在本页重复展示。</div>
             <div class="flex flex-wrap gap-2 text-xs">
               <span class="metric-chip">短名单 {{ shortlist.length }}</span>
               <span class="metric-chip">验证 {{ validation.status || 'idle' }}</span>
+              <span class="metric-chip">行业数 {{ industries.length }}</span>
+              <span class="metric-chip">Top 行业 {{ topIndustryName || '-' }}</span>
+              <RouterLink :to="`/app/research/scoreboard`" class="metric-chip font-semibold text-[var(--brand)]">去看统计总览</RouterLink>
             </div>
           </div>
           <DataTable :columns="stockColumns" :rows="shortlist" row-key="ts_code" empty-text="暂无短名单股票" caption="股票短名单">
@@ -852,13 +898,21 @@ const actionMutation = useMutation({
       trace,
       gateAudit,
     )
-    message.value = trace.action_id ? `人工确认记录已保存（${trace.action_id}）。` : '人工确认记录已保存。'
+    const messageParts: string[] = [
+      trace.action_id ? `动作已记录（${trace.action_id}）` : '动作已记录',
+    ]
+    const funnelText = formatFunnelSyncFeedback(data?.funnel_sync)
+    if (funnelText) messageParts.push(funnelText)
+    if (data?.funnel_sync_warning) {
+      messageParts.push(String(data.funnel_sync_warning || ''))
+    }
     // Show execution task if auto-created
     if (data?.execution_task?.order_id) {
-      message.value = `动作已记录 (${data?.trace?.action_id || ''})，执行任务已自动创建：${data.execution_task.order_id}`
+      messageParts.push(`执行任务已自动创建：${data.execution_task.order_id}`)
     } else if (data?.execution_task_warning) {
-      message.value = `动作已记录，执行任务创建提示：${data.execution_task_warning}`
+      messageParts.push(`执行任务提示：${data.execution_task_warning}`)
     }
+    message.value = messageParts.join('；')
     actionPositionPctRange.value = ''
     actionTargetPositionPct.value = ''
     await refreshAll()
@@ -878,6 +932,11 @@ const boardErrorText = computed(() => {
 const marketRegime = computed<Record<string, any>>(() => (board.value.market_regime || {}) as Record<string, any>)
 const industries = computed<Array<Record<string, any>>>(() => (board.value.industries || []) as Array<Record<string, any>>)
 const shortlist = computed<Array<Record<string, any>>>(() => (board.value.shortlist || []) as Array<Record<string, any>>)
+const tomorrowCandidates = computed<Array<Record<string, any>>>(() =>
+  shortlist.value
+    .filter((item) => String(item?.position_label || '').trim() === '重点观察')
+    .slice(0, 6),
+)
 const tradePlan = computed<Record<string, any>>(() => (board.value.trade_plan || {}) as Record<string, any>)
 const validation = computed<Record<string, any>>(() => (board.value.validation || {}) as Record<string, any>)
 const pipelineHealth = computed<Record<string, any>>(() => (board.value.pipeline_health || {}) as Record<string, any>)
@@ -999,13 +1058,6 @@ const calibrationColumns = [
   { key: 'return_20d', label: '20日收益' },
   { key: 'return_60d', label: '60日收益' },
   { key: 'hit_5d', label: '结果' },
-]
-
-const industryColumns = [
-  { key: 'industry', label: '行业' },
-  { key: 'score', label: '评分' },
-  { key: 'count', label: '样本' },
-  { key: 'top_stocks', label: '代表股' },
 ]
 
 const stockColumns = [
@@ -1190,6 +1242,25 @@ function actionPriorityLabel(value: unknown): string {
   if (key === 'low') return '低'
   if (key === 'medium' || key === 'med' || key === 'normal') return '中'
   return key || '-'
+}
+
+function formatFunnelSyncFeedback(syncPayload: unknown): string {
+  const sync = (syncPayload || {}) as Record<string, any>
+  if (!sync || typeof sync !== 'object') return ''
+  if (sync.ok !== true) return ''
+  if (sync.skipped) return '漏斗同步已跳过'
+
+  const state = String(sync.state || '').trim()
+  const stateLabelMap: Record<string, string> = {
+    decision_ready: '待决策',
+    confirmed: '已确认入池',
+    rejected: '已拒绝',
+    deferred: '已暂缓',
+  }
+  const stateLabel = stateLabelMap[state] || state || '未知状态'
+  const created = Boolean(sync.created)
+  const transitionCount = Number(sync.transition_count || 0)
+  return `漏斗已同步（${stateLabel}${created ? '，新建候选' : ''}${transitionCount > 0 ? `，状态变更 ${transitionCount} 次` : ''}）`
 }
 
 function formatReturn(val: number | null | undefined): string {

@@ -81,6 +81,31 @@
 | `theme_hotspot_tracker_1d` | 待补充说明 | 28 | 其他 |
 | `theme_stock_mapping` | 待补充说明 | 33 | 其他 |
 
+## 第二层数据资产目录（四层架构）
+
+| 数据资产域 | 核心数据表 | 资产说明 | 主要消费 API |
+| --- | --- | --- | --- |
+| 股票原始资产 | `stock_codes`、`stock_daily_prices`、`stock_minline` | 股票基础与行情底座 | `/api/stocks/*`、`/api/stock-scores` |
+| 股票加工资产 | `stock_scores_daily`、`stock_daily_price_rollups` | 评分、分层、回溯聚合 | `/api/stock-scores`、`/api/decision/scores` |
+| 新闻资产 | `news_feed_items`、`stock_news_items`、`news_daily_summaries` | 新闻主数据与结构化总结 | `/api/intelligence/*` |
+| 群聊资产 | `chatroom_list_items`、`wechat_chatlog_clean_items`、`chatroom_stock_candidate_pool` | 群聊文本、候选与倾向沉淀 | `/api/chatrooms/*` |
+| 信号资产 | `investment_signal_tracker*`、`signal_state_*`、`theme_*` | 主题/信号主表与状态事件 | `/api/signals/*` |
+| 决策资产 | `decision_snapshots`、`decision_actions`、`funnel_candidates`、`portfolio_orders` | 决策、漏斗、执行闭环资产 | `/api/decision/*`、`/api/funnel/*`、`/api/portfolio/*` |
+| 研究验证资产 | `quantaalpha_runs`、`quantaalpha_factor_results`、`quantaalpha_backtest_results` | 因子与策略验证沉淀 | `/api/quant-factors/*` |
+| 治理审计资产 | `job_*`、`app_auth_*`、`signal_quality_rules` | 调度、权限、审计、治理规则 | `/api/system/*`、`/api/admin/*` |
+
+## 展示字段到真源映射（关键口径）
+
+| 展示字段（页面） | 真源字段 | 数据表 | 主接口 |
+| --- | --- | --- | --- |
+| 股票总分（评分总览） | `total_score` | `stock_scores_daily` | `/api/decision/scores` |
+| 行业分（评分总览） | `industry_total_score` | `stock_scores_daily` | `/api/decision/scores` |
+| 决策动作记录（决策板） | `action_type`、`action_payload_json` | `decision_actions` | `/api/decision/actions` |
+| 漏斗状态（候选漏斗） | `state`、`state_version` | `funnel_candidates` | `/api/funnel/metrics`、`/api/funnel/candidates` |
+| 执行状态（执行页） | `status`、`action_type` | `portfolio_orders` | `/api/portfolio/orders` |
+| 方向验证命中（决策验证） | `return_5d`、`hit_5d` | `stock_daily_prices` + `decision_actions` | `/api/decision/calibration` |
+| 系统运营汇总（后台） | daily 指标聚合字段 | `docs/metrics/daily/*` + 运行表 | `/api/metrics/summary` |
+
 ## 各表详解
 
 ### `stock_codes`

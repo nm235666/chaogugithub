@@ -1481,6 +1481,11 @@ def _scoreboard_shortlist(conn, *, target_size: int) -> tuple[str, list[dict[str
 
 
 def query_decision_scoreboard(*, sqlite3_module, db_path: str, page_size: int = 8) -> dict[str, Any]:
+    """
+    Layer 2 (data assets) oriented aggregate view:
+    - provides scoreboard-oriented evidence packets and source health
+    - does not execute user actions
+    """
     conn = sqlite3_module.connect(db_path)
     conn.row_factory = sqlite3_module.Row
     try:
@@ -2448,8 +2453,9 @@ def query_decision_calibration(
     ts_code: str = "",
 ) -> dict[str, Any]:
     """
-    Return decision actions (confirm/reject) enriched with price returns at 5/20/60
-    trading days after the verdict date, plus an overall accuracy summary.
+    Layer 3 (verification/research) endpoint:
+    - validates confirm/reject verdict quality with 5/20/60 trading-day returns
+    - outputs hit-rate summary for feedback into decision workflows
     """
     conn = sqlite3_module.connect(db_path)
     conn.row_factory = sqlite3_module.Row
@@ -2827,6 +2833,163 @@ def _sync_shortlist_to_funnel(conn, *, shortlist: list[dict[str, Any]], snapshot
     }
 
 
+def sync_decision_action_to_funnel(
+    *,
+    sqlite3_module,
+    db_path: str,
+    action_type: str,
+    ts_code: str,
+    stock_name: str = "",
+    note: str = "",
+    actor: str = "decision_board",
+    snapshot_date: str = "",
+    action_id: str = "",
+) -> dict[str, Any]:
+    mapped_state = {
+        "confirm": "confirmed",
+        "reject": "rejected",
+        "defer": "deferred",
+        "watch": "decision_ready",
+    }.get(str(action_type or "").strip().lower(), "")
+    if not mapped_state:
+        return {"ok": True, "skipped": True, "reason": "action_type not mapped"}
+
+    normalized_ts = str(ts_code or "").strip().upper()
+    if not normalized_ts:
+        return {"ok": False, "error": "missing ts_code"}
+
+    normalized_name = str(stock_name or normalized_ts).strip()
+    normalized_note = str(note or "").strip()
+    normalized_actor = str(actor or "decision_board").strip() or "decision_board"
+    normalized_snapshot_date = str(snapshot_date or _today_cn()).strip() or _today_cn()
+    evidence_ref = f"decision_action:{normalized_snapshot_date}:{action_id or normalized_ts}"
+    now = _utc_now()
+
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    try:
+        _ensure_funnel_tables_for_sync(conn)
+        row = conn.execute(
+            f"""
+            SELECT id, state, state_version
+            FROM {FUNNEL_CANDIDATES_TABLE}
+            WHERE ts_code = ?
+            LIMIT 1
+            """,
+            (normalized_ts,),
+        ).fetchone()
+
+        created = False
+        transition_count = 0
+        if row:
+            candidate_id = str(row["id"] or "")
+            current_state = str(row["state"] or "").strip() or "decision_ready"
+            state_version = int(row["state_version"] or 1)
+            # Always refresh metadata from latest decision action.
+            conn.execute(
+                f"""
+                UPDATE {FUNNEL_CANDIDATES_TABLE}
+                SET name = ?, source = ?, trigger_source = ?, reason = ?, evidence_ref = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    normalized_name,
+                    "decision_action",
+                    "decision_action",
+                    normalized_note,
+                    evidence_ref,
+                    now,
+                    candidate_id,
+                ),
+            )
+        else:
+            candidate_id = str(uuid.uuid4())
+            current_state = "decision_ready"
+            state_version = 1
+            created = True
+            conn.execute(
+                f"""
+                INSERT INTO {FUNNEL_CANDIDATES_TABLE}
+                    (id, ts_code, name, source, trigger_source, reason, evidence_ref, state, state_version, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'decision_ready', 1, ?, ?)
+                """,
+                (
+                    candidate_id,
+                    normalized_ts,
+                    normalized_name,
+                    "decision_action",
+                    "decision_action",
+                    normalized_note,
+                    evidence_ref,
+                    now,
+                    now,
+                ),
+            )
+            conn.execute(
+                f"""
+                INSERT INTO {FUNNEL_TRANSITIONS_TABLE}
+                    (id, candidate_id, from_state, to_state, reason, evidence_ref, trigger_source, operator, idempotency_key, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    candidate_id,
+                    "",
+                    "decision_ready",
+                    normalized_note,
+                    evidence_ref,
+                    "decision_action",
+                    normalized_actor,
+                    str(action_id or "").strip(),
+                    now,
+                ),
+            )
+            transition_count += 1
+
+        if mapped_state != current_state:
+            next_version = state_version + 1
+            conn.execute(
+                f"""
+                UPDATE {FUNNEL_CANDIDATES_TABLE}
+                SET state = ?, state_version = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (mapped_state, next_version, now, candidate_id),
+            )
+            conn.execute(
+                f"""
+                INSERT INTO {FUNNEL_TRANSITIONS_TABLE}
+                    (id, candidate_id, from_state, to_state, reason, evidence_ref, trigger_source, operator, idempotency_key, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    candidate_id,
+                    current_state,
+                    mapped_state,
+                    normalized_note,
+                    evidence_ref,
+                    "decision_action",
+                    normalized_actor,
+                    str(action_id or "").strip(),
+                    now,
+                ),
+            )
+            transition_count += 1
+            current_state = mapped_state
+
+        conn.commit()
+        return {
+            "ok": True,
+            "candidate_id": candidate_id,
+            "state": current_state,
+            "created": created,
+            "transition_count": transition_count,
+        }
+    finally:
+        conn.close()
+
+
 def run_decision_scheduled_job(*, sqlite3_module, db_path: str, job_key: str) -> dict[str, Any]:
     snapshot_date = _today_cn()
     result = run_decision_snapshot(sqlite3_module=sqlite3_module, db_path=db_path, snapshot_date=snapshot_date)
@@ -2869,4 +3032,5 @@ def build_decision_runtime_deps(*, sqlite3_module, db_path: str) -> dict[str, An
         "record_decision_action": lambda **kwargs: record_decision_action(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "run_decision_snapshot": lambda **kwargs: run_decision_snapshot(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "run_decision_scheduled_job": lambda job_key: run_decision_scheduled_job(sqlite3_module=sqlite3_module, db_path=db_path, job_key=job_key),
+        "sync_decision_action_to_funnel": lambda **kwargs: sync_decision_action_to_funnel(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
     }

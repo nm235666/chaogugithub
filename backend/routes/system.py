@@ -10,6 +10,17 @@ METRICS_DAILY_DIR = ROOT_DIR / "docs" / "metrics" / "daily"
 _METRICS_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
 
 
+def _guard_governance_write(deps: dict, *, scope: str) -> str | None:
+    guard = deps.get("assert_write_allowed")
+    if not callable(guard):
+        return None
+    try:
+        guard(scope=scope, layer="layer4_backoffice_governance")
+        return None
+    except Exception as exc:
+        return str(exc)
+
+
 def _safe_rate_value(value):
     if value is None:
         return None
@@ -986,6 +997,10 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
         return True
 
     if parsed.path == "/api/jobs/trigger":
+        denied = _guard_governance_write(deps, scope="jobs.trigger")
+        if denied:
+            handler._send_json({"error": denied}, status=403)
+            return True
         params = parse_qs(parsed.query)
         job_key = params.get("job_key", [""])[0].strip()
         if not job_key:
@@ -1000,6 +1015,10 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
         return True
 
     if parsed.path == "/api/jobs/dry-run":
+        denied = _guard_governance_write(deps, scope="jobs.dry_run")
+        if denied:
+            handler._send_json({"error": denied}, status=403)
+            return True
         params = parse_qs(parsed.query)
         job_key = params.get("job_key", [""])[0].strip()
         if not job_key:

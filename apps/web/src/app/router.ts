@@ -139,6 +139,30 @@ export const router = createRouter({
       path: '/app/stocks',
       redirect: (to) => ({ path: '/app/stocks/list', query: to.query, hash: to.hash }),
     },
+    {
+      path: '/app/research/workbench',
+      redirect: (to) => ({ path: '/app/workbench', query: to.query, hash: to.hash }),
+    },
+    {
+      path: '/app/research/decision',
+      redirect: (to) => ({ path: '/app/decision', query: to.query, hash: to.hash }),
+    },
+    {
+      path: '/app/research/funnel',
+      redirect: (to) => ({ path: '/app/funnel', query: to.query, hash: to.hash }),
+    },
+    {
+      path: '/app/portfolio/orders',
+      redirect: (to) => ({ path: '/app/orders', query: to.query, hash: to.hash }),
+    },
+    {
+      path: '/app/portfolio/positions',
+      redirect: (to) => ({ path: '/app/positions', query: to.query, hash: to.hash }),
+    },
+    {
+      path: '/app/portfolio/review',
+      redirect: (to) => ({ path: '/app/review', query: to.query, hash: to.hash }),
+    },
     { path: '/market/conclusion', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/portfolio/positions', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },
     { path: '/portfolio/orders', redirect: (to) => redirectToSurface({ path: to.path, query: to.query, hash: to.hash }) },

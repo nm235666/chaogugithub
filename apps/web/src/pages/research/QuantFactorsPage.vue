@@ -1,6 +1,16 @@
 <template>
-  <AppShell title="因子挖掘工作台" subtitle="因子挖掘、回测、任务状态与结果统一查看。">
+  <AppShell title="因子挖掘工作台" subtitle="第三层（验证与研究层）主入口：因子研究、回测验证、复盘修正。">
     <div class="space-y-4">
+      <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm">
+        <div class="text-[var(--muted)]">
+          本页属于验证与研究层，负责把研究方向沉淀为可验证能力。若要执行投资动作，请回到
+          <RouterLink to="/app/decision" class="font-semibold text-[var(--brand)] hover:underline">投研决策板</RouterLink>。
+        </div>
+        <div class="mt-2 flex flex-wrap gap-2 text-xs">
+          <RouterLink to="/app/decision" class="metric-chip font-semibold text-[var(--brand)]">去决策层</RouterLink>
+          <RouterLink to="/app/review" class="metric-chip font-semibold text-[var(--brand)]">去复盘层</RouterLink>
+        </div>
+      </div>
       <PageSection title="任务启动" subtitle="输入研究方向后，可启动 mine/backtest 任务（research 使用自研等价适配层）。">
         <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-2">
           <input v-model.trim="form.direction" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 xl:col-span-2" placeholder="研究方向，如：红利低波 + 价值增强" />
@@ -105,6 +115,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
+import { RouterLink } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'

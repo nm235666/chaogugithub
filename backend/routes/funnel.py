@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs
 
-from services.funnel_service import (
+from backend.layers.layer1_user_decision import (
     create_candidate,
     get_candidate,
     get_funnel_metrics,
@@ -14,6 +14,17 @@ from services.funnel_service import (
 
 # Match /api/funnel/candidates/<id> and /api/funnel/candidates/<id>/transition
 _CANDIDATE_ID_RE = re.compile(r"^/api/funnel/candidates/([^/]+)(/transition)?$")
+
+
+def _guard_write(deps: dict, *, scope: str) -> str | None:
+    guard = deps.get("assert_write_allowed")
+    if not callable(guard):
+        return None
+    try:
+        guard(scope=scope, layer="layer1_user_decision")
+        return None
+    except Exception as exc:
+        return str(exc)
 
 
 def dispatch_get(handler, parsed, deps: dict) -> bool:
@@ -69,6 +80,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         return False
 
     if parsed.path == "/api/funnel/candidates":
+        denied = _guard_write(deps, scope="funnel.candidates")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         ts_code = str(payload.get("ts_code") or "").strip().upper()
         name = str(payload.get("name") or "").strip()
         source = str(payload.get("source") or "").strip()
@@ -99,6 +114,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
 
     m = _CANDIDATE_ID_RE.match(parsed.path)
     if m and m.group(2) == "/transition":
+        denied = _guard_write(deps, scope="funnel.transition")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         candidate_id = m.group(1)
         to_state = str(payload.get("to_state") or "").strip()
         reason = str(payload.get("reason") or "").strip()

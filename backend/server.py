@@ -155,6 +155,12 @@ from backend.routes import llm_quick_insight as llm_quick_insight_routes
 from backend.routes import macro_regime as macro_regime_routes
 from backend.routes import portfolio_allocation as portfolio_allocation_routes
 from backend.routes import analytics as analytics_routes
+from backend.layers import (
+    assert_layer_write_allowed,
+    build_layered_route_deps,
+    is_api_method_allowed,
+    list_api_layer_contracts,
+)
 
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "8000"))
@@ -8093,6 +8099,8 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _route_deps(self) -> dict:
         return {
             "api_endpoints_catalog": API_ENDPOINTS_CATALOG,
+            "api_layer_contracts": list_api_layer_contracts,
+            "assert_write_allowed": assert_layer_write_allowed,
             "db_label": db_label,
             "admin_token_required": self._admin_token_required,
             "token_valid": self._token_valid,
@@ -8160,42 +8168,64 @@ class ApiHandler(BaseHTTPRequestHandler):
             "get_multi_role_v3_job_by_id": get_multi_role_v3_job_by_id,
             "decide_multi_role_v3_job": decide_multi_role_v3_job,
             "action_multi_role_v3_job": action_multi_role_v3_job,
-            **build_stock_news_service_runtime_deps(),
-            "query_news_sources": query_news_sources,
-            "query_news": query_news,
-            **build_reporting_service_deps(),
-            **build_chatrooms_service_runtime_deps(),
-            **build_signals_service_runtime_deps(),
-            **build_quantaalpha_runtime_deps(),
-            **build_decision_runtime_deps(),
-            "roundtable_create": _roundtable_create,
-            "roundtable_get": _roundtable_get,
-            "roundtable_list": _roundtable_list,
-            "quant_factors_enabled": ENABLE_QUANT_FACTORS,
-            "build_info": _build_info_payload,
-            "permission_matrix": _role_permission_matrix,
-            "effective_permissions_for_user": _effective_permissions_for_user,
-            "get_navigation_groups": _get_navigation_groups,
-            "get_dynamic_rbac_payload": _get_dynamic_rbac_payload,
-            "rbac_dynamic_enforced": RBAC_DYNAMIC_ENFORCED,
-            "list_llm_providers": list_llm_providers,
-            "create_llm_provider": create_llm_provider,
-            "update_llm_provider": update_llm_provider,
-            "delete_llm_provider": delete_llm_provider,
-            "test_one_llm_provider": test_one_llm_provider,
-            "test_model_llm_providers": test_model_llm_providers,
-            "update_default_rate_limit": update_default_rate_limit,
-            "get_multi_role_v2_policies": get_multi_role_v2_policies,
-            "update_multi_role_v2_policies": update_multi_role_v2_policies,
-            "ai_retrieval_enabled": AI_RETRIEVAL_ENABLED,
-            "ai_retrieval_shadow_mode": AI_RETRIEVAL_SHADOW_MODE,
-            "ai_retrieval_search": ai_retrieval_search,
-            "ai_retrieval_context": ai_retrieval_context,
-            "ai_retrieval_sync": ai_retrieval_sync,
-            "ai_retrieval_metrics": ai_retrieval_metrics,
-            "frontend_dist_exists": bool((WEB_DIST_DIR / "index.html").exists()),
-            "frontend_url": f"http://{self.headers.get('Host', f'127.0.0.1:{PORT}')}/",
+            **build_layered_route_deps(
+                build_stock_news_service_runtime_deps=build_stock_news_service_runtime_deps,
+                query_news_sources=query_news_sources,
+                query_news=query_news,
+                build_reporting_service_deps=build_reporting_service_deps,
+                build_chatrooms_service_runtime_deps=build_chatrooms_service_runtime_deps,
+                build_signals_service_runtime_deps=build_signals_service_runtime_deps,
+                build_quantaalpha_runtime_deps=build_quantaalpha_runtime_deps,
+                build_decision_runtime_deps=build_decision_runtime_deps,
+                roundtable_create=_roundtable_create,
+                roundtable_get=_roundtable_get,
+                roundtable_list=_roundtable_list,
+                enable_quant_factors=ENABLE_QUANT_FACTORS,
+                build_info=_build_info_payload,
+                permission_matrix=_role_permission_matrix,
+                effective_permissions_for_user=_effective_permissions_for_user,
+                get_navigation_groups=_get_navigation_groups,
+                get_dynamic_rbac_payload=_get_dynamic_rbac_payload,
+                rbac_dynamic_enforced=RBAC_DYNAMIC_ENFORCED,
+                llm_provider_admin_deps={
+                    "list_llm_providers": list_llm_providers,
+                    "create_llm_provider": create_llm_provider,
+                    "update_llm_provider": update_llm_provider,
+                    "delete_llm_provider": delete_llm_provider,
+                    "test_one_llm_provider": test_one_llm_provider,
+                    "test_model_llm_providers": test_model_llm_providers,
+                    "update_default_rate_limit": update_default_rate_limit,
+                    "get_multi_role_v2_policies": get_multi_role_v2_policies,
+                    "update_multi_role_v2_policies": update_multi_role_v2_policies,
+                },
+                ai_retrieval_deps={
+                    "ai_retrieval_enabled": AI_RETRIEVAL_ENABLED,
+                    "ai_retrieval_shadow_mode": AI_RETRIEVAL_SHADOW_MODE,
+                    "ai_retrieval_search": ai_retrieval_search,
+                    "ai_retrieval_context": ai_retrieval_context,
+                    "ai_retrieval_sync": ai_retrieval_sync,
+                    "ai_retrieval_metrics": ai_retrieval_metrics,
+                },
+                frontend_dist_exists=bool((WEB_DIST_DIR / "index.html").exists()),
+                frontend_url=f"http://{self.headers.get('Host', f'127.0.0.1:{PORT}')}/",
+            ),
         }
+
+    def _enforce_api_contract_method(self, parsed, method: str) -> bool:
+        path = str(getattr(parsed, "path", "") or "")
+        if not path.startswith("/api/"):
+            return False
+        if is_api_method_allowed(path=path, method=method):
+            return False
+        self._send_json(
+            {
+                "error": "Method Not Allowed",
+                "path": path,
+                "method": str(method or "").upper(),
+            },
+            status=405,
+        )
+        return True
 
     def _serve_frontend_static(self, parsed) -> bool:
         path = str(parsed.path or "").strip()
@@ -8260,6 +8290,8 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._request_started_at = time.time()
         parsed = urlparse(self.path)
+        if self._enforce_api_contract_method(parsed, "POST"):
+            return
         if self._reject_protected_request():
             return
         auth_ctx = self._resolve_auth_context()
@@ -8320,6 +8352,8 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_PATCH(self):
         self._request_started_at = time.time()
         parsed = urlparse(self.path)
+        if self._enforce_api_contract_method(parsed, "PATCH"):
+            return
         if self._reject_protected_request():
             return
         auth_ctx = self._resolve_auth_context()
@@ -8358,6 +8392,8 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._request_started_at = time.time()
         parsed = urlparse(self.path)
+        if self._enforce_api_contract_method(parsed, "GET"):
+            return
         host = self.headers.get("Host", f"127.0.0.1:{PORT}").split(":")[0]
         if self._reject_protected_request():
             return

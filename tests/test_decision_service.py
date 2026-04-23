@@ -366,6 +366,50 @@ class DecisionServiceTest(unittest.TestCase):
                 self.assertEqual(actions["items"][0]["status"], "success")
                 self.assertEqual(actions["items"][0]["source"], "unit_test")
                 self.assertEqual(actions["items"][0]["receipt"]["trace"]["action_id"], actions["items"][0]["trace"]["action_id"])
+                funnel_sync = decision_service.sync_decision_action_to_funnel(
+                    sqlite3_module=sqlite3,
+                    db_path=db_path,
+                    action_type="confirm",
+                    ts_code="000001.SZ",
+                    stock_name="平安银行",
+                    note="unit test confirm",
+                    actor="tester",
+                    snapshot_date="2026-04-08",
+                    action_id=action["action_id"],
+                )
+                self.assertTrue(funnel_sync["ok"])
+                self.assertEqual(funnel_sync["state"], "confirmed")
+
+                funnel_sync_defer = decision_service.sync_decision_action_to_funnel(
+                    sqlite3_module=sqlite3,
+                    db_path=db_path,
+                    action_type="defer",
+                    ts_code="000001.SZ",
+                    stock_name="平安银行",
+                    note="unit test defer",
+                    actor="tester",
+                    snapshot_date="2026-04-08",
+                    action_id="manual-defer-1",
+                )
+                self.assertTrue(funnel_sync_defer["ok"])
+                self.assertEqual(funnel_sync_defer["state"], "deferred")
+
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                try:
+                    candidate_row = conn.execute(
+                        f"SELECT id, ts_code, state, state_version FROM {decision_service.FUNNEL_CANDIDATES_TABLE} WHERE ts_code = ?",
+                        ("000001.SZ",),
+                    ).fetchone()
+                    self.assertIsNotNone(candidate_row)
+                    self.assertEqual(dict(candidate_row)["state"], "deferred")
+                    transitions_count = conn.execute(
+                        f"SELECT COUNT(1) AS c FROM {decision_service.FUNNEL_TRANSITIONS_TABLE} WHERE candidate_id = ?",
+                        (dict(candidate_row)["id"],),
+                    ).fetchone()
+                    self.assertGreaterEqual(int(dict(transitions_count)["c"] or 0), 3)
+                finally:
+                    conn.close()
 
                 conn = sqlite3.connect(db_path)
                 try:

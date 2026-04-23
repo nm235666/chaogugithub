@@ -4,298 +4,312 @@
   "groups": [
     {
       "id": "app-workspace",
-      "title": "工作台",
+      "title": "第一层：用户决策层",
       "order": 1,
       "surface": "app",
       "items": [
         {
           "to": "/app/workbench",
-          "label": "研究工作台",
-          "desc": "今日重点、待处理动作与风险预警",
+          "label": "研究工作台（主入口）",
+          "desc": "用户决策层：今日重点、待处理动作与风险预警",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-market",
-      "title": "市场",
+      "title": "第一层：用户决策层",
       "order": 2,
       "surface": "app",
       "items": [
         {
           "to": "/app/market",
-          "label": "市场结论",
-          "desc": "今日交易主线、风险与行业影响",
+          "label": "市场结论（主入口）",
+          "desc": "用户决策层：今日交易主线、风险与行业影响",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-funnel",
-      "title": "候选",
+      "title": "第一层：用户决策层",
       "order": 3,
       "surface": "app",
       "items": [
         {
           "to": "/app/funnel",
-          "label": "候选漏斗",
-          "desc": "候选生命周期状态机与流转追溯",
+          "label": "候选漏斗（主入口）",
+          "desc": "用户决策层：候选生命周期状态机与流转追溯",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-decision",
-      "title": "决策",
+      "title": "第一层：用户决策层",
       "order": 4,
       "surface": "app",
       "items": [
         {
           "to": "/app/decision",
-          "label": "决策看板",
-          "desc": "宏观-行业-个股评分与执行参考",
+          "label": "决策看板（主入口）",
+          "desc": "用户决策层：动作执行、回执与闭环校验",
           "permission": "research_advanced"
         },
         {
           "to": "/app/research/scoreboard",
-          "label": "评分总览",
-          "desc": "宏观模式、行业排序、短名单与入选理由一站式查看",
+          "label": "评分总览（统计主入口）",
+          "desc": "数据统计层：宏观模式、行业排序、短名单与入选理由",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-execution",
-      "title": "执行",
+      "title": "第一层：用户决策层",
       "order": 5,
       "surface": "app",
       "items": [
         {
           "to": "/app/orders",
-          "label": "计划单",
-          "desc": "计划单、执行单、取消单",
+          "label": "计划单（主入口）",
+          "desc": "用户决策层：计划单、执行单、取消单",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-positions",
-      "title": "持仓",
+      "title": "第一层：用户决策层",
       "order": 6,
       "surface": "app",
       "items": [
         {
           "to": "/app/positions",
           "label": "持仓看板",
-          "desc": "当前纸面持仓与状态",
+          "desc": "用户决策层：当前纸面持仓与状态",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-review",
-      "title": "复盘",
+      "title": "第一层：用户决策层",
       "order": 7,
       "surface": "app",
       "items": [
         {
           "to": "/app/review",
-          "label": "执行复盘",
-          "desc": "执行偏差与复盘结论",
+          "label": "执行复盘（主入口）",
+          "desc": "用户决策层：执行偏差与复盘结论",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-macro",
-      "title": "宏观",
+      "title": "第一层：用户决策层",
       "order": 8,
       "surface": "app",
       "items": [
         {
           "to": "/app/macro-regime",
           "label": "三周期状态",
-          "desc": "短/中/长期宏观状态、组合动作建议与冲突裁决",
+          "desc": "用户决策层：短/中/长期宏观状态与市场基调",
           "permission": "research_advanced"
         },
         {
           "to": "/app/allocation",
           "label": "长线配置动作",
-          "desc": "宏观驱动的风险敞口、仓位上限与防守/进攻切换",
+          "desc": "用户决策层：宏观驱动的风险敞口与仓位切换",
           "permission": "research_advanced"
         }
       ]
     },
     {
       "id": "app-inputs",
-      "title": "研究输入",
+      "title": "第二层：数据资产层",
       "order": 9,
       "surface": "app",
       "items": [
         {
           "to": "/app/stocks/list",
           "label": "股票列表",
-          "desc": "代码、简称、市场、地区快速检索",
+          "desc": "数据资产层：股票基础数据检索",
           "permission": "stocks_advanced"
         },
         {
           "to": "/app/stocks/scores",
           "label": "综合评分",
-          "desc": "行业内评分与核心指标排序",
+          "desc": "数据资产层：行业内评分与核心指标排序",
           "permission": "stocks_advanced"
         },
         {
           "to": "/app/intelligence/global-news",
           "label": "国际资讯",
-          "desc": "全球财经新闻、评分与映射",
+          "desc": "数据资产层：全球财经新闻与结构化映射",
           "permission": "news_read"
         },
         {
           "to": "/app/intelligence/cn-news",
           "label": "国内资讯",
-          "desc": "新浪 / 东财资讯统一看",
+          "desc": "数据资产层：新浪 / 东财资讯统一看",
           "permission": "news_read"
         },
         {
           "to": "/app/intelligence/stock-news",
           "label": "个股新闻",
-          "desc": "聚焦单股新闻与立即采集",
+          "desc": "数据资产层：聚焦单股新闻与立即采集",
           "permission": "stock_news_read"
         },
         {
           "to": "/app/intelligence/daily-summaries",
           "label": "新闻日报总结",
-          "desc": "日报生成、历史查询与双格式导出",
+          "desc": "数据资产层：日报生成、历史查询与双格式导出",
           "permission": "daily_summary_read"
         },
         {
           "to": "/app/signals/overview",
           "label": "投资信号",
-          "desc": "股票与主题信号总览",
+          "desc": "数据资产层：股票与主题信号总览",
           "permission": "signals_advanced"
         },
         {
           "to": "/app/signals/themes",
           "label": "主题热点",
-          "desc": "主题强度、方向、预期与证据链",
+          "desc": "数据资产层：主题强度、方向、预期与证据链",
           "permission": "signals_advanced"
         },
         {
           "to": "/app/signals/graph",
           "label": "产业链图谱",
-          "desc": "主题、行业、股票关系浏览",
+          "desc": "数据资产层：主题、行业、股票关系浏览",
           "permission": "signals_advanced"
         },
         {
           "to": "/app/signals/timeline",
           "label": "信号时间线",
-          "desc": "查看信号如何从初始走向强化、弱化或反转",
+          "desc": "方向验证层：查看信号如何强化、弱化或反转",
           "permission": "signals_advanced"
         },
         {
           "to": "/app/chatrooms/overview",
           "label": "群聊总览",
-          "desc": "群聊标签、状态、拉取健康度",
+          "desc": "数据资产层：群聊标签、状态、拉取健康度",
           "permission": "chatrooms_advanced"
         },
         {
           "to": "/app/chatrooms/chatlog",
           "label": "聊天记录",
-          "desc": "消息正文、引用和筛选查询",
+          "desc": "数据资产层：消息正文、引用和筛选查询",
           "permission": "chatrooms_advanced"
         },
         {
           "to": "/app/chatrooms/investment",
           "label": "投资倾向",
-          "desc": "群聊结论、情绪和标的清单",
+          "desc": "数据资产层：群聊结论、情绪和标的清单",
           "permission": "chatrooms_advanced"
         },
         {
           "to": "/app/chatrooms/candidates",
           "label": "股票候选池",
-          "desc": "群聊汇总候选池与偏向",
+          "desc": "数据资产层：群聊汇总候选池与偏向",
           "permission": "chatrooms_advanced"
         }
       ]
     },
     {
+      "id": "app-verification-research",
+      "title": "第三层：验证与研究层",
+      "order": 10,
+      "surface": "app",
+      "items": [
+        {
+          "to": "/app/research/quant-factors",
+          "label": "因子与回测验证",
+          "desc": "验证与研究层：因子挖掘、组合验证与回测沉淀",
+          "permission": "research_advanced"
+        }
+      ]
+    },
+    {
       "id": "admin-workspace",
-      "title": "总控台",
+      "title": "第四层：后台治理层",
       "order": 1,
       "surface": "admin",
       "items": [
         {
           "to": "/admin/dashboard",
           "label": "系统总控台",
-          "desc": "全局健康度、热点、任务与新鲜度",
+          "desc": "后台治理层：全局健康度、任务、权限与风险总览",
           "permission": "admin_system"
         }
       ]
     },
     {
       "id": "admin-governance",
-      "title": "系统治理",
+      "title": "第四层：后台治理层",
       "order": 2,
       "surface": "admin",
       "items": [
         {
           "to": "/admin/system/source-monitor",
           "label": "数据源监控",
-          "desc": "数据源、进程、实时链路统一看板",
+          "desc": "后台治理层：数据源、进程、实时链路统一看板",
           "permission": "admin_system"
         },
         {
           "to": "/admin/system/jobs-ops",
           "label": "任务调度中心",
-          "desc": "任务列表、dry-run、触发与告警观测",
+          "desc": "后台治理层：任务列表、dry-run、触发与告警观测",
           "permission": "admin_system"
         },
         {
           "to": "/admin/system/llm-providers",
           "label": "LLM 节点管理",
-          "desc": "模型节点 CRUD、限速配置与联通测试",
+          "desc": "后台治理层：模型节点 CRUD、限速配置与联通测试",
           "permission": "admin_system"
         },
         {
           "to": "/admin/system/permissions",
           "label": "角色权限策略",
-          "desc": "配置 pro/limited/admin 的权限与日配额",
+          "desc": "后台治理层：配置 pro/limited/admin 的权限与日配额",
           "permission": "admin_system"
         },
         {
           "to": "/admin/system/database-audit",
           "label": "数据库审计",
-          "desc": "缺口、重复、未评分、陈旧数据",
+          "desc": "后台治理层：缺口、重复、未评分、陈旧数据",
           "permission": "admin_system"
         },
         {
           "to": "/admin/system/signals-audit",
           "label": "信号质量审计",
-          "desc": "误映射、弱信号与质量问题",
+          "desc": "后台治理层：误映射、弱信号与质量问题",
           "permission": "signals_advanced"
         },
         {
           "to": "/admin/system/signals-quality",
           "label": "信号质量配置",
-          "desc": "规则参数与映射黑名单",
+          "desc": "后台治理层：规则参数与映射黑名单",
           "permission": "signals_advanced"
         },
         {
           "to": "/admin/system/signals-state-timeline",
           "label": "状态时间线",
-          "desc": "状态机迁移与市场预期层",
+          "desc": "后台治理层：状态机迁移与市场预期层",
           "permission": "signals_advanced"
         },
         {
           "to": "/admin/system/invites",
           "label": "邀请码管理",
-          "desc": "管理员邀请码与账号规模管理",
+          "desc": "后台治理层：管理员邀请码与账号规模管理",
           "permission": "admin_users"
         },
         {
           "to": "/admin/system/users",
           "label": "用户与会话",
-          "desc": "用户、会话、审计日志管理",
+          "desc": "后台治理层：用户、会话、审计日志管理",
           "permission": "admin_users"
         }
       ]

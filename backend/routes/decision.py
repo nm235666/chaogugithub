@@ -3,6 +3,17 @@ from __future__ import annotations
 from urllib.parse import parse_qs
 
 
+def _guard_write(deps: dict, *, scope: str) -> str | None:
+    guard = deps.get("assert_write_allowed")
+    if not callable(guard):
+        return None
+    try:
+        guard(scope=scope, layer="layer1_user_decision")
+        return None
+    except Exception as exc:
+        return str(exc)
+
+
 def dispatch_get(handler, parsed, deps: dict) -> bool:
     if not parsed.path.startswith("/api/decision"):
         return False
@@ -208,6 +219,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         return False
 
     if parsed.path == "/api/decision/kill-switch":
+        denied = _guard_write(deps, scope="decision.kill_switch")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("is_admin"):
             handler._send_json({"ok": False, "error": "仅管理员可切换 Kill Switch"}, status=403)
@@ -223,6 +238,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         return True
 
     if parsed.path == "/api/decision/snapshot/run":
+        denied = _guard_write(deps, scope="decision.snapshot")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("is_admin"):
             handler._send_json({"ok": False, "error": "仅管理员可触发快照"}, status=403)
@@ -236,6 +255,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         return True
 
     if parsed.path == "/api/decision/strategy-runs/run":
+        denied = _guard_write(deps, scope="decision.strategy_runs")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("authenticated"):
             handler._send_json({"ok": False, "error": "请先登录后再生成策略批次"}, status=401)
@@ -262,6 +285,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         return True
 
     if parsed.path == "/api/decision/actions":
+        denied = _guard_write(deps, scope="decision.actions")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("authenticated"):
             handler._send_json({"ok": False, "error": "请先登录后再记录决策动作"}, status=401)
@@ -360,6 +387,22 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         # Use integer id for DB operations; action_id (trace format) is for display only
         _numeric_action_id = result.get("id")  # integer PK
         action_id = str(result.get("action_id") or _numeric_action_id or "")
+        if action_type in ("confirm", "reject", "defer", "watch") and ts_code:
+            try:
+                funnel_sync = deps["sync_decision_action_to_funnel"](
+                    action_type=action_type,
+                    ts_code=ts_code,
+                    stock_name=stock_name,
+                    note=note,
+                    actor=str(user.get("username") or user.get("display_name") or "anonymous"),
+                    snapshot_date=snapshot_date,
+                    action_id=action_id,
+                )
+                response["funnel_sync"] = funnel_sync
+            except Exception as _exc:
+                # Funnel writeback failure must not block primary decision action.
+                response["funnel_sync_warning"] = f"漏斗状态同步失败（不影响决策记录）: {_exc}"
+
         if action_type in ("confirm", "reject", "defer", "watch") and ts_code and _numeric_action_id:
             try:
                 from services.portfolio_service.service import create_order as _create_portfolio_order

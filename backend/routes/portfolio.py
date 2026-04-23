@@ -18,6 +18,17 @@ from services.portfolio_service import (
 _ORDER_ID_RE = re.compile(r"^/api/portfolio/orders/([^/]+)$")
 
 
+def _guard_write(deps: dict, *, scope: str) -> str | None:
+    guard = deps.get("assert_write_allowed")
+    if not callable(guard):
+        return None
+    try:
+        guard(scope=scope, layer="layer1_user_decision")
+        return None
+    except Exception as exc:
+        return str(exc)
+
+
 def dispatch_get(handler, parsed, deps: dict) -> bool:
     if not parsed.path.startswith("/api/portfolio"):
         return False
@@ -75,6 +86,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         return False
 
     if parsed.path == "/api/portfolio/orders":
+        denied = _guard_write(deps, scope="portfolio.orders")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         ts_code = str(payload.get("ts_code") or "").strip().upper()
         action_type = str(payload.get("action_type") or "buy").strip().lower()
         decision_action_id = str(payload.get("decision_action_id") or "").strip()
@@ -119,6 +134,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         return True
 
     if parsed.path == "/api/portfolio/review":
+        denied = _guard_write(deps, scope="portfolio.review")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         order_id = str(payload.get("order_id") or "").strip()
         review_tag = str(payload.get("review_tag") or "").strip()
         review_note = str(payload.get("review_note") or "").strip()
@@ -163,6 +182,10 @@ def dispatch_patch(handler, parsed, payload: dict, deps: dict) -> bool:
 
     m = _ORDER_ID_RE.match(parsed.path)
     if m:
+        denied = _guard_write(deps, scope="portfolio.orders")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
         order_id = m.group(1)
         status = payload.get("status")
         executed_price_raw = payload.get("executed_price")
