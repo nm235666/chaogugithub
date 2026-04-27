@@ -5,6 +5,7 @@ from urllib.parse import parse_qs
 
 from services.portfolio_service import (
     add_review,
+    audit_strategy_attribution,
     create_order,
     create_order_from_decision_action,
     delete_review,
@@ -14,6 +15,8 @@ from services.portfolio_service import (
     list_review_chains,
     list_review_groups,
     list_reviews,
+    query_strategy_performance,
+    refresh_strategy_performance,
     update_order,
     VALID_ACTION_TYPES,
     VALID_ORDER_STATUSES,
@@ -167,6 +170,22 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json({"ok": True, **payload})
         return True
 
+    if parsed.path == "/api/portfolio/strategy-performance":
+        params = parse_qs(parsed.query)
+        try:
+            limit = int(params.get("limit", ["50"])[0] or 50)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "limit 必须是整数"}, status=400)
+            return True
+        auto_refresh = str(params.get("refresh", ["0"])[0] or "").strip().lower() in {"1", "true", "yes"}
+        try:
+            payload = query_strategy_performance(limit=limit, auto_refresh=auto_refresh)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"策略表现查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload, status=200 if payload.get("ok") else 500)
+        return True
+
     return False
 
 
@@ -311,6 +330,43 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
             return True
         status_code = 200 if result.get("ok") else 500
         handler._send_json(result, status=status_code)
+        return True
+
+    if parsed.path == "/api/portfolio/strategy-attribution/audit":
+        denied = _guard_write(deps, scope="portfolio.orders")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
+        apply_changes = bool(payload.get("apply") or payload.get("repair"))
+        try:
+            limit = int(payload.get("limit") or 500)
+        except (TypeError, ValueError):
+            handler._send_json({"ok": False, "error": "limit 必须是整数"}, status=400)
+            return True
+        try:
+            result = audit_strategy_attribution(apply=apply_changes, limit=limit)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"策略归因校验失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result, status=200 if result.get("ok") else 500)
+        return True
+
+    if parsed.path == "/api/portfolio/strategy-performance/refresh":
+        denied = _guard_write(deps, scope="portfolio.review")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
+        try:
+            limit = int(payload.get("limit") or 2000)
+        except (TypeError, ValueError):
+            handler._send_json({"ok": False, "error": "limit 必须是整数"}, status=400)
+            return True
+        try:
+            result = refresh_strategy_performance(limit=limit)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"策略表现刷新失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result, status=200 if result.get("ok") else 500)
         return True
 
     return False

@@ -12,6 +12,7 @@ import db_compat as _db
 PORTFOLIO_ORDERS_TABLE = "portfolio_orders"
 PORTFOLIO_POSITIONS_TABLE = "portfolio_positions"
 PORTFOLIO_REVIEWS_TABLE = "portfolio_reviews"
+DECISION_STRATEGY_PERFORMANCE_TABLE = "decision_strategy_performance"
 
 VALID_ORDER_STATUSES = {"planned", "executed", "cancelled", "partial"}
 VALID_ACTION_TYPES = {"buy", "sell", "add", "reduce", "close", "watch", "defer"}
@@ -39,6 +40,96 @@ def _row_to_dict(row) -> dict:
         return dict(row)
     except Exception:
         return {}
+
+
+def _parse_json_dict(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return dict(raw)
+    try:
+        parsed = json.loads(str(raw or "{}"))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def _strategy_context_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    strategy = payload.get("strategy") if isinstance(payload.get("strategy"), dict) else {}
+    if not strategy:
+        today_action = payload.get("today_action") if isinstance(payload.get("today_action"), dict) else {}
+        evidence = today_action.get("evidence") if isinstance(today_action.get("evidence"), dict) else {}
+        if evidence.get("strategy_key"):
+            strategy = {
+                "strategy_key": evidence.get("strategy_key"),
+                "strategy_run_id": evidence.get("strategy_run_id"),
+                "strategy_run_key": evidence.get("strategy_run_key"),
+                "strategy_candidate_rank": evidence.get("strategy_candidate_rank"),
+                "strategy_fit_score": evidence.get("strategy_fit_score"),
+                "strategy_action_bias": evidence.get("strategy_action_bias"),
+                "strategy_source": evidence.get("strategy_source") or "strategy_selection",
+            }
+    strategy_key = str(strategy.get("strategy_key") or "").strip()
+    if not strategy_key:
+        return {}
+    return {
+        "strategy_key": strategy_key,
+        "strategy_run_id": strategy.get("strategy_run_id") or strategy.get("run_id") or "",
+        "strategy_run_key": strategy.get("strategy_run_key") or strategy.get("run_key") or "",
+        "strategy_candidate_rank": strategy.get("strategy_candidate_rank") or strategy.get("rank") or "",
+        "strategy_fit_score": strategy.get("strategy_fit_score") or strategy.get("fit_score") or 0,
+        "strategy_action_bias": strategy.get("strategy_action_bias") or strategy.get("action_bias") or "",
+        "strategy_source": strategy.get("strategy_source") or "strategy_selection",
+        "summary": strategy.get("summary") or "",
+    }
+
+
+def _load_decision_payloads(conn, decision_action_ids: list[str]) -> dict[str, dict[str, Any]]:
+    ids = [str(value or "").strip() for value in decision_action_ids if str(value or "").strip()]
+    if not ids or not _db.table_exists(conn, "decision_actions"):
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT CAST(id AS TEXT) AS id, action_payload_json
+            FROM decision_actions
+            WHERE CAST(id AS TEXT) IN ({placeholders})
+            """,
+            tuple(ids),
+        ).fetchall()
+    except Exception:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item = _row_to_dict(row)
+        payload = _parse_json_dict(item.get("action_payload_json"))
+        out[str(item.get("id") or "")] = payload
+    return out
+
+
+def _load_decision_actions(conn, decision_action_ids: list[str]) -> dict[str, dict[str, Any]]:
+    ids = [str(value or "").strip() for value in decision_action_ids if str(value or "").strip()]
+    if not ids or not _db.table_exists(conn, "decision_actions"):
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT CAST(id AS TEXT) AS id, ts_code, action_type, snapshot_date, action_payload_json, created_at
+            FROM decision_actions
+            WHERE CAST(id AS TEXT) IN ({placeholders})
+            """,
+            tuple(ids),
+        ).fetchall()
+    except Exception:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item = _row_to_dict(row)
+        payload = _parse_json_dict(item.get("action_payload_json"))
+        item["decision_payload"] = payload
+        item["strategy_context"] = _strategy_context_from_payload(payload)
+        out[str(item.get("id") or "")] = item
+    return out
 
 
 def _apply_row_factory(conn) -> None:
@@ -238,6 +329,463 @@ def list_orders(
         return {"items": [], "total": 0, "limit": limit, "offset": offset, "error": str(exc)}
 
 
+def audit_strategy_attribution(*, apply: bool = False, limit: int = 500) -> dict[str, Any]:
+    """Audit and optionally repair strategy attribution links for historical orders.
+
+    Repairs are intentionally conservative: only orders in a chain with exactly one
+    known strategy-bearing decision action are updated automatically.
+    """
+    capped_limit = max(1, min(int(limit or 500), 2000))
+    try:
+        conn = _db.connect()
+        try:
+            _apply_row_factory(conn)
+            if not _db.table_exists(conn, PORTFOLIO_ORDERS_TABLE):
+                return {"ok": False, "error": "订单表不存在"}
+            _ensure_portfolio_tables(conn)
+            rows = conn.execute(
+                f"""
+                SELECT id, ts_code, action_type, status, order_no, chain_order_id,
+                       decision_action_id, note, created_at, updated_at
+                FROM {PORTFOLIO_ORDERS_TABLE}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+            orders = [_row_to_dict(row) for row in rows]
+            decision_actions = _load_decision_actions(
+                conn,
+                [str(order.get("decision_action_id") or "") for order in orders],
+            )
+
+            chains: dict[str, list[dict[str, Any]]] = {}
+            for order in orders:
+                order_no = str(order.get("order_no") or "").strip()
+                if not order_no:
+                    order_no = _display_order_no(str(order.get("id") or ""))
+                    order["order_no"] = order_no
+                action_id = str(order.get("decision_action_id") or "").strip()
+                decision_action = decision_actions.get(action_id) if action_id else None
+                order["decision_action_exists"] = bool(decision_action)
+                order["strategy_context"] = (decision_action or {}).get("strategy_context") or {}
+                chains.setdefault(order_no, []).append(order)
+
+            issues: list[dict[str, Any]] = []
+            repairs: list[dict[str, Any]] = []
+            repaired_order_ids: set[str] = set()
+            repaired_decision_action_ids: set[str] = set()
+            now = _utc_now()
+
+            for order_no, chain_orders in chains.items():
+                strategy_orders = [order for order in chain_orders if order.get("strategy_context")]
+                strategy_keys = {
+                    str((order.get("strategy_context") or {}).get("strategy_key") or "").strip()
+                    for order in strategy_orders
+                    if str((order.get("strategy_context") or {}).get("strategy_key") or "").strip()
+                }
+                canonical = strategy_orders[0] if len(strategy_keys) == 1 and strategy_orders else None
+                canonical_action_id = str((canonical or {}).get("decision_action_id") or "").strip()
+                canonical_strategy = (canonical or {}).get("strategy_context") or {}
+                if len(strategy_keys) > 1:
+                    issues.append(
+                        {
+                            "type": "chain_inconsistent_strategy",
+                            "severity": "warning",
+                            "repairable": False,
+                            "order_no": order_no,
+                            "strategy_keys": sorted(strategy_keys),
+                            "message": "同一交易链存在多个来源策略，需要人工确认主策略。",
+                        }
+                    )
+
+                for order in chain_orders:
+                    order_id = str(order.get("id") or "").strip()
+                    action_id = str(order.get("decision_action_id") or "").strip()
+                    decision_action = decision_actions.get(action_id) if action_id else None
+                    strategy_context = order.get("strategy_context") or {}
+                    base_issue = {
+                        "order_id": order_id,
+                        "order_no": order_no,
+                        "ts_code": order.get("ts_code") or "",
+                        "action_type": order.get("action_type") or "",
+                        "decision_action_id": action_id,
+                    }
+                    if not action_id:
+                        repairable = bool(canonical_action_id)
+                        issues.append(
+                            {
+                                **base_issue,
+                                "type": "missing_decision_action_id",
+                                "severity": "error",
+                                "repairable": repairable,
+                                "suggested_decision_action_id": canonical_action_id,
+                                "message": "订单缺少 decision_action_id，无法回溯到今日动作与策略来源。",
+                            }
+                        )
+                        if apply and repairable:
+                            conn.execute(
+                                f"""
+                                UPDATE {PORTFOLIO_ORDERS_TABLE}
+                                SET decision_action_id = ?, updated_at = ?
+                                WHERE id = ?
+                                """,
+                                (canonical_action_id, now, order_id),
+                            )
+                            repaired_order_ids.add(order_id)
+                            repairs.append(
+                                {
+                                    "type": "fill_order_decision_action_id",
+                                    "order_id": order_id,
+                                    "order_no": order_no,
+                                    "decision_action_id": canonical_action_id,
+                                    "strategy_context": canonical_strategy,
+                                }
+                            )
+                        continue
+
+                    if not decision_action:
+                        repairable = bool(canonical_action_id and canonical_action_id != action_id)
+                        issues.append(
+                            {
+                                **base_issue,
+                                "type": "orphan_decision_action_id",
+                                "severity": "error",
+                                "repairable": repairable,
+                                "suggested_decision_action_id": canonical_action_id,
+                                "message": "订单指向的 decision_action_id 不存在。",
+                            }
+                        )
+                        if apply and repairable:
+                            conn.execute(
+                                f"""
+                                UPDATE {PORTFOLIO_ORDERS_TABLE}
+                                SET decision_action_id = ?, updated_at = ?
+                                WHERE id = ?
+                                """,
+                                (canonical_action_id, now, order_id),
+                            )
+                            repaired_order_ids.add(order_id)
+                            repairs.append(
+                                {
+                                    "type": "replace_orphan_decision_action_id",
+                                    "order_id": order_id,
+                                    "order_no": order_no,
+                                    "old_decision_action_id": action_id,
+                                    "decision_action_id": canonical_action_id,
+                                    "strategy_context": canonical_strategy,
+                                }
+                            )
+                        continue
+
+                    if not strategy_context:
+                        repairable = bool(canonical_strategy and action_id != canonical_action_id)
+                        issues.append(
+                            {
+                                **base_issue,
+                                "type": "missing_strategy_context",
+                                "severity": "warning",
+                                "repairable": repairable,
+                                "suggested_strategy_context": canonical_strategy,
+                                "message": "决策动作存在，但 action_payload_json 缺少 strategy 归因。",
+                            }
+                        )
+                        if apply and repairable:
+                            payload = _parse_json_dict(decision_action.get("action_payload_json"))
+                            payload["strategy"] = canonical_strategy
+                            payload["strategy_repair"] = {
+                                "source": "portfolio_strategy_attribution_audit",
+                                "repaired_from_order_no": order_no,
+                                "repaired_from_decision_action_id": canonical_action_id,
+                                "repaired_at": now,
+                            }
+                            conn.execute(
+                                "UPDATE decision_actions SET action_payload_json = ? WHERE CAST(id AS TEXT) = ?",
+                                (json.dumps(payload, ensure_ascii=False, default=str), action_id),
+                            )
+                            repaired_decision_action_ids.add(action_id)
+                            repairs.append(
+                                {
+                                    "type": "fill_decision_action_strategy",
+                                    "order_id": order_id,
+                                    "order_no": order_no,
+                                    "decision_action_id": action_id,
+                                    "strategy_context": canonical_strategy,
+                                }
+                            )
+
+            if apply and repairs:
+                _commit(conn)
+
+            summary = {
+                "checked_orders": len(orders),
+                "checked_chains": len(chains),
+                "issue_count": len(issues),
+                "repairable_count": sum(1 for issue in issues if issue.get("repairable")),
+                "repaired_order_count": len(repaired_order_ids),
+                "repaired_decision_action_count": len(repaired_decision_action_ids),
+                "mode": "apply" if apply else "dry_run",
+            }
+            return {
+                "ok": True,
+                "summary": summary,
+                "issues": issues,
+                "repairs": repairs,
+                "limit": capped_limit,
+            }
+        finally:
+            conn.close()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "summary": {"mode": "apply" if apply else "dry_run"}}
+
+
+def _chain_review_tag(conn, events: list[dict[str, Any]]) -> str:
+    if not events or not _db.table_exists(conn, PORTFOLIO_REVIEWS_TABLE):
+        return "pending"
+    order_ids = [str(event.get("id") or "").strip() for event in events if str(event.get("id") or "").strip()]
+    if not order_ids:
+        return "pending"
+    placeholders = ",".join("?" for _ in order_ids)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT review_tag, created_at
+            FROM {PORTFOLIO_REVIEWS_TABLE}
+            WHERE order_id IN ({placeholders})
+            ORDER BY created_at DESC
+            """,
+            tuple(order_ids),
+        ).fetchall()
+    except Exception:
+        return "pending"
+    tags = [str(_row_to_dict(row).get("review_tag") or "").strip() for row in rows]
+    return next((tag for tag in tags if tag and tag != "pending"), "pending")
+
+
+def refresh_strategy_performance(*, limit: int = 2000) -> dict[str, Any]:
+    capped_limit = max(1, min(int(limit or 2000), 5000))
+    try:
+        conn = _db.connect()
+        try:
+            _apply_row_factory(conn)
+            if not _db.table_exists(conn, PORTFOLIO_ORDERS_TABLE):
+                return {"ok": False, "error": "订单表不存在"}
+            _ensure_portfolio_tables(conn)
+            _ensure_strategy_performance_table(conn)
+            rows = conn.execute(
+                f"""
+                SELECT id, ts_code, action_type, planned_price, executed_price,
+                       size, status, order_no, chain_order_id, owner_hash,
+                       decision_action_id, note, executed_at, created_at, updated_at
+                FROM {PORTFOLIO_ORDERS_TABLE}
+                WHERE status = 'executed'
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+            events = [_row_to_dict(row) for row in rows]
+            decision_actions = _load_decision_actions(
+                conn,
+                [str(event.get("decision_action_id") or "") for event in events],
+            )
+            chains: dict[str, list[dict[str, Any]]] = {}
+            skipped_without_strategy = 0
+            for event in events:
+                decision_action = decision_actions.get(str(event.get("decision_action_id") or "").strip()) or {}
+                event["strategy_context"] = decision_action.get("strategy_context") or {}
+                order_no = str(event.get("order_no") or "").strip()
+                if not order_no:
+                    order_no = _display_order_no(str(event.get("id") or ""))
+                    event["order_no"] = order_no
+                chains.setdefault(order_no, []).append(event)
+
+            aggregates: dict[str, dict[str, Any]] = {}
+            chain_items: list[dict[str, Any]] = []
+            for order_no, chain_events in chains.items():
+                strategy_context = next((event.get("strategy_context") for event in chain_events if event.get("strategy_context")), {})
+                strategy_key = str((strategy_context or {}).get("strategy_key") or "").strip()
+                if not strategy_key:
+                    skipped_without_strategy += 1
+                    continue
+                metrics = _trade_chain_metrics(chain_events)
+                chain_status = _chain_status(chain_events)
+                review_tag = _chain_review_tag(conn, chain_events)
+                realized_pnl = float(metrics.get("realized_pnl") or 0.0)
+                return_pct = metrics.get("return_pct")
+                latest_trade_at = str(chain_events[-1].get("executed_at") or chain_events[-1].get("created_at") or "")
+                fit_score = strategy_context.get("strategy_fit_score")
+                try:
+                    fit_score_value = float(fit_score)
+                except (TypeError, ValueError):
+                    fit_score_value = None
+
+                aggregate = aggregates.setdefault(
+                    strategy_key,
+                    {
+                        "strategy_key": strategy_key,
+                        "strategy_source": strategy_context.get("strategy_source") or "strategy_selection",
+                        "trade_count": 0,
+                        "closed_trade_count": 0,
+                        "win_count": 0,
+                        "loss_count": 0,
+                        "neutral_count": 0,
+                        "pending_count": 0,
+                        "total_realized_pnl": 0.0,
+                        "return_values": [],
+                        "fit_values": [],
+                        "latest_trade_at": "",
+                        "chains": [],
+                    },
+                )
+                aggregate["trade_count"] += 1
+                if chain_status == "closed":
+                    aggregate["closed_trade_count"] += 1
+                if review_tag == "win":
+                    aggregate["win_count"] += 1
+                elif review_tag == "loss":
+                    aggregate["loss_count"] += 1
+                elif review_tag == "neutral":
+                    aggregate["neutral_count"] += 1
+                else:
+                    aggregate["pending_count"] += 1
+                aggregate["total_realized_pnl"] += realized_pnl
+                if return_pct is not None:
+                    aggregate["return_values"].append(float(return_pct))
+                if fit_score_value is not None:
+                    aggregate["fit_values"].append(fit_score_value)
+                if latest_trade_at > str(aggregate.get("latest_trade_at") or ""):
+                    aggregate["latest_trade_at"] = latest_trade_at
+                chain_snapshot = {
+                    "order_no": order_no,
+                    "ts_code": chain_events[0].get("ts_code") or "",
+                    "action_summary": _chain_summary(chain_events),
+                    "chain_status": chain_status,
+                    "review_tag": review_tag,
+                    "realized_pnl": realized_pnl,
+                    "return_pct": return_pct,
+                    "latest_trade_at": latest_trade_at,
+                }
+                aggregate["chains"].append(chain_snapshot)
+                chain_items.append({"strategy_key": strategy_key, **chain_snapshot})
+
+            now = _utc_now()
+            conn.execute(f"DELETE FROM {DECISION_STRATEGY_PERFORMANCE_TABLE}")
+            for aggregate in aggregates.values():
+                returns = aggregate.pop("return_values")
+                fits = aggregate.pop("fit_values")
+                chains_for_json = aggregate.pop("chains")
+                avg_return_pct = (sum(returns) / len(returns)) if returns else None
+                avg_fit_score = (sum(fits) / len(fits)) if fits else None
+                win_rate = (
+                    aggregate["win_count"] / max(1, aggregate["win_count"] + aggregate["loss_count"] + aggregate["neutral_count"])
+                )
+                performance_json = {
+                    "win_rate": win_rate,
+                    "chains": chains_for_json[:20],
+                    "calculation": "portfolio_order_chain_realized_pnl_and_review_tag",
+                }
+                conn.execute(
+                    f"""
+                    INSERT INTO {DECISION_STRATEGY_PERFORMANCE_TABLE}
+                        (strategy_key, strategy_source, trade_count, closed_trade_count,
+                         win_count, loss_count, neutral_count, pending_count,
+                         total_realized_pnl, avg_return_pct, avg_fit_score,
+                         latest_trade_at, performance_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        aggregate["strategy_key"],
+                        aggregate["strategy_source"],
+                        aggregate["trade_count"],
+                        aggregate["closed_trade_count"],
+                        aggregate["win_count"],
+                        aggregate["loss_count"],
+                        aggregate["neutral_count"],
+                        aggregate["pending_count"],
+                        aggregate["total_realized_pnl"],
+                        avg_return_pct,
+                        avg_fit_score,
+                        aggregate["latest_trade_at"],
+                        json.dumps(performance_json, ensure_ascii=False, default=str),
+                        now,
+                    ),
+                )
+                aggregate["avg_return_pct"] = avg_return_pct
+                aggregate["avg_fit_score"] = avg_fit_score
+                aggregate["win_rate"] = win_rate
+                aggregate["performance_json"] = performance_json
+                aggregate["updated_at"] = now
+            _commit(conn)
+            items = sorted(
+                aggregates.values(),
+                key=lambda item: (float(item.get("total_realized_pnl") or 0), int(item.get("trade_count") or 0)),
+                reverse=True,
+            )
+            return {
+                "ok": True,
+                "summary": {
+                    "strategy_count": len(items),
+                    "trade_count": sum(int(item.get("trade_count") or 0) for item in items),
+                    "chain_count": len(chains),
+                    "skipped_without_strategy": skipped_without_strategy,
+                    "updated_at": now,
+                },
+                "items": items,
+                "chains": chain_items,
+            }
+        finally:
+            conn.close()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def query_strategy_performance(*, limit: int = 50, auto_refresh: bool = False) -> dict[str, Any]:
+    capped_limit = max(1, min(int(limit or 50), 200))
+    if auto_refresh:
+        refreshed = refresh_strategy_performance(limit=2000)
+        if not refreshed.get("ok"):
+            return refreshed
+    try:
+        conn = _db.connect()
+        try:
+            _apply_row_factory(conn)
+            _ensure_strategy_performance_table(conn)
+            rows = conn.execute(
+                f"""
+                SELECT strategy_key, strategy_source, trade_count, closed_trade_count,
+                       win_count, loss_count, neutral_count, pending_count,
+                       total_realized_pnl, avg_return_pct, avg_fit_score,
+                       latest_trade_at, performance_json, updated_at
+                FROM {DECISION_STRATEGY_PERFORMANCE_TABLE}
+                ORDER BY total_realized_pnl DESC, trade_count DESC, strategy_key ASC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                item = _row_to_dict(row)
+                performance_json = _parse_json_dict(item.get("performance_json"))
+                item["performance"] = performance_json
+                item["win_rate"] = performance_json.get("win_rate")
+                items.append(item)
+            return {
+                "ok": True,
+                "summary": {
+                    "strategy_count": len(items),
+                    "trade_count": sum(int(item.get("trade_count") or 0) for item in items),
+                    "updated_at": items[0].get("updated_at") if items else "",
+                },
+                "items": items,
+                "limit": capped_limit,
+            }
+        finally:
+            conn.close()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "items": [], "summary": {"strategy_count": 0}}
+
+
 def _chain_status(events: list[dict[str, Any]]) -> str:
     net_qty = 0
     for event in events:
@@ -281,9 +829,16 @@ def list_review_chains(*, limit: int = 50, offset: int = 0) -> dict[str, Any]:
                 ORDER BY created_at ASC
                 """
             ).fetchall()
+            raw_events = [_row_to_dict(row) for row in rows]
+            decision_payloads = _load_decision_payloads(
+                conn,
+                [str(event.get("decision_action_id") or "") for event in raw_events],
+            )
             groups: dict[str, dict[str, Any]] = {}
-            for row in rows:
-                event = _row_to_dict(row)
+            for event in raw_events:
+                decision_payload = decision_payloads.get(str(event.get("decision_action_id") or "").strip()) or {}
+                event["decision_payload"] = decision_payload
+                event["strategy_context"] = _strategy_context_from_payload(decision_payload)
                 order_no = str(event.get("order_no") or "").strip()
                 if not order_no:
                     order_no = _display_order_no(str(event.get("id") or ""))
@@ -310,6 +865,7 @@ def list_review_chains(*, limit: int = 50, offset: int = 0) -> dict[str, Any]:
                 last = events[-1]
                 entry = next((e for e in events if str(e.get("action_type") or "") in {"buy", "add"}), first)
                 exit_event = next((e for e in reversed(events) if str(e.get("action_type") or "") in {"sell", "reduce", "close"}), None)
+                strategy_context = next((e.get("strategy_context") for e in events if e.get("strategy_context")), {})
                 total_buy_size = sum(
                     int(e.get("size") or 0) for e in events if str(e.get("action_type") or "") in {"buy", "add"}
                 )
@@ -334,6 +890,7 @@ def list_review_chains(*, limit: int = 50, offset: int = 0) -> dict[str, Any]:
                         "ended_at": last.get("executed_at") or last.get("created_at"),
                         "latest_order_id": last.get("id"),
                         "latest_action_type": last.get("action_type"),
+                        "strategy_context": strategy_context,
                     }
                 )
             items.sort(key=lambda item: str(item.get("ended_at") or ""), reverse=True)
@@ -433,6 +990,14 @@ def get_trade_chain(order_no: str) -> dict[str, Any]:
             events = [_row_to_dict(row) for row in rows]
             if not events:
                 return {"ok": False, "error": "交易链不存在"}
+            decision_payloads = _load_decision_payloads(
+                conn,
+                [str(event.get("decision_action_id") or "") for event in events],
+            )
+            for event in events:
+                decision_payload = decision_payloads.get(str(event.get("decision_action_id") or "").strip()) or {}
+                event["decision_payload"] = decision_payload
+                event["strategy_context"] = _strategy_context_from_payload(decision_payload)
             resolved_order_no = str(events[0].get("order_no") or normalized_order_no).strip()
             chain = list_review_chains(limit=1000, offset=0)
             chain_item = next(
@@ -456,6 +1021,9 @@ def get_trade_chain(order_no: str) -> dict[str, Any]:
                 "exit_price": chain_item.get("exit_price"),
                 "events": events,
                 "reviews": reviews.get("items") or [],
+                "strategy_context": next((event.get("strategy_context") for event in events if event.get("strategy_context")), {})
+                or chain_item.get("strategy_context")
+                or {},
                 **metrics,
             }
         finally:
@@ -760,6 +1328,29 @@ def _ensure_pending_review(conn, order_id: str, *, now: str) -> None:
     )
 
 
+def _ensure_strategy_performance_table(conn) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {DECISION_STRATEGY_PERFORMANCE_TABLE} (
+            strategy_key TEXT PRIMARY KEY,
+            strategy_source TEXT NOT NULL DEFAULT '',
+            trade_count INTEGER NOT NULL DEFAULT 0,
+            closed_trade_count INTEGER NOT NULL DEFAULT 0,
+            win_count INTEGER NOT NULL DEFAULT 0,
+            loss_count INTEGER NOT NULL DEFAULT 0,
+            neutral_count INTEGER NOT NULL DEFAULT 0,
+            pending_count INTEGER NOT NULL DEFAULT 0,
+            total_realized_pnl REAL NOT NULL DEFAULT 0,
+            avg_return_pct REAL,
+            avg_fit_score REAL,
+            latest_trade_at TEXT NOT NULL DEFAULT '',
+            performance_json TEXT NOT NULL DEFAULT '{{}}',
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
 def _resolve_order_id(conn, order_ref: str) -> str:
     normalized = str(order_ref or "").strip()
     if not normalized or not _db.table_exists(conn, PORTFOLIO_ORDERS_TABLE):
@@ -925,12 +1516,10 @@ def list_reviews(
             items = []
             for row in rows:
                 item = _row_to_dict(row)
-                try:
-                    action_payload = json.loads(str(item.get("action_payload_json") or "{}"))
-                except Exception:
-                    action_payload = {}
+                action_payload = _parse_json_dict(item.get("action_payload_json"))
                 item["snapshot_id"] = action_payload.get("snapshot_id") or item.get("snapshot_date") or ""
                 item["decision_payload"] = action_payload
+                item["strategy_context"] = _strategy_context_from_payload(action_payload)
                 item["rule_correction_hint"] = item.get("review_note") or action_payload.get("review_conclusion") or ""
                 items.append(item)
             return {"items": items, "total": total, "limit": limit, "offset": offset}
@@ -1001,6 +1590,7 @@ def list_review_groups(
                 "decision_action_id": primary.get("decision_action_id"),
                 "decision_note": primary.get("decision_note"),
                 "decision_payload": primary.get("decision_payload"),
+                "strategy_context": primary.get("strategy_context") or {},
                 "snapshot_id": primary.get("snapshot_id"),
                 "order_note": primary.get("order_note"),
                 "order_status": "executed" if any(str(r.get("order_status") or "") == "executed" for r in reviews) else primary.get("order_status"),
@@ -1028,6 +1618,7 @@ def add_review(
     try:
         conn = _db.connect()
         try:
+            _apply_row_factory(conn)
             _ensure_portfolio_tables(conn)
             resolved_order_id = _resolve_order_id(conn, order_id)
             conn.execute(

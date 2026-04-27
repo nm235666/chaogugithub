@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -123,7 +124,13 @@ class PortfolioOrdersPatchTest(unittest.TestCase):
         self.assertIsNotNone(row)
         return row[0], row[1], row[2]
 
-    def _insert_decision_action(self, *, ts_code: str = "600519.SH", note: str = "人工确认") -> int:
+    def _insert_decision_action(
+        self,
+        *,
+        ts_code: str = "600519.SH",
+        note: str = "人工确认",
+        payload: dict | None = None,
+    ) -> int:
         with sqlite3.connect(self.db_path, isolation_level=None) as conn:
             cur = conn.execute(
                 """
@@ -133,6 +140,11 @@ class PortfolioOrdersPatchTest(unittest.TestCase):
                 """,
                 (ts_code, note),
             )
+            if payload is not None:
+                conn.execute(
+                    "UPDATE decision_actions SET action_payload_json = ? WHERE id = ?",
+                    (json.dumps(payload, ensure_ascii=False), int(cur.lastrowid)),
+                )
             return int(cur.lastrowid)
 
     def test_planned_to_executed_updates_fields(self):
@@ -323,12 +335,41 @@ class PortfolioOrdersPatchTest(unittest.TestCase):
         self.assertEqual(chain["chain_status"], "closed")
 
     def test_get_trade_chain_returns_timeline_and_metrics(self):
+        with sqlite3.connect(self.db_path, isolation_level=None) as conn:
+            conn.execute(
+                """
+                INSERT INTO decision_actions
+                  (id, action_type, ts_code, stock_name, note, actor, snapshot_date, action_payload_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    1,
+                    "probe_buy",
+                    "000001.SZ",
+                    "",
+                    "策略候选",
+                    "system",
+                    "2026-04-20",
+                    json.dumps(
+                        {
+                            "strategy": {
+                                "strategy_key": "short_momentum",
+                                "strategy_run_id": "run-unit",
+                                "strategy_candidate_rank": 1,
+                                "strategy_fit_score": 0.83,
+                                "strategy_action_bias": "probe_buy",
+                            }
+                        }
+                    ),
+                    "2026-04-20T00:00:00Z",
+                ),
+            )
         buy = portfolio_service.create_order(
             ts_code="000001.SZ",
             action_type="buy",
             planned_price=10.0,
             size=100,
-            decision_action_id="",
+            decision_action_id="1",
             note="入场原因",
             owner_key="alice",
         )
@@ -356,6 +397,176 @@ class PortfolioOrdersPatchTest(unittest.TestCase):
         self.assertEqual(detail.get("remaining_quantity"), 0)
         self.assertEqual(detail.get("realized_pnl"), 200.0)
         self.assertEqual([event["action_type"] for event in detail["timeline"]], ["buy", "close"])
+        self.assertEqual(detail["strategy_context"]["strategy_key"], "short_momentum")
+        self.assertEqual(detail["timeline"][0]["strategy_context"]["strategy_fit_score"], 0.83)
+
+    def test_strategy_attribution_audit_repairs_missing_order_action_id(self):
+        decision_action_id = self._insert_decision_action(
+            ts_code="000001.SZ",
+            payload={
+                "strategy": {
+                    "strategy_key": "short_momentum",
+                    "strategy_run_id": "run-audit",
+                    "strategy_fit_score": 0.91,
+                    "strategy_action_bias": "probe_buy",
+                }
+            },
+        )
+        buy = portfolio_service.create_order(
+            ts_code="000001.SZ",
+            action_type="buy",
+            planned_price=10.0,
+            size=100,
+            decision_action_id=str(decision_action_id),
+            note="策略入场",
+            owner_key="alice",
+        )
+        self.assertTrue(buy.get("ok"), buy)
+        order_no = str(buy.get("order_no") or "")
+        self.assertTrue(portfolio_service.update_order(str(buy.get("id") or ""), status="executed", executed_price=10.0).get("ok"))
+        close = portfolio_service.create_order(
+            ts_code="000001.SZ",
+            action_type="close",
+            planned_price=11.0,
+            size=100,
+            decision_action_id="",
+            note="策略出场",
+            owner_key="alice",
+            chain_order_no=order_no,
+        )
+        self.assertTrue(close.get("ok"), close)
+        self.assertTrue(portfolio_service.update_order(str(close.get("id") or ""), status="executed", executed_price=11.0).get("ok"))
+
+        dry_run = portfolio_service.audit_strategy_attribution(apply=False)
+        self.assertEqual(dry_run["summary"]["mode"], "dry_run")
+        self.assertTrue(any(issue["type"] == "missing_decision_action_id" for issue in dry_run["issues"]))
+
+        applied = portfolio_service.audit_strategy_attribution(apply=True)
+        self.assertEqual(applied["summary"]["repaired_order_count"], 1)
+        detail = portfolio_service.get_trade_chain(order_no)
+        self.assertEqual(detail["timeline"][1]["decision_action_id"], str(decision_action_id))
+        self.assertEqual(detail["timeline"][1]["strategy_context"]["strategy_key"], "short_momentum")
+
+    def test_strategy_attribution_audit_route_defaults_to_dry_run(self):
+        decision_action_id = self._insert_decision_action(
+            payload={"strategy": {"strategy_key": "quality_value", "strategy_fit_score": 0.72}},
+        )
+        buy = portfolio_service.create_order(
+            ts_code="600519.SH",
+            action_type="buy",
+            planned_price=100.0,
+            size=100,
+            decision_action_id=str(decision_action_id),
+            note="策略入场",
+            owner_key="alice",
+        )
+        self.assertTrue(buy.get("ok"), buy)
+        self.assertTrue(portfolio_service.update_order(str(buy.get("id") or ""), status="executed", executed_price=100.0).get("ok"))
+        close = portfolio_service.create_order(
+            ts_code="600519.SH",
+            action_type="close",
+            planned_price=101.0,
+            size=100,
+            decision_action_id="",
+            note="策略出场",
+            owner_key="alice",
+            chain_order_no=str(buy.get("order_no") or ""),
+        )
+        self.assertTrue(close.get("ok"), close)
+        handler = _FakeHandler()
+
+        handled = portfolio_routes.dispatch_post(
+            handler,
+            urlparse("/api/portfolio/strategy-attribution/audit"),
+            {"limit": 100},
+            {},
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(handler.payload["summary"]["mode"], "dry_run")
+        self.assertEqual(handler.payload["summary"]["repaired_order_count"], 0)
+
+    def test_refresh_strategy_performance_aggregates_closed_trade_chains(self):
+        decision_action_id = self._insert_decision_action(
+            ts_code="000001.SZ",
+            payload={
+                "strategy": {
+                    "strategy_key": "short_momentum",
+                    "strategy_source": "strategy_selection",
+                    "strategy_fit_score": 0.88,
+                }
+            },
+        )
+        buy = portfolio_service.create_order(
+            ts_code="000001.SZ",
+            action_type="buy",
+            planned_price=10.0,
+            size=100,
+            decision_action_id=str(decision_action_id),
+            note="策略入场",
+            owner_key="alice",
+        )
+        self.assertTrue(buy.get("ok"), buy)
+        order_no = str(buy.get("order_no") or "")
+        self.assertTrue(portfolio_service.update_order(str(buy.get("id") or ""), status="executed", executed_price=10.0).get("ok"))
+        close = portfolio_service.create_order(
+            ts_code="000001.SZ",
+            action_type="close",
+            planned_price=12.0,
+            size=100,
+            decision_action_id=str(decision_action_id),
+            note="策略出场",
+            owner_key="alice",
+            chain_order_no=order_no,
+        )
+        self.assertTrue(close.get("ok"), close)
+        self.assertTrue(portfolio_service.update_order(str(close.get("id") or ""), status="executed", executed_price=12.0).get("ok"))
+        review = portfolio_service.add_review(order_id=order_no, review_tag="win", review_note="策略有效", slippage=0.1, latency_ms=10)
+        self.assertTrue(review.get("ok"), review)
+
+        result = portfolio_service.refresh_strategy_performance()
+
+        self.assertTrue(result.get("ok"), result)
+        self.assertEqual(result["summary"]["strategy_count"], 1)
+        item = result["items"][0]
+        self.assertEqual(item["strategy_key"], "short_momentum")
+        self.assertEqual(item["trade_count"], 1)
+        self.assertEqual(item["closed_trade_count"], 1)
+        self.assertEqual(item["win_count"], 1)
+        self.assertEqual(item["total_realized_pnl"], 200.0)
+        self.assertEqual(item["avg_return_pct"], 20.0)
+        stored = portfolio_service.query_strategy_performance()
+        self.assertEqual(stored["items"][0]["strategy_key"], "short_momentum")
+        self.assertAlmostEqual(stored["items"][0]["win_rate"], 1.0)
+
+    def test_strategy_performance_refresh_route(self):
+        decision_action_id = self._insert_decision_action(
+            payload={"strategy": {"strategy_key": "risk_defensive", "strategy_fit_score": 0.7}},
+        )
+        buy = portfolio_service.create_order(
+            ts_code="600519.SH",
+            action_type="buy",
+            planned_price=100.0,
+            size=100,
+            decision_action_id=str(decision_action_id),
+            note="策略入场",
+            owner_key="alice",
+        )
+        self.assertTrue(buy.get("ok"), buy)
+        self.assertTrue(portfolio_service.update_order(str(buy.get("id") or ""), status="executed", executed_price=100.0).get("ok"))
+        handler = _FakeHandler()
+
+        handled = portfolio_routes.dispatch_post(
+            handler,
+            urlparse("/api/portfolio/strategy-performance/refresh"),
+            {"limit": 100},
+            {},
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(handler.payload["summary"]["strategy_count"], 1)
 
     def test_list_reviews_filters_by_order_id(self):
         first_id = "order-review-first"

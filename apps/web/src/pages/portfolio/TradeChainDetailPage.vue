@@ -13,6 +13,17 @@
               <div class="mt-1 text-sm text-[var(--muted)]">
                 {{ chain.ts_code || '-' }} · {{ chain.action_summary || '-' }} · {{ formatDate(chain.started_at) }} 至 {{ formatDate(chain.ended_at) }}
               </div>
+              <div v-if="chainStrategy.strategy_key" class="mt-2 flex flex-wrap gap-2 text-xs">
+                <span class="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">
+                  来源策略 {{ chainStrategy.strategy_key }}
+                </span>
+                <span v-if="chainStrategy.strategy_fit_score" class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-2.5 py-1 text-[var(--muted)]">
+                  匹配 {{ formatScore(chainStrategy.strategy_fit_score) }}
+                </span>
+                <span v-if="chainStrategy.strategy_action_bias" class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-2.5 py-1 text-[var(--muted)]">
+                  倾向 {{ chainStrategy.strategy_action_bias }}
+                </span>
+              </div>
             </div>
             <div class="flex flex-wrap gap-2">
               <RouterLink
@@ -66,6 +77,9 @@
             </div>
             <div class="mt-3 rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs leading-5 text-[var(--muted)]">
               {{ event.note || '本次操作没有备注。' }}
+              <span v-if="event.strategy_context?.strategy_key" class="ml-2 text-blue-700">
+                来源策略：{{ event.strategy_context.strategy_key }}
+              </span>
             </div>
           </div>
         </div>
@@ -87,6 +101,9 @@
             </div>
             <div class="mt-2 text-xs leading-5 text-[var(--muted)]">
               {{ review.review_note || review.order_note || '还没有人工复盘结论。' }}
+            </div>
+            <div v-if="review.strategy_context?.strategy_key" class="mt-2 text-xs text-blue-700">
+              来源策略：{{ review.strategy_context.strategy_key }}
             </div>
           </div>
         </div>
@@ -118,6 +135,7 @@ const chain = computed<PortfolioTradeChainDetail | null>(() => {
 
 const timeline = computed(() => chain.value?.timeline || [])
 const reviews = computed<PortfolioReview[]>(() => chain.value?.reviews || [])
+const chainStrategy = computed<Record<string, any>>(() => chain.value?.strategy_context || {})
 const errorText = computed(() => String((chain.value as any)?.error || (error.value as any)?.message || '未知错误'))
 
 function formatDate(s?: string): string {
@@ -149,6 +167,12 @@ function formatPct(v?: number | null): string {
   if (v == null) return '-'
   const value = Number(v)
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+function formatScore(v?: number | string | null): string {
+  if (v == null || v === '') return '-'
+  const value = Number(v)
+  return Number.isFinite(value) ? value.toFixed(2) : String(v)
 }
 
 function pnlTone(v?: number | null): 'good' | 'bad' | 'neutral' {

@@ -35,6 +35,19 @@ export interface PortfolioOrder {
   executed_at?: string
   decision_action_id?: string
   note?: string
+  strategy_context?: StrategyContext
+  decision_payload?: Record<string, any>
+}
+
+export interface StrategyContext {
+  strategy_key?: string
+  strategy_run_id?: string | number
+  strategy_run_key?: string
+  strategy_candidate_rank?: string | number
+  strategy_fit_score?: number
+  strategy_action_bias?: string
+  strategy_source?: string
+  summary?: string
 }
 
 export interface PortfolioReview {
@@ -63,6 +76,7 @@ export interface PortfolioReview {
     trigger_reason?: string
     position_pct_range?: string
   }
+  strategy_context?: StrategyContext
   rule_correction_hint?: string
   action_summary?: string
   review_count?: number
@@ -88,6 +102,7 @@ export interface PortfolioReviewChain {
   latest_order_id?: string
   latest_action_type?: string
   events?: PortfolioOrder[]
+  strategy_context?: StrategyContext
 }
 
 export interface PortfolioTradeChainDetail extends PortfolioReviewChain {
@@ -108,6 +123,24 @@ export interface PortfolioTradeChainDetail extends PortfolioReviewChain {
   reviews?: PortfolioReview[]
 }
 
+export interface StrategyPerformanceItem {
+  strategy_key: string
+  strategy_source?: string
+  trade_count?: number
+  closed_trade_count?: number
+  win_count?: number
+  loss_count?: number
+  neutral_count?: number
+  pending_count?: number
+  total_realized_pnl?: number
+  avg_return_pct?: number | null
+  avg_fit_score?: number | null
+  latest_trade_at?: string
+  win_rate?: number
+  updated_at?: string
+  performance?: Record<string, any>
+}
+
 export async function fetchPortfolioPositions() {
   const { data } = await http.get('/api/portfolio/positions')
   return data
@@ -123,6 +156,7 @@ export async function createPortfolioOrder(payload: {
   action_type: string
   planned_price?: number
   size?: number
+  decision_action_id?: string | number
   chain_order_no?: string
   note?: string
 }) {
@@ -158,6 +192,27 @@ export async function fetchPortfolioReviewGroups(params?: { order_id?: string; l
 
 export async function fetchPortfolioReviewChains(params?: { limit?: number }) {
   const { data } = await http.get('/api/portfolio/review/chains', { params })
+  return data
+}
+
+export async function auditPortfolioStrategyAttribution(payload: { apply?: boolean; repair?: boolean; limit?: number } = {}) {
+  const { data } = await http.post('/api/portfolio/strategy-attribution/audit', payload)
+  return data
+}
+
+export async function fetchPortfolioStrategyPerformance(params: { limit?: number; refresh?: boolean } = {}) {
+  const { data } = await http.get<{ ok?: boolean; summary?: Record<string, any>; items?: StrategyPerformanceItem[] }>(
+    '/api/portfolio/strategy-performance',
+    { params },
+  )
+  return data
+}
+
+export async function refreshPortfolioStrategyPerformance(payload: { limit?: number } = {}) {
+  const { data } = await http.post<{ ok?: boolean; summary?: Record<string, any>; items?: StrategyPerformanceItem[] }>(
+    '/api/portfolio/strategy-performance/refresh',
+    payload,
+  )
   return data
 }
 

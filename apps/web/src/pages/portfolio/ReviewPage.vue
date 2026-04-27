@@ -33,6 +33,9 @@
                   </RouterLink>{{ review.ts_code ? ` · ${review.ts_code}` : '' }}
                 </div>
                 <div class="mt-0.5 text-xs text-[var(--muted)]">{{ formatDate(review.created_at) }} · {{ review.review_count || 0 }} 条复盘记录</div>
+                <div v-if="review.strategy_context?.strategy_key" class="mt-1 text-xs font-semibold text-blue-700">
+                  来源策略 {{ review.strategy_context.strategy_key }}
+                </div>
               </div>
               <div class="flex items-center gap-2">
                 <span :class="reviewTagClass(review.review_tag)">{{ reviewTagLabel(review.review_tag) }}</span>
@@ -78,11 +81,16 @@
               </button>
             </div>
 
-            <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-3">
                 <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">原始判断</div>
                 <div class="text-sm font-semibold text-[var(--ink)]">{{ review.snapshot_id || review.decision_action_id || '-' }}</div>
                 <div class="mt-1 text-xs leading-5 text-[var(--muted)]">{{ review.decision_payload?.trigger_reason || review.decision_note || '当前没有关联的判断说明。' }}</div>
+              </div>
+              <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-3">
+                <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">来源策略</div>
+                <div class="text-sm font-semibold text-[var(--ink)]">{{ strategyLabel(review.strategy_context) }}</div>
+                <div class="mt-1 text-xs leading-5 text-[var(--muted)]">{{ strategyDetail(review.strategy_context) }}</div>
               </div>
               <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-3">
                 <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">动作建议</div>
@@ -120,6 +128,7 @@
               <tr class="border-b border-[var(--line)] text-left">
                 <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">交易链</th>
                 <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">代码</th>
+                <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">策略</th>
                 <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">链路</th>
                 <th class="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">入场 / 出场</th>
                 <th class="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">数量</th>
@@ -138,6 +147,7 @@
                   </RouterLink>
                 </td>
                 <td class="py-3 pr-4 font-semibold text-[var(--ink)]">{{ chain.ts_code || '-' }}</td>
+                <td class="py-3 pr-4 text-xs text-blue-700">{{ strategyLabel(chain.strategy_context) }}</td>
                 <td class="py-3 pr-4 text-[var(--muted)]">
                   <div>{{ chain.action_summary || '-' }}</div>
                   <div class="mt-0.5 text-xs text-[var(--muted)]">{{ chain.event_count || 0 }} 次动作 · {{ formatDate(chain.ended_at) }}</div>
@@ -233,7 +243,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
-import { fetchPortfolioReviewChains, fetchPortfolioReviewGroups, createPortfolioReview, deletePortfolioReview, type PortfolioReview, type PortfolioReviewChain } from '../../services/api/portfolio'
+import { fetchPortfolioReviewChains, fetchPortfolioReviewGroups, createPortfolioReview, deletePortfolioReview, type PortfolioReview, type PortfolioReviewChain, type StrategyContext } from '../../services/api/portfolio'
 
 const route = useRoute()
 const filterOrderId = computed(() => String(route.query.order_id || '').trim())
@@ -345,6 +355,26 @@ function formatChainPrice(chain: PortfolioReviewChain): string {
   const entry = formatPrice(chain.entry_price)
   const exit = formatPrice(chain.exit_price)
   return chain.exit_price == null ? entry : `${entry} / ${exit}`
+}
+
+function strategyLabel(strategy?: StrategyContext): string {
+  const key = String(strategy?.strategy_key || '').trim()
+  return key || '-'
+}
+
+function strategyDetail(strategy?: StrategyContext): string {
+  if (!strategy?.strategy_key) return '当前交易没有关联策略来源。'
+  const parts: string[] = []
+  if (strategy.strategy_fit_score != null) parts.push(`匹配 ${formatStrategyScore(strategy.strategy_fit_score)}`)
+  if (strategy.strategy_candidate_rank) parts.push(`候选 #${strategy.strategy_candidate_rank}`)
+  if (strategy.strategy_action_bias) parts.push(`倾向 ${strategy.strategy_action_bias}`)
+  return parts.join(' · ') || String(strategy.strategy_source || 'strategy_selection')
+}
+
+function formatStrategyScore(v?: number | string | null): string {
+  if (v == null || v === '') return '-'
+  const value = Number(v)
+  return Number.isFinite(value) ? value.toFixed(2) : String(v)
 }
 
 function reviewTagClass(t?: string): string {
