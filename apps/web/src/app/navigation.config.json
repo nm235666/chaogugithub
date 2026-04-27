@@ -9,27 +9,9 @@
       "surface": "app",
       "items": [
         {
-          "to": "/app/desk/workbench",
-          "label": "研究工作台",
-          "desc": "今日重点、待处理动作与风险预警",
-          "permission": "research_advanced"
-        },
-        {
-          "to": "/app/desk/market",
-          "label": "市场结论",
-          "desc": "今日交易主线、主要风险与行业影响",
-          "permission": "research_advanced"
-        },
-        {
-          "to": "/app/desk/funnel",
-          "label": "候选漏斗",
-          "desc": "候选生命周期状态机与流转追溯",
-          "permission": "research_advanced"
-        },
-        {
-          "to": "/app/desk/board",
-          "label": "决策看板",
-          "desc": "动作执行、回执与闭环验证",
+          "to": "/app/desk/today",
+          "label": "今日交易台",
+          "desc": "后端生成买卖动作、数量和原因",
           "permission": "research_advanced"
         },
         {
@@ -54,142 +36,6 @@
           "to": "/app/desk/macro-regime",
           "label": "三周期状态",
           "desc": "短/中/长期宏观状态与配置语言",
-          "permission": "research_advanced"
-        },
-        {
-          "to": "/app/desk/allocation",
-          "label": "长线配置动作",
-          "desc": "宏观驱动的风险敞口与仓位切换",
-          "permission": "research_advanced"
-        }
-      ]
-    },
-    {
-      "id": "layer2-data",
-      "title": "第二层 数据资产",
-      "order": 2,
-      "surface": "app",
-      "items": [
-        {
-          "to": "/app/data/scoreboard",
-          "label": "评分总览",
-          "desc": "宏观模式、行业排序、短名单与入选理由一站式查看",
-          "permission": "research_advanced"
-        },
-        {
-          "to": "/app/data/stocks/list",
-          "label": "股票列表",
-          "desc": "股票基础数据检索",
-          "permission": "stocks_advanced"
-        },
-        {
-          "to": "/app/data/stocks/scores",
-          "label": "综合评分",
-          "desc": "行业内评分与核心指标排序",
-          "permission": "stocks_advanced"
-        },
-        {
-          "to": "/app/data/macro",
-          "label": "宏观数据",
-          "desc": "宏观原始指标与口径",
-          "permission": "macro_advanced"
-        },
-        {
-          "to": "/app/data/intelligence",
-          "label": "资讯中心",
-          "desc": "国际 / 国内 / 个股新闻与日报总结（子 Tab 按权限显示）",
-          "permission": "news_read"
-        },
-        {
-          "to": "/app/data/signals/overview",
-          "label": "投资信号",
-          "desc": "股票与主题信号总览",
-          "permission": "signals_advanced"
-        },
-        {
-          "to": "/app/data/signals/themes",
-          "label": "主题热点",
-          "desc": "主题强度、方向、预期与证据链",
-          "permission": "signals_advanced"
-        },
-        {
-          "to": "/app/data/signals/graph",
-          "label": "产业链图谱",
-          "desc": "主题、行业、股票关系浏览",
-          "permission": "signals_advanced"
-        },
-        {
-          "to": "/app/data/signals/timeline",
-          "label": "信号时间线",
-          "desc": "查看信号如何强化、弱化或反转",
-          "permission": "signals_advanced"
-        },
-        {
-          "to": "/app/data/chatrooms/overview",
-          "label": "群聊总览",
-          "desc": "群聊标签、状态、拉取健康度",
-          "permission": "chatrooms_advanced"
-        },
-        {
-          "to": "/app/data/chatrooms/chatlog",
-          "label": "聊天记录",
-          "desc": "消息正文、引用和筛选查询",
-          "permission": "chatrooms_advanced"
-        },
-        {
-          "to": "/app/data/chatrooms/investment",
-          "label": "群聊投资倾向",
-          "desc": "群聊结论、情绪和标的清单",
-          "permission": "chatrooms_advanced"
-        },
-        {
-          "to": "/app/data/chatrooms/candidates",
-          "label": "群聊候选池",
-          "desc": "群聊汇总候选池与偏向",
-          "permission": "chatrooms_advanced"
-        }
-      ]
-    },
-    {
-      "id": "layer3-lab",
-      "title": "第三层 验证与研究",
-      "order": 3,
-      "surface": "app",
-      "items": [
-        {
-          "to": "/app/lab/quant-factors",
-          "label": "因子与回测",
-          "desc": "因子挖掘、组合验证与回测沉淀",
-          "permission": "research_advanced"
-        },
-        {
-          "to": "/app/lab/multi-role",
-          "label": "多角色研究",
-          "desc": "多角色协作研究与论证",
-          "permission": "multi_role_analyze"
-        },
-        {
-          "to": "/app/lab/roundtable",
-          "label": "首席圆桌",
-          "desc": "首席视角下的圆桌讨论与裁决",
-          "permission": "multi_role_analyze"
-        },
-        {
-          "to": "/app/lab/trend",
-          "label": "趋势分析",
-          "desc": "趋势判断与节奏研究",
-          "permission": "trend_analyze"
-        },
-        {
-          "to": "/app/lab/reports",
-          "label": "研究报告",
-          "desc": "研究报告沉淀与查阅",
-          "permission": "research_advanced"
-        },
-        {
-          "to": "/app/lab/task-inbox",
-          "label": "研究任务收件箱",
-          "desc": "研究侧任务进度与状态",
           "permission": "research_advanced"
         }
       ]
@@ -216,6 +62,18 @@
           "to": "/admin/system/jobs-ops",
           "label": "任务调度中心",
           "desc": "任务列表、dry-run、触发与告警观测",
+          "permission": "admin_system"
+        },
+        {
+          "to": "/admin/system/agents-ops",
+          "label": "Agent 运营台",
+          "desc": "Agent 运行、审批、步骤与审计追踪",
+          "permission": "admin_system"
+        },
+        {
+          "to": "/admin/system/agent-governance",
+          "label": "Agent 治理中心",
+          "desc": "质量评分、策略闸门、降级与阻断",
           "permission": "admin_system"
         },
         {

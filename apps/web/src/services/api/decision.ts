@@ -17,6 +17,107 @@ export async function fetchDecisionBoard(params: Record<string, any> = {}) {
   return data
 }
 
+export interface TodayActionItem {
+  id: string
+  horizon?: 'short' | 'long' | string
+  action_type: 'buy' | 'add' | 'reduce' | 'close' | 'sell' | 'hold' | 'watch' | string
+  action_label?: string
+  rule_tier?: string
+  rule_tier_label?: string
+  ts_code: string
+  name?: string
+  quantity?: number
+  reference_price?: number
+  target_position_pct?: number
+  current_quantity?: number
+  current_market_value?: number
+  can_create_order?: boolean
+  agent_can_create_order?: boolean
+  non_executable_reasons?: string[]
+  next_step?: string
+  execution_flow?: {
+    entry?: string
+    risk_gate?: string
+    chain_mode?: 'new' | 'reuse' | 'none' | string
+    chain_order_no?: string
+    after_order?: string
+  }
+  reason?: {
+    summary?: string
+    buy_reason?: string
+    sell_reason?: string
+  }
+  risk?: {
+    level?: string
+    summary?: string
+    notes?: string[]
+  }
+  evidence?: Record<string, any>
+  source?: string
+  agent_opinion?: {
+    agent_key?: string
+    source?: string
+    model?: string
+    action?: string
+    action_label?: string
+    confidence?: number
+    target_position_pct?: number
+    summary?: string
+    buy_reason?: string
+    sell_reason?: string
+    risk_note?: string
+    invalid_if?: string
+    requires_user_confirm?: boolean
+    can_override_rule?: boolean
+    cache_status?: string
+    cached_at?: string
+    error?: string
+  }
+  order_payload?: {
+    ts_code: string
+    action_type: string
+    planned_price: number
+    size: number
+    chain_order_no?: string
+    note?: string
+  }
+  agent_order_payload?: {
+    ts_code: string
+    action_type: string
+    planned_price: number
+    size: number
+    note?: string
+  }
+}
+
+export interface TodayActionsPayload {
+  ok?: boolean
+  generated_at?: string
+  snapshot_date?: string
+  account?: Record<string, any>
+  risk_gate?: {
+    ok?: boolean
+    blockers?: string[]
+    warnings?: string[]
+    allow_trading?: boolean
+    pipeline_status?: string
+  }
+  market_regime?: Record<string, any>
+  pipeline_health?: Record<string, any>
+  summary?: Record<string, any>
+  items?: TodayActionItem[]
+}
+
+export async function fetchDecisionTodayActions(params: Record<string, any> = {}) {
+  const { data } = await http.get<TodayActionsPayload>('/api/decision/today-actions', { params })
+  return data
+}
+
+export async function refreshDecisionTradeAdvisor(payload: { ts_code: string }) {
+  const { data } = await http.post('/api/decision/trade-advisor/refresh', payload)
+  return data
+}
+
 export async function fetchDecisionScoreboard(params: Record<string, any> = {}) {
   const { data } = await http.get<DecisionScoreboardPayload>('/api/decision/scores', { params })
   return data

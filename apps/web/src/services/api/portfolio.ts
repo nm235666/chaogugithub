@@ -4,11 +4,19 @@ export interface PortfolioPosition {
   id: string
   ts_code: string
   name?: string
+  quantity?: number
+  avg_cost?: number
+  last_price?: number
+  market_value?: number
   size?: number
   avg_price?: number
   current_price?: number
   unrealized_pnl?: number
+  order_no?: string
+  chain_order_id?: string
+  owner_hash?: string
   created_at?: string
+  updated_at?: string
 }
 
 export interface PortfolioOrder {
@@ -20,6 +28,9 @@ export interface PortfolioOrder {
   executed_price?: number
   size?: number
   status?: string
+  order_no?: string
+  chain_order_id?: string
+  owner_hash?: string
   created_at?: string
   executed_at?: string
   decision_action_id?: string
@@ -38,6 +49,9 @@ export interface PortfolioReview {
   order_status?: string
   executed_at?: string
   executed_price?: number
+  order_no?: string
+  chain_order_id?: string
+  owner_hash?: string
   decision_action_id?: string
   order_note?: string
   snapshot_id?: string
@@ -50,6 +64,48 @@ export interface PortfolioReview {
     position_pct_range?: string
   }
   rule_correction_hint?: string
+  action_summary?: string
+  review_count?: number
+  pending_count?: number
+  completed_count?: number
+  reviews?: PortfolioReview[]
+}
+
+export interface PortfolioReviewChain {
+  id: string
+  order_no: string
+  chain_order_id?: string
+  owner_hash?: string
+  ts_code?: string
+  action_summary?: string
+  chain_status?: 'open' | 'closed' | string
+  entry_price?: number
+  exit_price?: number
+  quantity?: number
+  event_count?: number
+  started_at?: string
+  ended_at?: string
+  latest_order_id?: string
+  latest_action_type?: string
+  events?: PortfolioOrder[]
+}
+
+export interface PortfolioTradeChainDetail extends PortfolioReviewChain {
+  ok?: boolean
+  error?: string
+  total_buy_amount?: number
+  total_sell_amount?: number
+  realized_pnl?: number
+  return_pct?: number | null
+  remaining_quantity?: number
+  avg_cost?: number
+  timeline?: Array<PortfolioOrder & {
+    price?: number
+    amount?: number
+    quantity_after?: number
+    avg_cost_after?: number
+  }>
+  reviews?: PortfolioReview[]
 }
 
 export async function fetchPortfolioPositions() {
@@ -67,9 +123,21 @@ export async function createPortfolioOrder(payload: {
   action_type: string
   planned_price?: number
   size?: number
+  chain_order_no?: string
   note?: string
 }) {
   const { data } = await http.post('/api/portfolio/orders', payload)
+  return data
+}
+
+export async function createPortfolioOrderFromDecision(payload: {
+  decision_action_id: string | number
+  action_type: 'buy' | 'add' | 'sell' | 'reduce' | 'close'
+  planned_price: number
+  size: number
+  note?: string
+}) {
+  const { data } = await http.post('/api/portfolio/orders/from-decision', payload)
   return data
 }
 
@@ -83,6 +151,21 @@ export async function fetchPortfolioReviews(params?: { order_id?: string; limit?
   return data
 }
 
+export async function fetchPortfolioReviewGroups(params?: { order_id?: string; limit?: number }) {
+  const { data } = await http.get('/api/portfolio/review/groups', { params })
+  return data
+}
+
+export async function fetchPortfolioReviewChains(params?: { limit?: number }) {
+  const { data } = await http.get('/api/portfolio/review/chains', { params })
+  return data
+}
+
+export async function fetchPortfolioTradeChain(orderNo: string) {
+  const { data } = await http.get(`/api/portfolio/trade-chains/${encodeURIComponent(orderNo)}`)
+  return data
+}
+
 export async function createPortfolioReview(payload: {
   order_id?: string
   review_tag: string
@@ -90,5 +173,10 @@ export async function createPortfolioReview(payload: {
   review_note?: string
 }) {
   const { data } = await http.post('/api/portfolio/review', payload)
+  return data
+}
+
+export async function deletePortfolioReview(id: string) {
+  const { data } = await http.delete(`/api/portfolio/review/${encodeURIComponent(id)}`)
   return data
 }

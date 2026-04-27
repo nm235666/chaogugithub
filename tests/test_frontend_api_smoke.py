@@ -68,7 +68,8 @@ class FrontendApiSmokeTest(unittest.TestCase):
         self.assertIn("/research/decision", router_ts)
         self.assertIn("/research/scoreboard", router_ts)
         self.assertNotIn("/research/trade-plan", router_ts)
-        self.assertIn("决策看板", nav_ts)
+        self.assertIn("今日交易台", nav_ts)
+        self.assertNotIn("决策看板", nav_ts)
         self.assertIn("评分总览", nav_ts)
         self.assertNotIn("交易计划书", nav_ts)
         self.assertIn("/api/decision/board", decision_api_ts)
@@ -105,16 +106,16 @@ class FrontendApiSmokeTest(unittest.TestCase):
         self.assertIn("retry: false", workbench_page)
 
     def test_quant_routes_exist_in_api_catalog(self):
-        server_py = (ROOT / "backend/server.py").read_text(encoding="utf-8")
-        self.assertIn('"quant_factors_mine_start": "/api/quant-factors/mine/start"', server_py)
-        self.assertIn('"quant_factors_backtest_start": "/api/quant-factors/backtest/start"', server_py)
-        self.assertIn('"quant_factors_task": "/api/quant-factors/task?task_id=<task_id>"', server_py)
-        self.assertIn('"quant_factors_health": "/api/quant-factors/health"', server_py)
+        catalog_py = (ROOT / "backend/http_server/api_catalog.py").read_text(encoding="utf-8")
+        self.assertIn('"quant_factors_mine_start": "/api/quant-factors/mine/start"', catalog_py)
+        self.assertIn('"quant_factors_backtest_start": "/api/quant-factors/backtest/start"', catalog_py)
+        self.assertIn('"quant_factors_task": "/api/quant-factors/task?task_id=<task_id>"', catalog_py)
+        self.assertIn('"quant_factors_health": "/api/quant-factors/health"', catalog_py)
 
     def test_dashboard_contract_is_lightweight(self):
         dashboard_page = (ROOT / "apps/web/src/pages/dashboard/DashboardPage.vue").read_text(encoding="utf-8")
         dashboard_types = (ROOT / "apps/web/src/shared/types/api.ts").read_text(encoding="utf-8")
-        server_py = (ROOT / "backend/server.py").read_text(encoding="utf-8")
+        legacy_queries_py = (ROOT / "backend/http_server/legacy_queries.py").read_text(encoding="utf-8")
 
         self.assertIn("快捷入口", dashboard_page)
         self.assertNotIn("API 端口 build_id 一致性", dashboard_page)
@@ -122,8 +123,8 @@ class FrontendApiSmokeTest(unittest.TestCase):
         self.assertNotIn("api_stack_consistency", dashboard_types)
         self.assertNotIn("source_monitor", dashboard_types)
         self.assertNotIn("orchestrator_alerts", dashboard_types)
-        self.assertIn('cache_get_json("api:dashboard:v2")', server_py)
-        self.assertNotIn('"api_stack_consistency": query_api_stack_consistency()', server_py)
+        self.assertIn('cache_get_json("api:dashboard:v2")', legacy_queries_py)
+        self.assertNotIn('"api_stack_consistency": query_api_stack_consistency()', legacy_queries_py)
 
     def test_scoreboard_contract_types_exist(self):
         api_types = (ROOT / "apps/web/src/shared/types/api.ts").read_text(encoding="utf-8")

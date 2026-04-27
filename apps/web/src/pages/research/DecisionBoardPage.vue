@@ -4,9 +4,9 @@
       <div class="page-hero-grid">
         <div class="page-hero-card">
           <div class="page-insight-label">Decision Loop</div>
-          <div class="page-hero-title">把市场模式、短名单和人工动作放到一张可执行面板里。</div>
+          <div class="page-hero-title">今日决策入口：先判断，再留痕，最后转成真实订单。</div>
           <div class="page-hero-copy">
-            这页的目标不是展示更多配置，而是帮助我们更快判断“现在该不该做、该先做哪只、风险在哪里”。聚焦股代码可直接收敛到单票。
+            这页只保留“今天要不要做、做哪只、做什么动作”。统计证据、市场环境、执行、持仓和复盘分别进入对应页面。
           </div>
           <div class="page-action-cluster">
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isBoardFetching" @click="applyFilters">
@@ -16,7 +16,7 @@
               {{ isSnapshotPending ? '生成中...' : '生成快照' }}
             </button>
             <RouterLink to="/app/desk/orders" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
-              执行任务
+              查看计划单
             </RouterLink>
           </div>
         </div>
@@ -61,17 +61,31 @@
       </div>
 
       <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="text-[var(--muted)]">
-            统计证据（宏观评分卡、行业排序、入选理由包）已收敛到
-            <RouterLink to="/app/data/scoreboard" class="font-semibold text-[var(--brand)] hover:underline">评分总览</RouterLink>
-            。本页只保留动作与验证闭环所需字段。
-          </div>
-          <RouterLink
-            to="/app/data/scoreboard"
-            class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
-          >
-            打开评分总览
+        <div class="mb-3 font-semibold text-[var(--ink)]">功能去向</div>
+        <div class="grid gap-2 md:grid-cols-3">
+          <RouterLink to="/app/data/scoreboard" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 transition hover:border-[var(--brand)]">
+            <div class="text-sm font-semibold text-[var(--ink)]">评分证据</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">宏观评分、行业排序、入选理由包</div>
+          </RouterLink>
+          <RouterLink to="/app/desk/market" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 transition hover:border-[var(--brand)]">
+            <div class="text-sm font-semibold text-[var(--ink)]">市场结论</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">市场模式、风险提示、交易主线</div>
+          </RouterLink>
+          <RouterLink to="/app/desk/orders" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 transition hover:border-[var(--brand)]">
+            <div class="text-sm font-semibold text-[var(--ink)]">执行计划</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">已确认动作转订单、执行或取消</div>
+          </RouterLink>
+          <RouterLink to="/app/desk/positions" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 transition hover:border-[var(--brand)]">
+            <div class="text-sm font-semibold text-[var(--ink)]">持仓管理</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">加仓、减仓、清仓与原因记录</div>
+          </RouterLink>
+          <RouterLink to="/app/desk/review" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 transition hover:border-[var(--brand)]">
+            <div class="text-sm font-semibold text-[var(--ink)]">交易复盘</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">交易链结果、复盘结论、规则修正</div>
+          </RouterLink>
+          <RouterLink to="/admin/system/jobs-ops" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 transition hover:border-[var(--brand)]">
+            <div class="text-sm font-semibold text-[var(--ink)]">链路健康</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">数据缺失、任务运行、系统状态</div>
           </RouterLink>
         </div>
       </div>
@@ -108,14 +122,13 @@
           </div>
           <div class="mt-2 text-xs text-[var(--muted)]">作用范围：仅用于决策板默认查询条件，不会修改底层评分数据。</div>
         </div>
-        <div class="grid gap-3 xl:grid-cols-[1fr_180px_180px_180px] md:grid-cols-2">
+        <div class="grid gap-3 xl:grid-cols-[1fr_180px_220px] md:grid-cols-2">
           <input v-model.trim="focusTsCode" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="聚焦股票，如 000001.SZ" @keydown.enter="applyFilters" />
           <select v-model.number="pageSize" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option :value="8">8 / 页</option>
             <option :value="12">12 / 页</option>
             <option :value="20">20 / 页</option>
           </select>
-          <input v-model.trim="killReasonDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="Kill Switch 备注" />
           <div class="flex flex-wrap gap-2">
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isBoardFetching" @click="applyFilters">
               {{ isBoardFetching ? '刷新中...' : '刷新决策板' }}
@@ -126,10 +139,8 @@
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
-          <StatusBadge :value="killSwitchTone" :label="killSwitchLabel" />
           <StatusBadge :value="marketRegime.mode || 'muted'" :label="marketRegime.label || '数据不足'" />
           <StatusBadge value="info" :label="`短名单 ${shortlist.length}`" />
-          <StatusBadge value="muted" :label="`行业 ${industries.length}`" />
           <StatusBadge
             :value="pipelineHealthStatusTone"
             :label="`链路 ${pipelineHealth.status || 'unknown'}`"
@@ -293,7 +304,7 @@
       </PageSection>
 
       <PageSection
-        v-if="calibrationSummary.total_count > 0 || calibrationQuery.isFetched.value"
+        v-if="false && (calibrationSummary.total_count > 0 || calibrationQuery.isFetched.value)"
         title="裁决精准度"
         subtitle="第三层验证入口：历史看多/看空裁决的收益与命中率，用于评估判断质量。"
       >
@@ -355,7 +366,7 @@
         <div v-else class="mt-3 text-sm text-[var(--muted)]">{{ verdictEmptyText }}</div>
       </PageSection>
 
-      <div class="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      <div v-if="false" class="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <PageSection title="市场模式与交易计划" subtitle="把宏观评分直接转成仓位语言与执行提醒。">
           <div class="grid gap-3 md:grid-cols-2">
             <InfoCard :title="marketRegime.label || '数据不足'" :meta="`分数 ${formatNumber(marketRegime.score, 1)} · 模式 ${marketRegime.mode || '-'}`" :description="marketRegime.summary || '暂无市场模式摘要。'">
@@ -366,27 +377,6 @@
             <InfoCard :title="tradePlan.headline || '交易计划'" :meta="`底仓 ${tradePlan.base_position ?? 0}% · 浮动仓 ${tradePlan.floating_position ?? 0}% · 预备仓 ${tradePlan.reserve_position ?? 0}%`" :description="tradePlan.mode || '-'">
               <div class="mt-3 space-y-2 text-sm text-[var(--muted)]">
                 <div v-for="item in tradePlan.actions || []" :key="item">{{ item }}</div>
-              </div>
-            </InfoCard>
-          </div>
-          <div v-if="focusStock" class="mt-3">
-            <InfoCard :title="focusStock.name || focusStock.ts_code || '聚焦股票'" :meta="focusStock.ts_code || '-'" :description="focusStock.reason || focusStock.trade_plan?.suggestion || ''">
-              <template #badge>
-                <StatusBadge :value="focusStock.score?.position_label || 'muted'" :label="focusStock.score?.position_label || '-'"/>
-              </template>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <StatusBadge value="brand" :label="`总分 ${formatNumber(focusStock.score?.total_score, 1)}`" />
-                <StatusBadge value="info" :label="`行业分 ${formatNumber(focusStock.score?.industry_total_score, 1)}`" />
-                <StatusBadge value="muted" :label="focusStock.risk || '暂无风险提示'" />
-              </div>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <RouterLink
-                  v-if="focusStock.ts_code"
-                  :to="`/app/data/stocks/detail/${focusStock.ts_code}`"
-                  class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
-                >
-                  打开股票详情
-                </RouterLink>
               </div>
             </InfoCard>
           </div>
@@ -473,7 +463,7 @@
         </PageSection>
       </div>
 
-      <PageSection title="决策快照历史" subtitle="每日快照沉淀，方便回看决策板状态。">
+      <PageSection v-if="false" title="决策快照历史" subtitle="每日快照沉淀，方便回看决策板状态。">
         <DataTable :columns="historyColumns" :rows="historyItems" row-key="id" empty-text="暂无快照历史" caption="决策快照历史">
           <template #cell-snapshot_date="{ row }">{{ row.snapshot_date || '-' }}</template>
           <template #cell-snapshot_type="{ row }">{{ row.snapshot_type || '-' }}</template>
@@ -482,7 +472,7 @@
         </DataTable>
       </PageSection>
 
-      <PageSection title="人工确认记录" subtitle="对短名单标的做确认、暂缓、拒绝和观察留痕，方便回看。">
+      <PageSection title="决策动作池" subtitle="先把候选沉淀成可追踪的动作，再经过风控检查创建计划单。观察/暂缓/拒绝只留痕，确认后才进入执行判断。">
         <div class="grid gap-3 xl:grid-cols-[1fr_1fr_160px] md:grid-cols-2">
           <input v-model.trim="actionTsCodeDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="动作股票代码，如 000001.SZ" />
           <input v-model.trim="actionNoteDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="动作备注" />
@@ -611,6 +601,48 @@
               >
                 查看股票详情
               </RouterLink>
+              <button
+                v-if="canCreateTradePlan(item)"
+                class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--brand)] transition hover:border-[var(--brand)] disabled:opacity-60"
+                :disabled="isTradePlanPending"
+                @click="openTradePlanForm(item)"
+              >
+                创建交易计划
+              </button>
+            </div>
+            <div
+              v-if="tradePlanDraft.decision_action_id && String(tradePlanDraft.decision_action_id) === String(item.id)"
+              class="mt-3 rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-3"
+            >
+              <div class="mb-2 text-xs font-semibold text-[var(--ink)]">从该决策动作创建计划单</div>
+              <div class="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-xs text-[var(--muted)]">
+                <StatusBadge :value="tradePlanRiskGateTone" :label="tradePlanRiskGateLabel" />
+                <span>{{ tradePlanRiskGateNote }}</span>
+              </div>
+              <div class="grid gap-2 sm:grid-cols-4">
+                <select v-model="tradePlanDraft.action_type" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs">
+                  <option value="buy">买入</option>
+                  <option value="add">加仓</option>
+                  <option value="sell">卖出</option>
+                  <option value="reduce">减仓</option>
+                  <option value="close">清仓</option>
+                </select>
+                <input v-model.number="tradePlanDraft.size" type="number" min="1" step="1" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs" placeholder="数量" />
+                <input v-model.number="tradePlanDraft.planned_price" type="number" min="0.01" step="0.01" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs" placeholder="计划价" />
+                <input v-model="tradePlanDraft.note" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs" placeholder="执行备注" />
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  class="rounded-full bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                  :disabled="isTradePlanPending || !isTradePlanDraftSubmittable || !tradePlanRiskGateOk"
+                  @click="submitTradePlanFromDecision"
+                >
+                  {{ isTradePlanPending ? '创建中...' : '确认创建计划单' }}
+                </button>
+                <button class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--muted)]" @click="clearTradePlanDraft">
+                  取消
+                </button>
+              </div>
             </div>
           </InfoCard>
         </div>
@@ -620,7 +652,7 @@
       </PageSection>
 
       <!-- 复盘面板：汇总历史裁决动作，显示价格验证结果与复盘结论，形成策略反馈闭环 -->
-      <PageSection title="决策复盘" subtitle="历史裁决的价格验证结果与复盘结论汇总，命中率反哺策略优化。">
+      <PageSection v-if="false" title="决策复盘" subtitle="历史裁决的价格验证结果与复盘结论汇总，命中率反哺策略优化。">
         <div class="grid gap-3 md:grid-cols-3 mb-4">
           <StatCard title="确认命中率（5日）" :value="calibrationSummary.confirm_count ? `${(calibrationSummary.confirm_hit_rate_5d * 100).toFixed(0)}%` : '-'" :hint="`命中 ${calibrationSummary.confirm_hit_5d ?? 0} / ${calibrationSummary.confirm_count ?? 0} 次`" />
           <StatCard title="拒绝命中率（5日）" :value="calibrationSummary.reject_count ? `${(calibrationSummary.reject_hit_rate_5d * 100).toFixed(0)}%` : '-'" :hint="`命中 ${calibrationSummary.reject_hit_5d ?? 0} / ${calibrationSummary.reject_count ?? 0} 次`" />
@@ -662,7 +694,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useMutation, useQueries, useQuery } from '@tanstack/vue-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -673,6 +705,7 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import QualityGate from '../../shared/ui/QualityGate.vue'
 import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionCalibration, fetchDecisionHistory, fetchDecisionScoreboard, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
 import { fetchLatestAllocation } from '../../services/api/portfolio_allocation'
+import { createPortfolioOrderFromDecision } from '../../services/api/portfolio'
 import type { DecisionTraceReceipt } from '../../services/api/decision'
 import { fetchStockPrices } from '../../services/api/stocks'
 import { formatNumber } from '../../shared/utils/format'
@@ -702,6 +735,7 @@ type SnapshotFeedback = {
 
 const route = useRoute()
 const router = useRouter()
+const queryClient = useQueryClient()
 
 const focusTsCode = ref('')
 const keywordFilter = ref('')
@@ -717,6 +751,13 @@ const actionExpiryCondition = ref('') // e.g. "收盘跌破5日线失效"
 const actionPriority = ref('medium')  // high/medium/low
 const actionPositionPctRange = ref('')    // e.g. "5-8"
 const actionTargetPositionPct = ref('')   // e.g. "6.5"
+const tradePlanDraft = ref({
+  decision_action_id: '',
+  action_type: 'buy' as 'buy' | 'add' | 'sell' | 'reduce' | 'close',
+  size: null as number | null,
+  planned_price: null as number | null,
+  note: '',
+})
 const message = ref('')
 const snapshotStatus = ref<ActionStatus>('idle')
 const snapshotStatusText = ref('')
@@ -946,6 +987,41 @@ const actionMutation = useMutation({
   },
 })
 
+const createTradePlanMutation = useMutation({
+  mutationFn: async () => {
+    const result = await createPortfolioOrderFromDecision({
+      decision_action_id: tradePlanDraft.value.decision_action_id,
+      action_type: tradePlanDraft.value.action_type,
+      size: Number(tradePlanDraft.value.size || 0),
+      planned_price: Number(tradePlanDraft.value.planned_price || 0),
+      note: tradePlanDraft.value.note || undefined,
+    })
+    const orderId = String((result as Record<string, any>)?.id || '').trim()
+    if ((result as Record<string, any>)?.ok !== true || !orderId) {
+      throw new Error(String((result as Record<string, any>)?.error || '创建接口未返回订单编号，请刷新订单记录确认是否落库。'))
+    }
+    return result
+  },
+  onSuccess: async (payload) => {
+    const result = (payload || {}) as Record<string, any>
+    const orderId = String(result.id || '').trim()
+    const decisionActionId = String(result.decision_action_id || tradePlanDraft.value.decision_action_id || '').trim()
+    message.value = `真实交易计划已创建：${orderId}`
+    clearTradePlanDraft()
+    await queryClient.invalidateQueries({ queryKey: ['portfolio-orders'] })
+    await refreshAll()
+    if (decisionActionId) {
+      await router.push({
+        path: '/app/desk/orders',
+        query: { decision_action_id: decisionActionId },
+      })
+    }
+  },
+  onError: (error: Error) => {
+    message.value = `创建交易计划失败：${error.message}`
+  },
+})
+
 const board = computed<Record<string, any>>(() => (boardQuery.data.value || {}) as Record<string, any>)
 const isBoardFetching = computed(() => Boolean(boardQuery.isFetching.value))
 const boardErrorText = computed(() => {
@@ -964,7 +1040,6 @@ const tomorrowCandidates = computed<Array<Record<string, any>>>(() =>
 const tradePlan = computed<Record<string, any>>(() => (board.value.trade_plan || {}) as Record<string, any>)
 const validation = computed<Record<string, any>>(() => (board.value.validation || {}) as Record<string, any>)
 const pipelineHealth = computed<Record<string, any>>(() => (board.value.pipeline_health || {}) as Record<string, any>)
-const focusStock = computed<Record<string, any> | null>(() => (board.value.focus_stock || null) as Record<string, any> | null)
 const killSwitch = computed<Record<string, any>>(() => (board.value.kill_switch || {}) as Record<string, any>)
 const historyItems = computed<Array<Record<string, any>>>(() => (historyQuery.data.value?.items || []) as Array<Record<string, any>>)
 const recentActions = computed<Array<Record<string, any>>>(() => (actionsQuery.data.value?.items || []) as Array<Record<string, any>>)
@@ -1046,9 +1121,44 @@ const pipelineHealthMissingInputs = computed<string[]>(() => {
   const inputs = pipelineHealth.value.missing_inputs
   return Array.isArray(inputs) ? inputs.slice(0, 5).map((item) => String(item)) : []
 })
+const tradePlanRiskGate = computed(() => {
+  const blockers: string[] = []
+  const warnings: string[] = []
+  if (Number(killSwitch.value.allow_trading ?? 1) !== 1) {
+    blockers.push(`Kill Switch 已暂停${killSwitch.value.reason ? `：${killSwitch.value.reason}` : ''}`)
+  }
+  const status = String(pipelineHealth.value.status || '').trim()
+  if (status === 'empty' || status === 'not_initialized') {
+    blockers.push(`决策链路未就绪：${status}`)
+  } else if (status && status !== 'ready') {
+    warnings.push(`链路状态 ${status}`)
+  }
+  if (pipelineHealthMissingInputs.value.length) {
+    warnings.push(`缺少输入 ${pipelineHealthMissingInputs.value.join('、')}`)
+  }
+  return { ok: blockers.length === 0, blockers, warnings }
+})
+const tradePlanRiskGateOk = computed(() => tradePlanRiskGate.value.ok)
+const tradePlanRiskGateTone = computed(() => {
+  if (!tradePlanRiskGate.value.ok) return 'danger'
+  return tradePlanRiskGate.value.warnings.length ? 'warning' : 'success'
+})
+const tradePlanRiskGateLabel = computed(() => (tradePlanRiskGate.value.ok ? '风控可执行' : '风控阻断'))
+const tradePlanRiskGateNote = computed(() => {
+  const messages = tradePlanRiskGate.value.ok ? tradePlanRiskGate.value.warnings : tradePlanRiskGate.value.blockers
+  return messages.length ? messages.join('；') : 'Kill Switch 与决策链路检查通过，可以进入计划单。'
+})
 const isTogglePending = computed(() => Boolean(toggleKillSwitchMutation.isPending.value))
 const isSnapshotPending = computed(() => Boolean(runSnapshotMutation.isPending.value))
 const isActionPending = computed(() => Boolean(actionMutation.isPending.value))
+const isTradePlanPending = computed(() => Boolean(createTradePlanMutation.isPending.value))
+const isTradePlanDraftSubmittable = computed(() => {
+  return Boolean(
+    tradePlanDraft.value.decision_action_id &&
+    parseTradePlanInteger(tradePlanDraft.value.size) > 0 &&
+    parseTradePlanPrice(tradePlanDraft.value.planned_price) > 0,
+  )
+})
 
 // Quality Gate evaluation — re-evaluates whenever form state changes
 const currentGateResult = computed<GateResult>(() =>
@@ -1160,6 +1270,64 @@ function submitManualAction(actionType: 'confirm' | 'reject' | 'defer' | 'watch'
     _gate_audit: gateAudit,
     idempotency_key: `${actionType}-${normalizedTsCode}-${Date.now()}`,
   })
+}
+
+function canCreateTradePlan(item: Record<string, any>) {
+  const actionType = String(item.action_type || '').toLowerCase()
+  return Boolean(item.id && item.ts_code && ['confirm', 'reject'].includes(actionType))
+}
+
+function defaultTradePlanAction(item: Record<string, any>): 'buy' | 'add' | 'sell' | 'reduce' | 'close' {
+  return String(item.action_type || '').toLowerCase() === 'reject' ? 'sell' : 'buy'
+}
+
+function openTradePlanForm(item: Record<string, any>) {
+  tradePlanDraft.value = {
+    decision_action_id: String(item.id || ''),
+    action_type: defaultTradePlanAction(item),
+    size: null,
+    planned_price: null,
+    note: String(item.note || '').trim(),
+  }
+}
+
+function clearTradePlanDraft() {
+  tradePlanDraft.value = {
+    decision_action_id: '',
+    action_type: 'buy',
+    size: null,
+    planned_price: null,
+    note: '',
+  }
+}
+
+function parseTradePlanPrice(value: unknown): number {
+  const normalized = String(value ?? '').trim().replace(',', '.')
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function parseTradePlanInteger(value: unknown): number {
+  const parsed = Number(String(value ?? '').trim())
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : 0
+}
+
+function submitTradePlanFromDecision() {
+  if (createTradePlanMutation.isPending.value) return
+  const size = parseTradePlanInteger(tradePlanDraft.value.size)
+  const plannedPrice = parseTradePlanPrice(tradePlanDraft.value.planned_price)
+  if (!tradePlanDraft.value.decision_action_id || size <= 0 || plannedPrice <= 0) {
+    message.value = '请填写大于 0 的数量和计划价后再创建交易计划。'
+    return
+  }
+  if (!tradePlanRiskGateOk.value) {
+    message.value = `风控检查未通过：${tradePlanRiskGateNote.value}`
+    return
+  }
+  tradePlanDraft.value.size = size
+  tradePlanDraft.value.planned_price = plannedPrice
+  message.value = '正在创建交易计划...'
+  createTradePlanMutation.mutate()
 }
 
 function acknowledgeGateWarnings() {

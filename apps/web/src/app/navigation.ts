@@ -75,15 +75,11 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
     order: 1,
     surface: 'app',
     items: [
-      { to: '/app/desk/workbench', label: '研究工作台', desc: '今日重点、待处理动作与风险预警', permission: 'research_advanced', surface: 'app' },
-      { to: '/app/desk/market', label: '市场结论', desc: '今日交易主线、主要风险与行业影响', permission: 'research_advanced', surface: 'app' },
-      { to: '/app/desk/funnel', label: '候选漏斗', desc: '候选生命周期状态机与流转追溯', permission: 'research_advanced', surface: 'app' },
-      { to: '/app/desk/board', label: '决策看板', desc: '动作执行、回执与闭环验证', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/today', label: '今日交易台', desc: '后端生成买卖动作、数量和原因', permission: 'research_advanced', surface: 'app' },
       { to: '/app/desk/orders', label: '计划单', desc: '计划单、执行单、取消单', permission: 'research_advanced', surface: 'app' },
       { to: '/app/desk/positions', label: '持仓看板', desc: '当前纸面持仓与状态', permission: 'research_advanced', surface: 'app' },
       { to: '/app/desk/review', label: '执行复盘', desc: '执行偏差与复盘结论', permission: 'research_advanced', surface: 'app' },
       { to: '/app/desk/macro-regime', label: '三周期状态', desc: '短/中/长期宏观状态与配置语言', permission: 'research_advanced', surface: 'app' },
-      { to: '/app/desk/allocation', label: '长线配置动作', desc: '宏观驱动的风险敞口与仓位切换', permission: 'research_advanced', surface: 'app' },
     ],
   },
   {
@@ -127,6 +123,7 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
       { to: '/admin/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/jobs-ops', label: '任务调度中心', desc: '任务列表、dry-run、触发与告警观测', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/agents-ops', label: 'Agent 运营台', desc: 'Agent 运行、审批、步骤与审计追踪', permission: 'admin_system', surface: 'admin' },
+      { to: '/admin/system/agent-governance', label: 'Agent 治理中心', desc: '质量评分、策略闸门、降级与阻断', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/llm-providers', label: 'LLM 节点管理', desc: '模型节点 CRUD、限速配置与联通测试', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/permissions', label: '角色权限策略', desc: '配置 pro/limited/admin 的权限与日配额', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/database-audit', label: '数据库审计', desc: '缺口、重复、未评分、陈旧数据', permission: 'admin_system', surface: 'admin' },
@@ -192,7 +189,7 @@ export const NAV_GROUPS: NavGroupConfig[] = (() => {
   const normalized = normalizeNavGroups(configPayload.groups)
   if (normalized.length) return normalized
   console.warn('[nav-config] invalid local navigation.config.json, fallback to minimal defaults')
-  return FALLBACK_NAV_GROUPS
+  return FALLBACK_NAV_GROUPS.filter((group) => group.surface !== 'app' || group.id === 'layer1-desk')
 })()
 
 export function resolveNavigationGroups(raw: unknown): NavGroupConfig[] {
@@ -216,6 +213,9 @@ export function resolveDefaultLandingPath(options: {
   if (role !== 'admin') {
     for (const group of groups) {
       for (const item of group.items) {
+        if (item.to === '/app/desk/today' && hasPermissionByEffective(effectivePermissions, role, item.permission)) {
+          return '/app/desk/today'
+        }
         if (item.to === '/app/desk/workbench' && hasPermissionByEffective(effectivePermissions, role, item.permission)) {
           return '/app/desk/workbench'
         }

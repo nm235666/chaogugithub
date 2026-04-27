@@ -37,6 +37,7 @@
             <thead>
               <tr class="border-b border-[var(--line)] text-left">
                 <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">代码</th>
+                <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">订单号</th>
                 <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">操作</th>
                 <th class="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">计划价</th>
                 <th class="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">成交价</th>
@@ -61,6 +62,9 @@
                     {{ order.ts_code }}
                   </RouterLink>
                   <div v-if="order.name" class="text-xs font-normal text-[var(--muted)]">{{ order.name }}</div>
+                </td>
+                <td class="py-3 pr-4 font-mono text-xs text-[var(--muted)]" :title="order.chain_order_id || order.id">
+                  {{ displayOrderNo(order) }}
                 </td>
                 <td class="py-3 pr-4">
                   <span :class="actionTypeClass(order.action_type)">
@@ -151,6 +155,7 @@ const orders = computed<PortfolioOrder[]>(() => {
   const raw = data.value
   if (!raw) return []
   if (Array.isArray(raw)) return raw
+  if (Array.isArray(raw.items)) return raw.items
   if (Array.isArray(raw.orders)) return raw.orders
   return []
 })
@@ -169,14 +174,30 @@ function formatDate(s?: string): string {
   }
 }
 
+function displayOrderNo(order: PortfolioOrder): string {
+  const orderNo = String(order.order_no || '').trim()
+  if (orderNo) return orderNo
+  return String(order.id || '').slice(0, 8)
+}
+
 function actionTypeLabel(t?: string): string {
-  const map: Record<string, string> = { buy: '买入', sell: '卖出', hold: '持有', confirm: '确认' }
+  const map: Record<string, string> = {
+    buy: '买入',
+    add: '加仓',
+    sell: '卖出',
+    reduce: '减仓',
+    close: '清仓',
+    watch: '观察',
+    defer: '暂缓',
+    hold: '持有',
+    confirm: '确认',
+  }
   return t ? (map[t] ?? t) : '-'
 }
 
 function actionTypeClass(t?: string): string {
-  if (t === 'buy') return 'inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700'
-  if (t === 'sell') return 'inline-flex items-center rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700'
+  if (t === 'buy' || t === 'add') return 'inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700'
+  if (t === 'sell' || t === 'reduce' || t === 'close') return 'inline-flex items-center rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700'
   return 'inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700'
 }
 
@@ -212,6 +233,7 @@ const patchOrderMutation = useMutation({
       mutatingIds.value = next
     }
     queryClient.invalidateQueries({ queryKey: ['portfolio-orders'] })
+    queryClient.invalidateQueries({ queryKey: ['portfolio-positions'] })
     queryClient.invalidateQueries({ queryKey: ['positions-workbench'] })
   },
 })
