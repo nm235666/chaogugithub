@@ -332,6 +332,14 @@
 | 数据质量治理 | `/admin/system/database-audit` | 数据缺口、重复、时效性、异常 | 缺口率、重复率、陈旧率 |
 | 信号治理 | `/admin/system/signals-audit`、`/admin/system/signals-quality`、`/admin/system/signals-state-timeline` | 信号规则、状态机、映射质量 | 误映射率、弱信号占比、状态跳变异常数 |
 | 基础设施治理 | `/admin/system/source-monitor`、`/admin/system/llm-providers` | 数据源进程、LLM provider/node 健康 | 节点可用率、请求延迟、错误码分布 |
+| Agent 运营与 MCP | `/admin/system/agents-ops`、`/admin/system/agent-governance` | `agent_runs`、`agent_steps`、`mcp_tool_audit_logs`、`agent_quality_scores`、`agent_policy_decisions`；独立进程 `mcp_server` | 自动修复成功率、待审批写步骤数、策略降级/阻断数、MCP 探活 |
+
+#### Agent 平台（MCP 与 agent_runtime）
+
+- **与 Cursor IDE 内 MCP 的边界**：IDE 侧 MCP 连接 Datadog/Slack 等供开发排障；运行时 **`python3 -m mcp_server.server`** 是项目内 HTTP 工具服务，供 `agent_runtime` 与定时 worker 调用（鉴权 `MCP_ADMIN_TOKEN`），二者进程与权限模型独立。
+- **与 `job_orchestrator` 的关系**：`job_registry.py` 中 `agent.*` 类任务通过 `jobs/run_agent_worker.py` 创建 `agent_runs`，`run.metadata.job_key` 记录对应 `job_key`，便于在「任务调度中心」与 Agent 运营台互查。
+- **API**：`GET /api/agents/health`（公开探活）、`GET /api/agents/mcp-audit`（需 `research_advanced`）、`GET/POST /api/agents/runs*`（读需 `research_advanced`，创建/审批需 `admin_system`）。详见 `docs/mcp_platform_runbook.md`。
+- **一键拉起**：`AGENT_STACK_ENABLED=1` 且配置 `MCP_ADMIN_TOKEN` 时，`start_all.sh` 会后台启动 `mcp_server` 与常驻 `run_agent_worker`（日志 `/tmp/mcp_server.log`、`/tmp/agent_worker.log`）。
 
 ### 4.9 页面 smoke 线
 

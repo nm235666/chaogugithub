@@ -43,6 +43,7 @@ cd /home/zanbo/zanbotest
 
 说明：
 
+- **Agent 栈（可选）**：设置 `AGENT_STACK_ENABLED=1` 且已配置 `MCP_ADMIN_TOKEN` 时，`./start_all.sh` 会额外后台启动 `scripts/run_mcp_server.sh` 与 `jobs/run_agent_worker.py`（详见 `docs/mcp_platform_runbook.md`）。探活可执行 `bash scripts/check_agent_stack_health.sh`（默认请求 `http://127.0.0.1:${PORT:-8002}/api/agents/health`）。
 - 现在主后端、新闻脚本、聊天脚本、回填脚本、LLM 脚本默认都直接读写 PostgreSQL
 - PostgreSQL 是当前唯一主运行库；仓库中若仍存在 SQLite 文件，视为迁移源、兼容保留或历史遗留，不应作为当前主库
 - 只有迁移脚本 `migrate_sqlite_to_postgres.py` / `init_postgres_schema.py` 仍会直接读取 SQLite 源结构

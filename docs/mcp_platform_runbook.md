@@ -113,3 +113,11 @@ curl -s \
 ## 审计
 
 所有 `tools/call` 调用都会写入 `mcp_tool_audit_logs`，包含 tool name、参数、dry-run 状态、执行结果和错误信息。写工具执行前必须先确认审计表可写。
+
+后端提供只读导出：`GET /api/agents/mcp-audit?limit=200&write_only=1`（需登录且具备 `research_advanced`），用于运营台「导出 MCP 审计 JSON」。
+
+## 密钥与写开关（运维约定）
+
+- **令牌轮换**：更新 `MCP_ADMIN_TOKEN` / `BACKEND_ADMIN_TOKEN` 时，同步修改加载 `runtime_env.sh` 的进程、systemd unit、以及反代/Secret；重启 `mcp_server` 与 `backend/server.py` 后生效。
+- **生产写路径**：仓库内 `runtime_env.sh` 默认 `MCP_WRITE_ENABLED=0`；仅在维护窗口临时置 `1`。`AGENT_AUTO_WRITE_ENABLED=1` 且 MCP 写关闭时，漏斗 Agent 只会 dry-run 并记录 `mcp_write_disabled` 警告。
+- **探活**：公开接口 `GET /api/agents/health`（可由 `bash scripts/check_agent_stack_health.sh` 调用）；MCP 进程本体使用 `GET /mcp/health`（需 Bearer）。

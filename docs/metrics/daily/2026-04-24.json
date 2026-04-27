@@ -1,0 +1,18 @@
+{
+  "date": "2026-04-24",
+  "generated_at": "2026-04-23T23:09:10Z",
+  "pipeline_success_rate": 86.0759,
+  "pipeline_passed": 136,
+  "pipeline_failed": 22,
+  "pipeline_total": 158,
+  "pipeline_report_path": "/home/zanbo/zanbotest/docs/metrics/daily/_latest_smoke_report.json",
+  "traceability_rate": null,
+  "traceable_records": 0,
+  "closure_rate": null,
+  "closure_records": 0,
+  "decision_total_records": 0,
+  "sample_insufficient": true,
+  "notes": [
+    "smoke exit_code=1，已使用报告继续计算"
+  ]
+}
