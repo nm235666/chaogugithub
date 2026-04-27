@@ -19,6 +19,7 @@ DECISION_CONTROL_TABLE = "decision_controls"
 DECISION_ACTION_TABLE = "decision_actions"
 DECISION_STRATEGY_RUN_TABLE = "decision_strategy_runs"
 DECISION_STRATEGY_CANDIDATE_TABLE = "decision_strategy_candidates"
+DECISION_STRATEGY_PERFORMANCE_TABLE = "decision_strategy_performance"
 DECISION_TRADE_ADVISOR_TABLE = "decision_trade_advisor_opinions"
 FUNNEL_CANDIDATES_TABLE = "funnel_candidates"
 FUNNEL_TRANSITIONS_TABLE = "funnel_transitions"
@@ -1103,11 +1104,93 @@ def _strategy_selection_degraded_blocks(data_readiness_gate: dict[str, Any]) -> 
     return blocked
 
 
+def _load_strategy_performance_rows(conn) -> dict[str, dict[str, Any]]:
+    if not _table_exists(conn, DECISION_STRATEGY_PERFORMANCE_TABLE):
+        return {}
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT strategy_key, strategy_source, trade_count, closed_trade_count,
+                   win_count, loss_count, neutral_count, pending_count,
+                   total_realized_pnl, avg_return_pct, avg_fit_score,
+                   latest_trade_at, performance_json, updated_at
+            FROM {DECISION_STRATEGY_PERFORMANCE_TABLE}
+            """
+        ).fetchall()
+    except Exception:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item = dict(row) if not isinstance(row, dict) else dict(row)
+        strategy_key = str(item.get("strategy_key") or "").strip()
+        if not strategy_key:
+            continue
+        performance = _parse_json(item.get("performance_json"))
+        item["performance"] = performance if isinstance(performance, dict) else {}
+        item["win_rate"] = item["performance"].get("win_rate")
+        out[strategy_key] = item
+    return out
+
+
+def _strategy_weight_suggestion(performance: dict[str, Any] | None) -> dict[str, Any]:
+    if not performance:
+        return {
+            "action": "keep",
+            "weight_multiplier": 1.0,
+            "confidence": "none",
+            "reason": "暂无策略表现数据，保持基础权重。",
+            "sample_size": 0,
+        }
+    trade_count = int(_as_float(performance.get("trade_count")))
+    closed_count = int(_as_float(performance.get("closed_trade_count")))
+    total_pnl = _as_float(performance.get("total_realized_pnl"))
+    avg_return = performance.get("avg_return_pct")
+    avg_return_pct = _as_float(avg_return) if avg_return is not None else 0.0
+    win_rate = performance.get("win_rate")
+    if win_rate is None:
+        decided = int(_as_float(performance.get("win_count"))) + int(_as_float(performance.get("loss_count"))) + int(_as_float(performance.get("neutral_count")))
+        win_rate = int(_as_float(performance.get("win_count"))) / max(1, decided)
+    win_rate = _as_float(win_rate)
+    confidence = "low" if closed_count < 3 else "medium" if closed_count < 8 else "high"
+    action = "keep"
+    multiplier = 1.0
+    reason = "表现样本有限或结果中性，维持基础权重。"
+    if closed_count >= 3 and (win_rate >= 0.6 or avg_return_pct >= 5.0) and total_pnl > 0:
+        action = "boost"
+        multiplier = 1.15 if confidence == "medium" else 1.25
+        reason = "历史闭环表现较好，提高候选优先级。"
+    elif closed_count >= 3 and (win_rate <= 0.3 or avg_return_pct <= -3.0) and total_pnl < 0:
+        action = "pause" if closed_count >= 5 and win_rate <= 0.2 and avg_return_pct <= -5.0 else "reduce"
+        multiplier = 0.0 if action == "pause" else 0.82
+        reason = "历史闭环表现偏弱，降低候选优先级。" if action == "reduce" else "历史闭环表现显著偏弱，暂时暂停该策略。"
+    return {
+        "action": action,
+        "weight_multiplier": multiplier,
+        "confidence": confidence,
+        "reason": reason,
+        "sample_size": closed_count,
+        "trade_count": trade_count,
+        "closed_trade_count": closed_count,
+        "win_rate": round(win_rate, 4),
+        "total_realized_pnl": round(total_pnl, 2),
+        "avg_return_pct": round(avg_return_pct, 4),
+    }
+
+
+def _strategy_weight_suggestions(performance_by_strategy: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for strategy in _strategy_selection_library():
+        key = str(strategy.get("strategy_key") or "")
+        out[key] = _strategy_weight_suggestion(performance_by_strategy.get(key))
+    return out
+
+
 def _strategy_candidate_for_score(
     score_item: dict[str, Any],
     *,
     strategy: dict[str, Any],
     market_mode: str,
+    weight_suggestion: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     total = _as_float(score_item.get("total_score"))
     trend = _as_float(score_item.get("trend_score"))
@@ -1126,6 +1209,10 @@ def _strategy_candidate_for_score(
     if strategy.get("min_capital_flow") is not None and capital_flow < _as_float(strategy.get("min_capital_flow")):
         return None
 
+    suggestion = weight_suggestion or {"action": "keep", "weight_multiplier": 1.0}
+    if str(suggestion.get("action") or "") == "pause":
+        return None
+
     if strategy["strategy_key"] == "short_momentum":
         fit = total * 0.45 + trend * 0.35 + capital_flow * 0.12 + risk * 0.08
         action_bias = "buy" if total >= 85 and trend >= 60 and risk >= 55 else "watch"
@@ -1135,16 +1222,25 @@ def _strategy_candidate_for_score(
     else:
         fit = risk * 0.45 + total * 0.3 + trend * 0.15 + valuation * 0.1
         action_bias = "watch"
+    base_fit = fit
+    multiplier = _as_float(suggestion.get("weight_multiplier"), 1.0)
+    if multiplier <= 0:
+        return None
+    fit = max(0.0, min(100.0, fit * multiplier))
     rationale = (
         f"{strategy['name']}入选：总分 {total:.1f}，趋势 {trend:.1f}，风险 {risk:.1f}，"
         f"财务 {financial:.1f}，估值 {valuation:.1f}，资金流 {capital_flow:.1f}。"
     )
+    if suggestion.get("action") and suggestion.get("action") != "keep":
+        rationale = f"{rationale} 策略表现建议：{suggestion.get('action')}，{suggestion.get('reason')}"
     return {
         "strategy_key": strategy["strategy_key"],
         "name": score_item.get("name") or score_item.get("ts_code") or "",
         "mode": strategy["mode"],
         "status": "selected",
         "fit_score": round(fit, 2),
+        "base_fit_score": round(base_fit, 2),
+        "strategy_weight_multiplier": round(multiplier, 4),
         "llm_feasibility_score": round(fit, 2),
         "llm_feasibility_label": _strategy_feasibility_label(fit),
         "llm_explanation": rationale,
@@ -1161,6 +1257,7 @@ def _strategy_candidate_for_score(
         "ts_code": str(score_item.get("ts_code") or "").upper(),
         "stock_name": score_item.get("name") or "",
         "action_bias": action_bias,
+        "weight_suggestion": suggestion,
         "score_date": score_item.get("score_date") or "",
         "evidence": {
             "total_score": round(total, 2),
@@ -1176,6 +1273,7 @@ def _strategy_candidate_for_score(
 
 def _build_strategy_selection_packet(
     *,
+    conn,
     score_rows: list[dict[str, Any]],
     market_regime: dict[str, Any],
     data_readiness_gate: dict[str, Any],
@@ -1183,11 +1281,25 @@ def _build_strategy_selection_packet(
 ) -> dict[str, Any]:
     market_mode = str(market_regime.get("mode") or "neutral")
     blocked_strategies = _strategy_selection_degraded_blocks(data_readiness_gate)
-    strategies = [item for item in _strategy_selection_library() if item["strategy_key"] not in blocked_strategies]
+    performance_by_strategy = _load_strategy_performance_rows(conn)
+    weight_suggestions = _strategy_weight_suggestions(performance_by_strategy)
+    paused_by_performance = {
+        key for key, suggestion in weight_suggestions.items() if str(suggestion.get("action") or "") == "pause"
+    }
+    strategies = [
+        item
+        for item in _strategy_selection_library()
+        if item["strategy_key"] not in blocked_strategies and item["strategy_key"] not in paused_by_performance
+    ]
     candidates_by_code: dict[str, dict[str, Any]] = {}
     for score_item in score_rows:
         for strategy in strategies:
-            candidate = _strategy_candidate_for_score(score_item, strategy=strategy, market_mode=market_mode)
+            candidate = _strategy_candidate_for_score(
+                score_item,
+                strategy=strategy,
+                market_mode=market_mode,
+                weight_suggestion=weight_suggestions.get(str(strategy.get("strategy_key") or "")),
+            )
             if not candidate:
                 continue
             code = str(candidate.get("ts_code") or "").upper()
@@ -1204,6 +1316,9 @@ def _build_strategy_selection_packet(
         "market_mode": market_mode,
         "data_readiness_status": data_readiness_gate.get("status"),
         "blocked_strategies": sorted(blocked_strategies),
+        "paused_by_performance": sorted(paused_by_performance),
+        "strategy_weight_suggestions": weight_suggestions,
+        "performance_strategy_count": len(performance_by_strategy),
         "best_strategy": candidates[0]["mode"] if candidates else "",
         "best_fit_score": _as_float(candidates[0].get("fit_score")) if candidates else 0,
     }
@@ -1212,7 +1327,13 @@ def _build_strategy_selection_packet(
         "source_mode": "strategy_selection",
         "market_regime": market_regime,
         "summary": summary,
-        "generator_rules": strategies,
+        "generator_rules": [
+            {
+                **strategy,
+                "weight_suggestion": weight_suggestions.get(str(strategy.get("strategy_key") or "")),
+            }
+            for strategy in strategies
+        ],
         "strategies": candidates,
         "all_strategies": candidates,
         "run": {"llm_model": "", "llm_enabled": False},
@@ -1251,6 +1372,7 @@ def run_strategy_selection_agent(
             }
         else:
             packet = _build_strategy_selection_packet(
+                conn=conn,
                 score_rows=score_rows,
                 market_regime=market_regime,
                 data_readiness_gate=data_readiness_gate,
@@ -1689,6 +1811,162 @@ def _today_action_item(
     }
 
 
+TODAY_ACTION_CONDENSER_LIMITS = {
+    "focus": 8,
+    "candidate": 20,
+    "watchlist": 50,
+}
+
+
+def _today_action_agent_confidence(item: dict[str, Any]) -> float:
+    return _as_float((item.get("agent_opinion") or {}).get("confidence"))
+
+
+def _today_action_strategy_fit(item: dict[str, Any]) -> float:
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    for key in ("strategy_fit_score", "fit_score", "llm_feasibility_score", "total_score"):
+        value = _as_float(evidence.get(key))
+        if value > 0:
+            return value
+    return 0.0
+
+
+def _today_action_strategy_context(strategy_candidate: dict[str, Any], strategy_payload: dict[str, Any]) -> dict[str, Any]:
+    strategy_key = str(strategy_payload.get("strategy_key") or strategy_candidate.get("mode") or "").strip()
+    run_id = strategy_candidate.get("run_id")
+    rank = strategy_candidate.get("rank")
+    fit_score = strategy_payload.get("fit_score") or strategy_candidate.get("fit_score")
+    action_bias = strategy_payload.get("action_bias") or strategy_candidate.get("action_bias") or ""
+    weight_suggestion = strategy_payload.get("weight_suggestion") if isinstance(strategy_payload.get("weight_suggestion"), dict) else {}
+    return {
+        "strategy_key": strategy_key,
+        "strategy_run_id": run_id,
+        "strategy_run_key": strategy_candidate.get("run_key") or "",
+        "strategy_candidate_rank": rank,
+        "strategy_fit_score": _as_float(fit_score),
+        "strategy_action_bias": action_bias,
+        "strategy_source": "strategy_selection",
+        "strategy_weight_action": weight_suggestion.get("action") or "keep",
+        "strategy_weight_multiplier": _as_float(strategy_payload.get("strategy_weight_multiplier"), 1.0),
+        "strategy_weight_reason": weight_suggestion.get("reason") or "",
+        # Compatibility aliases for existing UI/debug code.
+        "run_id": run_id,
+        "run_key": strategy_candidate.get("run_key") or "",
+        "rank": rank,
+        "fit_score": _as_float(fit_score),
+        "action_bias": action_bias,
+        "summary": strategy_payload.get("summary") or strategy_candidate.get("summary") or "",
+    }
+
+
+def _today_action_urgency_score(item: dict[str, Any]) -> float:
+    action = str(item.get("action_type") or "")
+    rule_tier = str(item.get("rule_tier") or "")
+    current_quantity = int(_as_float(item.get("current_quantity")))
+    risk_level = str((item.get("risk") or {}).get("level") or "")
+    risk_bonus = {"high": 18.0, "medium": 8.0, "low": 0.0}.get(risk_level, 0.0)
+    action_base = {
+        "close": 120.0,
+        "reduce": 105.0,
+        "sell": 105.0,
+        "add": 92.0,
+        "buy": 88.0,
+        "hold": 45.0,
+        "watch": 30.0,
+        "avoid": 5.0,
+    }.get(action, 0.0)
+    tier_bonus = {
+        "strong_buy": 10.0,
+        "probe_buy": 2.0,
+        "add": 6.0,
+        "close": 12.0,
+        "reduce": 8.0,
+    }.get(rule_tier, 0.0)
+    position_bonus = 8.0 if current_quantity > 0 else 0.0
+    executable_bonus = 12.0 if item.get("can_create_order") or item.get("agent_can_create_order") else 0.0
+    agent_bonus = _today_action_agent_confidence(item) * 0.12
+    fit_bonus = _today_action_strategy_fit(item) * 0.08
+    return round(action_base + tier_bonus + position_bonus + executable_bonus + risk_bonus + agent_bonus + fit_bonus, 4)
+
+
+def _today_action_sort_key(item: dict[str, Any]) -> tuple[float, float, float, str]:
+    return (
+        -_today_action_urgency_score(item),
+        -_today_action_agent_confidence(item),
+        -_today_action_strategy_fit(item),
+        str(item.get("ts_code") or ""),
+    )
+
+
+def _today_action_bucket(item: dict[str, Any]) -> str:
+    action = str(item.get("action_type") or "")
+    rule_tier = str(item.get("rule_tier") or "")
+    current_quantity = int(_as_float(item.get("current_quantity")))
+    executable = bool(item.get("can_create_order") or item.get("agent_can_create_order"))
+    if current_quantity > 0 and action in {"close", "reduce", "sell"}:
+        return "focus"
+    if executable and action in {"buy", "add", "close", "reduce", "sell"} and rule_tier != "probe_buy":
+        return "focus"
+    if executable or rule_tier == "probe_buy" or action in {"buy", "add"}:
+        return "candidate"
+    return "watchlist"
+
+
+def _condense_today_actions(items: list[dict[str, Any]], *, limit: int) -> dict[str, Any]:
+    raw_groups: dict[str, list[dict[str, Any]]] = {"focus": [], "candidate": [], "watchlist": []}
+    for item in items:
+        bucket = _today_action_bucket(item)
+        item["action_group"] = bucket
+        item["action_group_label"] = {
+            "focus": "今日必处理",
+            "candidate": "今日候选",
+            "watchlist": "观察池",
+        }.get(bucket, bucket)
+        item["action_priority_score"] = _today_action_urgency_score(item)
+        raw_groups[bucket].append(item)
+
+    focus = sorted(raw_groups["focus"], key=_today_action_sort_key)[: TODAY_ACTION_CONDENSER_LIMITS["focus"]]
+    focus_ids = {str(item.get("id") or "") for item in focus}
+    overflow_focus = [item for item in raw_groups["focus"] if str(item.get("id") or "") not in focus_ids]
+    candidate_source = overflow_focus + raw_groups["candidate"]
+    candidate_cap = min(TODAY_ACTION_CONDENSER_LIMITS["candidate"], max(0, int(limit) - len(focus)))
+    candidates = sorted(candidate_source, key=_today_action_sort_key)[:candidate_cap]
+    candidate_ids = {str(item.get("id") or "") for item in candidates}
+    watch_source = [item for item in candidate_source if str(item.get("id") or "") not in candidate_ids] + raw_groups["watchlist"]
+    watch_cap = min(TODAY_ACTION_CONDENSER_LIMITS["watchlist"], max(0, int(limit) - len(focus) - len(candidates)))
+    watchlist = sorted(watch_source, key=_today_action_sort_key)[:watch_cap]
+
+    for item in focus:
+        item["action_group"] = "focus"
+        item["action_group_label"] = "今日必处理"
+    for item in candidates:
+        item["action_group"] = "candidate"
+        item["action_group_label"] = "今日候选"
+    for item in watchlist:
+        item["action_group"] = "watchlist"
+        item["action_group_label"] = "观察池"
+
+    return {
+        "focus_actions": focus,
+        "candidate_actions": candidates,
+        "watchlist_actions": watchlist,
+        "items": focus + candidates + watchlist,
+        "condenser": {
+            "version": "today_action_condenser_v1",
+            "limits": dict(TODAY_ACTION_CONDENSER_LIMITS),
+            "raw_counts": {key: len(value) for key, value in raw_groups.items()},
+            "shown_counts": {
+                "focus": len(focus),
+                "candidate": len(candidates),
+                "watchlist": len(watchlist),
+            },
+            "total_raw": len(items),
+            "total_shown": len(focus) + len(candidates) + len(watchlist),
+            "sort_basis": "持仓风险/必卖动作优先，其次可执行买入、Agent 置信度、策略适配分和个股分数。",
+        },
+    }
+
+
 def query_decision_today_actions(*, sqlite3_module, db_path: str, limit: int = 30) -> dict[str, Any]:
     conn = sqlite3_module.connect(db_path)
     conn.row_factory = sqlite3_module.Row
@@ -1894,30 +2172,42 @@ def query_decision_today_actions(*, sqlite3_module, db_path: str, limit: int = 3
             ]
             if strategy_candidate:
                 reason = f"{strategy_payload.get('rationale') or strategy_candidate.get('rationale') or reason} 今日动作：{reason}"
-            items.append(
-                _today_action_item(
-                    action_type=action_type,
-                    horizon="short",
-                    score_item=score_item,
-                    position=None,
-                    price=price,
-                    quantity=quantity,
-                    target_position_pct=target_pct,
-                    reason=reason,
-                    risk_note=_build_stock_risk(score_item),
-                    source="strategy_selection" if strategy_candidate else "score_shortlist",
-                    market_regime=market_regime,
-                    risk_gate=risk_gate,
-                    account_equity=account_equity,
-                    rule_tier=rule_tier,
-                    decision_path=decision_path,
-                )
+            action_item = _today_action_item(
+                action_type=action_type,
+                horizon="short",
+                score_item=score_item,
+                position=None,
+                price=price,
+                quantity=quantity,
+                target_position_pct=target_pct,
+                reason=reason,
+                risk_note=_build_stock_risk(score_item),
+                source="strategy_selection" if strategy_candidate else "score_shortlist",
+                market_regime=market_regime,
+                risk_gate=risk_gate,
+                account_equity=account_equity,
+                rule_tier=rule_tier,
+                decision_path=decision_path,
             )
+            if strategy_candidate:
+                action_item["strategy"] = _today_action_strategy_context(strategy_candidate, strategy_payload)
+                action_item["evidence"].update(
+                    {
+                        "strategy_key": action_item["strategy"]["strategy_key"],
+                        "strategy_run_id": action_item["strategy"]["strategy_run_id"],
+                        "strategy_run_key": action_item["strategy"]["strategy_run_key"],
+                        "strategy_candidate_rank": action_item["strategy"]["strategy_candidate_rank"],
+                        "strategy_fit_score": action_item["strategy"]["strategy_fit_score"],
+                        "strategy_action_bias": action_item["strategy"]["strategy_action_bias"],
+                        "strategy_source": action_item["strategy"]["strategy_source"],
+                    }
+                )
+            items.append(action_item)
 
-        priority = {"close": 0, "reduce": 1, "buy": 2, "add": 3, "hold": 4, "watch": 5}
-        items = sorted(items, key=lambda item: (priority.get(str(item.get("action_type")), 9), -_as_float((item.get("evidence") or {}).get("total_score"))))[:limit]
         opinion_cache = _load_trade_advisor_opinions(conn, str(latest_score_date or ""))
         _attach_trade_advisor_opinions(items, opinion_cache=opinion_cache, risk_gate=risk_gate)
+        condensed = _condense_today_actions(items, limit=limit)
+        items = condensed["items"]
         summary_counts: dict[str, int] = defaultdict(int)
         for item in items:
             summary_counts[str(item.get("action_type") or "unknown")] += 1
@@ -1939,7 +2229,15 @@ def query_decision_today_actions(*, sqlite3_module, db_path: str, limit: int = 3
                 "candidate_source": candidate_source,
                 "strategy_selection_count": len(strategy_selected_codes),
                 "by_action": dict(summary_counts),
+                "focus_count": len(condensed["focus_actions"]),
+                "candidate_count": len(condensed["candidate_actions"]),
+                "watchlist_count": len(condensed["watchlist_actions"]),
+                "raw_total": int((condensed.get("condenser") or {}).get("total_raw") or len(items)),
             },
+            "condenser": condensed["condenser"],
+            "focus_actions": condensed["focus_actions"],
+            "candidate_actions": condensed["candidate_actions"],
+            "watchlist_actions": condensed["watchlist_actions"],
             "items": items,
         }
     finally:

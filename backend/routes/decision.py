@@ -384,6 +384,8 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         evidence_sources_raw = payload.get("evidence_sources")
         evidence_sources = evidence_sources_raw if isinstance(evidence_sources_raw, list) else []
         evidence_packet = payload.get("evidence_packet") if isinstance(payload.get("evidence_packet"), dict) else {}
+        strategy_context = payload.get("strategy") if isinstance(payload.get("strategy"), dict) else {}
+        today_action_payload = payload.get("today_action") if isinstance(payload.get("today_action"), dict) else {}
         missing_evidence_raw = payload.get("missing_evidence")
         missing_evidence = [str(x) for x in missing_evidence_raw] if isinstance(missing_evidence_raw, list) else []
         evidence_chain_complete_raw = payload.get("evidence_chain_complete")
@@ -414,6 +416,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
             action_payload["evidence_sources"] = evidence_sources
         if evidence_packet:
             action_payload["evidence_packet"] = evidence_packet
+        if strategy_context:
+            action_payload["strategy"] = strategy_context
+        if today_action_payload:
+            action_payload["today_action"] = today_action_payload
         if missing_evidence:
             action_payload["missing_evidence"] = missing_evidence
         if execution_status:

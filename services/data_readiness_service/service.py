@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,14 @@ def _data_readiness_agent_timeout_seconds() -> int:
         return max(2, min(30, int(raw)))
     except (TypeError, ValueError):
         return 8
+
+
+def _data_readiness_backfill_timeout_seconds() -> int:
+    raw = os.getenv("DATA_READINESS_BACKFILL_TIMEOUT_SECONDS", "600")
+    try:
+        return max(30, min(3600, int(raw)))
+    except (TypeError, ValueError):
+        return 600
 
 
 def _data_readiness_path_selector_enabled() -> bool:
@@ -299,6 +308,7 @@ def _action_catalog() -> dict[str, dict[str, Any]]:
             "issue_codes": ["price_empty", "price_latest_missing", "price_latest_partial"],
             "priority": 10,
             "risk": "medium",
+            "timeout_seconds": 900,
         },
         "refresh_valuation": {
             "reason": "补最近估值数据",
@@ -306,6 +316,7 @@ def _action_catalog() -> dict[str, dict[str, Any]]:
             "issue_codes": ["valuation_recent_missing"],
             "priority": 30,
             "risk": "low",
+            "timeout_seconds": 420,
         },
         "refresh_capital_flow": {
             "reason": "补最近资金流数据",
@@ -313,6 +324,7 @@ def _action_catalog() -> dict[str, dict[str, Any]]:
             "issue_codes": ["flow_recent_missing"],
             "priority": 30,
             "risk": "medium",
+            "timeout_seconds": 600,
         },
         "refresh_risk_scenarios": {
             "reason": "补风险情景数据",
@@ -320,6 +332,7 @@ def _action_catalog() -> dict[str, dict[str, Any]]:
             "issue_codes": ["risk_recent_missing", "risk_recent_partial"],
             "priority": 20,
             "risk": "low",
+            "timeout_seconds": 480,
         },
         "build_price_rollups": {
             "reason": "补 20/30/90/365 日流动性汇总",
@@ -327,6 +340,7 @@ def _action_catalog() -> dict[str, dict[str, Any]]:
             "issue_codes": ["liquidity_rollup_missing", "rollup20_missing"],
             "priority": 25,
             "risk": "low",
+            "timeout_seconds": 300,
         },
         "refresh_financials": {
             "reason": "补最近财务数据",
@@ -334,6 +348,7 @@ def _action_catalog() -> dict[str, dict[str, Any]]:
             "issue_codes": ["financial_recent_missing"],
             "priority": 40,
             "risk": "medium",
+            "timeout_seconds": 900,
         },
         "refresh_scores": {
             "reason": "补数后重算股票评分",
@@ -341,6 +356,7 @@ def _action_catalog() -> dict[str, dict[str, Any]]:
             "issue_codes": ["score_latest_missing"],
             "priority": 90,
             "risk": "low",
+            "timeout_seconds": 600,
         },
     }
 
@@ -354,6 +370,7 @@ def _materialize_action(action_key: str, spec: dict[str, Any], *, selected_by: s
         "selected_by": selected_by,
         "selected_reason": selected_reason,
         "risk": spec.get("risk"),
+        "timeout_seconds": _as_int(spec.get("timeout_seconds"), 600),
     }
 
 
@@ -479,13 +496,26 @@ def _planned_actions(snapshot: dict[str, Any], *, ai_enabled: bool = True, path_
 
 def _run_action(command: list[str], *, timeout_seconds: int) -> dict[str, Any]:
     started = _utc_now()
+    started_monotonic = time.monotonic()
+    effective_timeout = max(30, int(timeout_seconds))
+    if not command:
+        return {
+            "status": "skipped",
+            "returncode": None,
+            "started_at": started,
+            "finished_at": _utc_now(),
+            "duration_seconds": round(time.monotonic() - started_monotonic, 3),
+            "timeout_seconds": effective_timeout,
+            "stdout_tail": "",
+            "stderr_tail": "empty_command",
+        }
     try:
         proc = subprocess.run(
             command,
             cwd=str(ROOT_DIR),
             capture_output=True,
             text=True,
-            timeout=max(30, int(timeout_seconds)),
+            timeout=effective_timeout,
             check=False,
         )
         return {
@@ -493,6 +523,8 @@ def _run_action(command: list[str], *, timeout_seconds: int) -> dict[str, Any]:
             "returncode": proc.returncode,
             "started_at": started,
             "finished_at": _utc_now(),
+            "duration_seconds": round(time.monotonic() - started_monotonic, 3),
+            "timeout_seconds": effective_timeout,
             "stdout_tail": (proc.stdout or "")[-2000:],
             "stderr_tail": (proc.stderr or "")[-2000:],
         }
@@ -502,8 +534,11 @@ def _run_action(command: list[str], *, timeout_seconds: int) -> dict[str, Any]:
             "returncode": None,
             "started_at": started,
             "finished_at": _utc_now(),
+            "duration_seconds": round(time.monotonic() - started_monotonic, 3),
+            "timeout_seconds": effective_timeout,
             "stdout_tail": str(exc.stdout or "")[-2000:],
             "stderr_tail": str(exc.stderr or "")[-2000:],
+            "error": f"command_timeout_after_{effective_timeout}s",
         }
 
 
@@ -532,6 +567,8 @@ def _compact_action_for_ai(action: dict[str, Any]) -> dict[str, Any]:
         "reason": action.get("reason"),
         "status": action.get("status"),
         "returncode": action.get("returncode"),
+        "duration_seconds": action.get("duration_seconds"),
+        "timeout_seconds": action.get("timeout_seconds"),
         "stderr_tail": str(action.get("stderr_tail") or "")[-500:],
     }
 
@@ -698,11 +735,15 @@ def run_data_readiness_agent(
         )
         mode = "dry_run" if dry_run or not auto_fix else "auto_fix"
         if auto_fix and not dry_run:
+            global_timeout = min(max(30, int(command_timeout_seconds or 0)), _data_readiness_backfill_timeout_seconds())
             for action in actions:
-                result = _run_action(list(action.get("command") or []), timeout_seconds=command_timeout_seconds)
+                action_timeout = min(global_timeout, max(30, _as_int(action.get("timeout_seconds"), global_timeout)))
+                result = _run_action(list(action.get("command") or []), timeout_seconds=action_timeout)
                 action.update(result)
         after = _coverage_snapshot(conn) if auto_fix and not dry_run and actions else before
         failed_actions = [a for a in actions if str(a.get("status") or "") in {"failed", "timeout"}]
+        timeout_actions = [a for a in actions if str(a.get("status") or "") == "timeout"]
+        skipped_actions = [a for a in actions if str(a.get("status") or "") == "skipped"]
         final_status = str(after.get("status") or before.get("status") or "blocked")
         if failed_actions and final_status == "ready":
             final_status = "degraded"
@@ -719,6 +760,9 @@ def run_data_readiness_agent(
             "after_status": after.get("status"),
             "actions_total": len(actions),
             "actions_failed": len(failed_actions),
+            "actions_timeout": len(timeout_actions),
+            "actions_skipped": len(skipped_actions),
+            "actions_done": sum(1 for a in actions if str(a.get("status") or "") == "done"),
             "mode": mode,
             "action_selection": action_selection,
             "ai_diagnosis": ai_diagnosis,

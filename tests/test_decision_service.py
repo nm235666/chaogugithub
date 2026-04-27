@@ -801,6 +801,11 @@ class DecisionServiceTest(unittest.TestCase):
         self.assertEqual(by_code["000003.SZ"]["order_payload"]["chain_order_no"], "33333333")
         self.assertIn("清仓", by_code["000003.SZ"]["reason"]["sell_reason"])
         self.assertGreaterEqual(payload["summary"]["executable"], 3)
+        self.assertEqual(payload["condenser"]["version"], "today_action_condenser_v1")
+        self.assertGreaterEqual(payload["summary"]["focus_count"], 3)
+        self.assertEqual(len(payload["focus_actions"]), payload["summary"]["focus_count"])
+        self.assertTrue(all(item["action_group"] == "focus" for item in payload["focus_actions"]))
+        self.assertEqual(payload["items"][: len(payload["focus_actions"])], payload["focus_actions"])
 
     def test_today_actions_blocked_by_data_readiness_gate(self):
         db_path = self._mk_db()
@@ -882,6 +887,109 @@ class DecisionServiceTest(unittest.TestCase):
         self.assertEqual(item["ts_code"], "000001.SZ")
         self.assertEqual(item["evidence"]["source"], "strategy_selection")
         self.assertIn("策略来源", item["execution_flow"]["decision_path"][2])
+        self.assertEqual(item["strategy"]["strategy_key"], "short_momentum")
+        self.assertEqual(item["strategy"]["strategy_source"], "strategy_selection")
+        self.assertEqual(item["evidence"]["strategy_key"], "short_momentum")
+        self.assertIn("strategy_run_id", item["strategy"])
+        self.assertIn("strategy_candidate_rank", item["strategy"])
+        self.assertGreater(item["strategy"]["strategy_fit_score"], 0)
+
+    def test_strategy_selection_agent_applies_strategy_performance_weights(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="000001.SZ", name="动量强势股", total_score=91.0, trend_score=82.0, risk_score=75.0)
+            self._insert_score(conn, ts_code="000003.SZ", name="防守观察股", total_score=78.0, trend_score=48.0, risk_score=88.0)
+            conn.execute(
+                """
+                CREATE TABLE decision_strategy_performance (
+                    strategy_key TEXT PRIMARY KEY,
+                    strategy_source TEXT NOT NULL DEFAULT '',
+                    trade_count INTEGER NOT NULL DEFAULT 0,
+                    closed_trade_count INTEGER NOT NULL DEFAULT 0,
+                    win_count INTEGER NOT NULL DEFAULT 0,
+                    loss_count INTEGER NOT NULL DEFAULT 0,
+                    neutral_count INTEGER NOT NULL DEFAULT 0,
+                    pending_count INTEGER NOT NULL DEFAULT 0,
+                    total_realized_pnl REAL NOT NULL DEFAULT 0,
+                    avg_return_pct REAL,
+                    avg_fit_score REAL,
+                    latest_trade_at TEXT NOT NULL DEFAULT '',
+                    performance_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO decision_strategy_performance (
+                    strategy_key, strategy_source, trade_count, closed_trade_count,
+                    win_count, loss_count, neutral_count, pending_count,
+                    total_realized_pnl, avg_return_pct, avg_fit_score,
+                    latest_trade_at, performance_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "short_momentum",
+                    "strategy_selection",
+                    6,
+                    6,
+                    5,
+                    1,
+                    0,
+                    0,
+                    1200.0,
+                    8.5,
+                    0.8,
+                    "2026-04-20T00:00:00Z",
+                    json.dumps({"win_rate": 0.8333}),
+                    "2026-04-20T00:00:00Z",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO decision_strategy_performance (
+                    strategy_key, strategy_source, trade_count, closed_trade_count,
+                    win_count, loss_count, neutral_count, pending_count,
+                    total_realized_pnl, avg_return_pct, avg_fit_score,
+                    latest_trade_at, performance_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "risk_defensive",
+                    "strategy_selection",
+                    6,
+                    6,
+                    1,
+                    5,
+                    0,
+                    0,
+                    -900.0,
+                    -6.5,
+                    0.6,
+                    "2026-04-20T00:00:00Z",
+                    json.dumps({"win_rate": 0.1667}),
+                    "2026-04-20T00:00:00Z",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = decision_service.run_strategy_selection_agent(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+
+        self.assertTrue(result["ok"])
+        suggestions = result["summary"]["strategy_weight_suggestions"]
+        self.assertEqual(suggestions["short_momentum"]["action"], "boost")
+        self.assertEqual(suggestions["risk_defensive"]["action"], "pause")
+        self.assertIn("risk_defensive", result["summary"]["paused_by_performance"])
+        self.assertTrue(result["candidates"])
+        self.assertTrue(all(item["strategy_key"] != "risk_defensive" for item in result["candidates"]))
+        momentum = next(item for item in result["candidates"] if item["strategy_key"] == "short_momentum")
+        self.assertGreater(momentum["fit_score"], momentum["base_fit_score"])
+        self.assertEqual(momentum["weight_suggestion"]["action"], "boost")
 
     def test_strategy_selection_agent_blocked_by_data_readiness(self):
         db_path = self._mk_db()

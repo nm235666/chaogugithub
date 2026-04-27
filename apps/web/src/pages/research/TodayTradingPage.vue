@@ -37,7 +37,7 @@
         </div>
       </PageSection>
 
-      <PageSection title="今日动作清单" :subtitle="`共 ${items.length} 条，按清仓/减仓/新买/加仓优先排序`">
+      <PageSection title="今日动作清单" :subtitle="`优先处理 ${focusActions.length} 个，候选 ${candidateActions.length} 个，观察 ${watchlistActions.length} 个`">
         <template #action>
           <button class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]" @click="() => refetch()">
             刷新
@@ -63,6 +63,12 @@
               {{ tab.label }} <span class="opacity-80">{{ tabCount(tab.key) }}</span>
             </button>
           </div>
+          <div v-if="payload.condenser?.sort_basis" class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs text-[var(--muted)]">
+            收敛规则：{{ payload.condenser.sort_basis }}
+          </div>
+          <div v-if="!visibleItems.length" class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-8 text-center text-sm text-[var(--muted)]">
+            当前分层暂无动作，可切换到其他分层查看。
+          </div>
           <article
             v-for="item in visibleItems"
             :key="item.id"
@@ -77,6 +83,7 @@
                   <span v-if="item.name" class="text-sm text-[var(--muted)]">{{ item.name }}</span>
                   <span class="metric-chip">{{ item.horizon === 'long' ? '长线持仓' : '短线动作' }}</span>
                   <span v-if="item.rule_tier_label" class="metric-chip">规则 {{ item.rule_tier_label }}</span>
+                  <span v-if="item.action_group_label" class="metric-chip">{{ item.action_group_label }}</span>
                   <span class="metric-chip">{{ chainLabel(item) }}</span>
                 </div>
                 <p class="mt-2 text-sm text-[var(--ink)]">{{ item.reason?.summary || '-' }}</p>
@@ -141,6 +148,12 @@
               <span class="metric-chip">趋势 {{ formatScore(item.evidence?.trend_score) }}</span>
               <span class="metric-chip">风险 {{ formatScore(item.evidence?.risk_score) }}</span>
               <span v-if="item.evidence?.industry" class="metric-chip">行业 {{ item.evidence.industry }}</span>
+              <span v-if="item.strategy?.strategy_key" class="metric-chip">策略 {{ item.strategy.strategy_key }}</span>
+              <span v-if="item.strategy?.strategy_weight_action" :class="strategyWeightClass(item.strategy.strategy_weight_action)" :title="item.strategy.strategy_weight_reason || ''">
+                权重 {{ strategyWeightLabel(item.strategy.strategy_weight_action) }}
+                <template v-if="item.strategy.strategy_weight_multiplier">×{{ formatScore(item.strategy.strategy_weight_multiplier) }}</template>
+              </span>
+              <span v-if="item.action_priority_score" class="metric-chip">优先级 {{ formatScore(item.action_priority_score) }}</span>
               <span class="metric-chip">来源 {{ item.source || item.evidence?.source || '-' }}</span>
             </div>
           </article>
@@ -156,32 +169,35 @@ import { RouterLink } from 'vue-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
-import { fetchDecisionTodayActions, refreshDecisionTradeAdvisor, type TodayActionItem } from '../../services/api/decision'
+import { fetchDecisionTodayActions, recordDecisionAction, refreshDecisionTradeAdvisor, type TodayActionItem } from '../../services/api/decision'
 import { createPortfolioOrder } from '../../services/api/portfolio'
 
 const queryClient = useQueryClient()
 const message = ref('')
 const creatingId = ref('')
 const refreshingAgentId = ref('')
-const activeTab = ref<'all' | 'executable' | 'blocked'>('all')
+const activeTab = ref<'focus' | 'candidate' | 'watchlist'>('focus')
 const actionTabs = [
-  { key: 'all', label: '全部动作' },
-  { key: 'executable', label: '可生成计划单' },
-  { key: 'blocked', label: '观察/持有/阻断' },
+  { key: 'focus', label: '今日必处理' },
+  { key: 'candidate', label: '今日候选' },
+  { key: 'watchlist', label: '观察池' },
 ] as const
 
 const { data, isPending, isError, error, refetch } = useQuery({
   queryKey: ['decision-today-actions'],
-  queryFn: () => fetchDecisionTodayActions({ limit: 40 }),
+  queryFn: () => fetchDecisionTodayActions({ limit: 80 }),
   staleTime: 60 * 1000,
 })
 
 const payload = computed(() => data.value || {})
 const items = computed<TodayActionItem[]>(() => payload.value.items || [])
+const focusActions = computed<TodayActionItem[]>(() => payload.value.focus_actions || deriveActionGroup('focus'))
+const candidateActions = computed<TodayActionItem[]>(() => payload.value.candidate_actions || deriveActionGroup('candidate'))
+const watchlistActions = computed<TodayActionItem[]>(() => payload.value.watchlist_actions || deriveActionGroup('watchlist'))
 const visibleItems = computed(() => {
-  if (activeTab.value === 'executable') return items.value.filter((item) => item.can_create_order)
-  if (activeTab.value === 'blocked') return items.value.filter((item) => !item.can_create_order)
-  return items.value
+  if (activeTab.value === 'candidate') return candidateActions.value
+  if (activeTab.value === 'watchlist') return watchlistActions.value
+  return focusActions.value
 })
 const summary = computed<Record<string, any>>(() => payload.value.summary || {})
 const account = computed<Record<string, any>>(() => payload.value.account || {})
@@ -198,7 +214,7 @@ const riskGateClass = computed(() =>
 )
 
 const createPlanMutation = useMutation({
-  mutationFn: (args: { item: TodayActionItem; useAgent?: boolean }) => {
+  mutationFn: async (args: { item: TodayActionItem; useAgent?: boolean }) => {
     const item = args.item
     const orderPayload = (args.useAgent ? item.agent_order_payload : item.order_payload) || {
       ts_code: item.ts_code,
@@ -207,7 +223,63 @@ const createPlanMutation = useMutation({
       size: Number(item.quantity || 0),
       note: item.reason?.summary || '',
     }
-    return createPortfolioOrder(orderPayload)
+    const decisionAction = await recordDecisionAction({
+      action_type: 'confirm',
+      ts_code: item.ts_code,
+      stock_name: item.name || '',
+      note: orderPayload.note || item.reason?.summary || '',
+      snapshot_date: payload.value.snapshot_date || '',
+      idempotency_key: [
+        'today-trading',
+        payload.value.snapshot_date || '',
+        item.id,
+        args.useAgent ? 'agent' : 'rule',
+        orderPayload.action_type,
+        orderPayload.size,
+        orderPayload.planned_price,
+      ].join(':'),
+      context: {
+        source: 'today_trading',
+        action_group: item.action_group,
+        action_group_label: item.action_group_label,
+        action_priority_score: item.action_priority_score,
+        use_agent: Boolean(args.useAgent),
+        rule_tier: item.rule_tier,
+        rule_tier_label: item.rule_tier_label,
+        execution_flow: item.execution_flow,
+      },
+      strategy: item.strategy || {},
+      today_action: {
+        id: item.id,
+        horizon: item.horizon,
+        action_type: item.action_type,
+        action_label: item.action_label,
+        source: item.source,
+        reason: item.reason,
+        risk: item.risk,
+        evidence: item.evidence,
+        agent_opinion: item.agent_opinion,
+      },
+      evidence_packet: {
+        today_action_id: item.id,
+        source: item.source,
+        evidence: item.evidence || {},
+        risk: item.risk || {},
+        agent_opinion: item.agent_opinion || {},
+        order_payload: orderPayload,
+      },
+      evidence_chain_complete: true,
+      execution_status: 'planned',
+      position_recommendation: item.target_position_pct ? `${item.target_position_pct}%` : '',
+      target_position_pct: Number(item.target_position_pct || 0),
+      priority: item.action_group === 'focus' ? 'high' : item.action_group === 'candidate' ? 'medium' : 'low',
+      trigger_reason: item.reason?.summary || '',
+    })
+    const decisionActionId = decisionAction?.id || decisionAction?.trace?.action_id || decisionAction?.action_id
+    return createPortfolioOrder({
+      ...orderPayload,
+      decision_action_id: decisionActionId,
+    })
   },
   onMutate: ({ item, useAgent }) => {
     creatingId.value = item.id
@@ -272,9 +344,25 @@ function isRefreshingAgent(item: TodayActionItem): boolean {
 }
 
 function tabCount(key: string): number {
-  if (key === 'executable') return items.value.filter((item) => item.can_create_order).length
-  if (key === 'blocked') return items.value.filter((item) => !item.can_create_order).length
-  return items.value.length
+  if (key === 'candidate') return candidateActions.value.length
+  if (key === 'watchlist') return watchlistActions.value.length
+  return focusActions.value.length
+}
+
+function fallbackActionGroup(item: TodayActionItem): 'focus' | 'candidate' | 'watchlist' {
+  if (item.action_group === 'focus' || item.action_group === 'candidate' || item.action_group === 'watchlist') return item.action_group
+  const action = item.action_type
+  const tier = item.rule_tier
+  const currentQuantity = Number(item.current_quantity || 0)
+  const executable = Boolean(item.can_create_order || item.agent_can_create_order)
+  if (currentQuantity > 0 && ['close', 'reduce', 'sell'].includes(action)) return 'focus'
+  if (executable && ['buy', 'add', 'close', 'reduce', 'sell'].includes(action) && tier !== 'probe_buy') return 'focus'
+  if (executable || tier === 'probe_buy' || ['buy', 'add'].includes(action)) return 'candidate'
+  return 'watchlist'
+}
+
+function deriveActionGroup(group: 'focus' | 'candidate' | 'watchlist'): TodayActionItem[] {
+  return items.value.filter((item) => fallbackActionGroup(item) === group)
 }
 
 function nonExecutableText(item: TodayActionItem): string {
@@ -365,6 +453,24 @@ function formatPct(value: unknown): string {
 function formatScore(value: unknown): string {
   const n = Number(value || 0)
   return n > 0 ? n.toFixed(1) : '-'
+}
+
+function strategyWeightLabel(action?: string): string {
+  const map: Record<string, string> = {
+    boost: '加强',
+    keep: '维持',
+    reduce: '降低',
+    pause: '暂停',
+  }
+  return action ? (map[action] ?? action) : '-'
+}
+
+function strategyWeightClass(action?: string): string {
+  const base = 'metric-chip'
+  if (action === 'boost') return `${base} border-emerald-200 bg-emerald-50 text-emerald-700`
+  if (action === 'reduce') return `${base} border-amber-200 bg-amber-50 text-amber-700`
+  if (action === 'pause') return `${base} border-rose-200 bg-rose-50 text-rose-700`
+  return base
 }
 
 function formatDate(value?: string): string {

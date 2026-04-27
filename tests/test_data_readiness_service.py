@@ -113,6 +113,45 @@ class DataReadinessServiceTest(unittest.TestCase):
             self.assertGreater(run_mock.call_count, 0)
             self.assertTrue(all(item["status"] == "done" for item in result["actions"]))
 
+    def test_auto_fix_timeout_is_reported_and_later_actions_continue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "test.db")
+            _init_schema(db_path)
+            conn = sqlite3.connect(db_path)
+            try:
+                for code in ("000001.SZ", "600000.SH"):
+                    conn.execute("INSERT INTO stock_daily_prices VALUES (?, '20260424', 10.0)", (code,))
+                conn.commit()
+            finally:
+                conn.close()
+
+            completed = subprocess.CompletedProcess(args=["python3"], returncode=0, stdout="ok", stderr="")
+            timeout = subprocess.TimeoutExpired(cmd=["python3", "backfill_risk_scenarios.py"], timeout=480, output="partial", stderr="hung")
+            with mock.patch(
+                "services.data_readiness_service.service.subprocess.run",
+                side_effect=[timeout, completed, completed, completed, completed],
+            ) as run_mock:
+                result = run_data_readiness_agent(
+                    sqlite3_module=sqlite3,
+                    db_path=db_path,
+                    auto_fix=True,
+                    dry_run=False,
+                    ai_enabled=False,
+                    command_timeout_seconds=1800,
+                )
+
+            statuses = [item["status"] for item in result["actions"]]
+            self.assertIn("timeout", statuses)
+            self.assertIn("done", statuses)
+            self.assertGreaterEqual(run_mock.call_count, 2)
+            self.assertEqual(result["summary"]["actions_timeout"], 1)
+            self.assertGreaterEqual(result["summary"]["actions_done"], 1)
+            first_timeout = run_mock.call_args_list[0].kwargs.get("timeout")
+            self.assertLessEqual(first_timeout, 600)
+            timed_out = next(item for item in result["actions"] if item["status"] == "timeout")
+            self.assertIn("timeout_seconds", timed_out)
+            self.assertIn("duration_seconds", timed_out)
+
     def test_ai_diagnosis_success_is_persisted_in_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "test.db")

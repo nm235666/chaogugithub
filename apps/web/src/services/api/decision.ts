@@ -24,6 +24,9 @@ export interface TodayActionItem {
   action_label?: string
   rule_tier?: string
   rule_tier_label?: string
+  action_group?: 'focus' | 'candidate' | 'watchlist' | string
+  action_group_label?: string
+  action_priority_score?: number
   ts_code: string
   name?: string
   quantity?: number
@@ -54,6 +57,18 @@ export interface TodayActionItem {
   }
   evidence?: Record<string, any>
   source?: string
+  strategy?: {
+    strategy_key?: string
+    strategy_run_id?: string | number
+    strategy_candidate_rank?: string | number
+    strategy_fit_score?: number
+    strategy_action_bias?: string
+    strategy_source?: string
+    strategy_weight_action?: 'boost' | 'keep' | 'reduce' | 'pause' | string
+    strategy_weight_multiplier?: number
+    strategy_weight_reason?: string
+    [key: string]: any
+  }
   agent_opinion?: {
     agent_key?: string
     source?: string
@@ -104,8 +119,12 @@ export interface TodayActionsPayload {
   }
   market_regime?: Record<string, any>
   pipeline_health?: Record<string, any>
+  condenser?: Record<string, any>
   summary?: Record<string, any>
   items?: TodayActionItem[]
+  focus_actions?: TodayActionItem[]
+  candidate_actions?: TodayActionItem[]
+  watchlist_actions?: TodayActionItem[]
 }
 
 export async function fetchDecisionTodayActions(params: Record<string, any> = {}) {
@@ -189,7 +208,10 @@ export async function recordDecisionAction(payload: {
   stock_name?: string
   note?: string
   snapshot_date?: string
+  idempotency_key?: string
   context?: Record<string, any>
+  strategy?: Record<string, any>
+  today_action?: Record<string, any>
   /** Structured evidence items: source label + optional url/value */
   evidence_sources?: Array<{ label: string; url?: string; value?: string }>
   evidence_packet?: Record<string, any>
