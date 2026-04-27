@@ -1,0 +1,22 @@
+---
+description: Read AGENTS first; avoid huge files and noisy dirs to save tokens
+alwaysApply: true
+---
+
+# Token-efficient work in this repo
+
+## Before exploring
+
+1. **Read the repo map**: open and follow the root [`AGENTS.md`](../../AGENTS.md) (paths, entrypoints, where to change what).
+2. **Respect [`.cursorignore`](../../.cursorignore)** default exclusions (e.g. `node_modules`, `docs/metrics/daily`, `**/Obsolete*/**`). If something is excluded but required, use `@path` to attach it explicitly.
+
+## While coding
+
+- **Do not** read all of [`backend/http_server/legacy_queries.py`](../../backend/http_server/legacy_queries.py) end-to-end. Search for the specific `def query_*` / symbol, then read only that region (or the matching [`backend/routes/*.py`](../../backend/routes/) + [`services/*`](../../services/) path from `AGENTS.md`).
+- Prefer **tests as spec**: `tests/test_frontend_api_smoke.py`, `tests/test_api_write_boundary_smoke.py`, `tests/test_projection_maturity.py` before spelunking large modules.
+- **Backend entry**: `python3 backend/server.py` → implementation under `backend/http_server/`; facade re-exports in `backend/server.py`.
+- **DB path overrides** (CLI/scripts): patch `backend.http_server.config.DB_PATH`, not only `backend.server.DB_PATH`.
+
+## Style
+
+- Small, scoped diffs; match imports and naming in the package you touch.

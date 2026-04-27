@@ -1,0 +1,21 @@
+---
+description: Plan before coding on non-trivial work; stay direct on tiny fixes
+alwaysApply: true
+---
+
+# Plan first, then implement
+
+## When to plan first (before editing files or running broad changes)
+
+- The task touches **multiple files**, **new modules**, or **public APIs**.
+- Requirements are **ambiguous**, or there are **real trade-offs** (performance vs simplicity, breaking changes, security).
+- The user asks for **architecture**, **refactors**, **migrations**, or **anything risky** without a single obvious edit.
+
+In those cases: give a **short plan** first (goals, key steps, files you expect to touch, main risks or alternatives). End the plan with a clear **“next: implement”** handoff. Only then start substantive edits unless the user explicitly asked to skip planning.
+
+## When to skip a separate plan
+
+- **One-shot** fixes: typos, obvious null checks, single-file one-liners the user pointed to.
+- The user explicitly says **no plan**, **just fix it**, or **implement now**.
+
+Keep plans **concise**. Do not replace implementation with an endless design document unless the user asked for design-only output.

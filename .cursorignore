@@ -1,0 +1,37 @@
+# Cursor index / @-context: skip high-churn or huge trees to save tokens.
+# (Does not affect git; add paths that are safe to hide from default AI search.)
+
+# Dependencies & build output
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Python noise
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+.venv/
+.deps/
+
+# Frontend e2e artifacts
+apps/web/playwright-report/
+apps/web/test-results/
+
+# Large local / runtime trees (see .gitignore)
+runtime/
+tmp/
+logs/
+backups/
+local_archive/
+nginx_runtime/
+
+# Archived or obsolete copies (high noise, low signal for active dev)
+**/Obsolete*/
+
+# Metrics dumps (often large JSON; read _latest or specific file when needed)
+docs/metrics/daily/
+
+# External vendored trees (prefer README or entrypoint when touching)
+external/strategy/
