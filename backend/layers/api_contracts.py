@@ -23,8 +23,11 @@ _CONTRACTS: tuple[ApiLayerContract, ...] = (
     ApiLayerContract(pattern="/api/decision/kill-switch", layer="layer1_user_decision", domain="decision_control", methods=("GET", "POST"), mode="exact"),
     ApiLayerContract(pattern="/api/decision/strategy-runs", layer="layer1_user_decision", domain="decision_strategy", methods=("GET",), mode="exact"),
     ApiLayerContract(pattern="/api/decision/strategy-runs/run", layer="layer1_user_decision", domain="decision_strategy", methods=("POST",), mode="exact"),
+    ApiLayerContract(pattern="/api/decision/strategy-selection/run", layer="layer1_user_decision", domain="decision_strategy", methods=("POST",), mode="exact"),
     ApiLayerContract(pattern="/api/decision/strategies", layer="layer1_user_decision", domain="decision_strategy", methods=("GET",), mode="exact"),
     ApiLayerContract(pattern="/api/decision/snapshot/run", layer="layer1_user_decision", domain="decision_snapshot", methods=("POST",), mode="exact"),
+    ApiLayerContract(pattern="/api/decision/trade-advisor/refresh", layer="layer1_user_decision", domain="decision_trade_advisor", methods=("POST",), mode="exact"),
+    ApiLayerContract(pattern="/api/decision/trade-advisor/daily-refresh", layer="layer1_user_decision", domain="decision_trade_advisor", methods=("POST",), mode="exact"),
     ApiLayerContract(pattern="/api/funnel", layer="layer1_user_decision", domain="funnel", methods=("GET", "POST"), mode="prefix"),
     ApiLayerContract(pattern=r"^/api/funnel/candidates/[^/]+/transition$", layer="layer1_user_decision", domain="funnel_transition", methods=("POST",), mode="regex"),
     # Layer 2: data assets
@@ -35,6 +38,8 @@ _CONTRACTS: tuple[ApiLayerContract, ...] = (
     ApiLayerContract(pattern="/api/quant-factors", layer="layer3_verification_research", domain="quant_factors", methods=("GET", "POST"), mode="prefix"),
     # Layer 4: governance
     ApiLayerContract(pattern="/api/system", layer="layer4_backoffice_governance", domain="system_governance", methods=("GET", "POST"), mode="prefix"),
+    ApiLayerContract(pattern="/api/system/data-readiness", layer="layer4_backoffice_governance", domain="data_readiness", methods=("GET",), mode="exact"),
+    ApiLayerContract(pattern="/api/system/data-readiness/run", layer="layer4_backoffice_governance", domain="data_readiness", methods=("POST",), mode="exact"),
     ApiLayerContract(pattern="/api/auth", layer="layer4_backoffice_governance", domain="auth_governance", methods=("GET", "POST"), mode="prefix"),
     ApiLayerContract(pattern="/api/jobs", layer="layer4_backoffice_governance", domain="job_governance", methods=("GET",), mode="prefix"),
     ApiLayerContract(pattern="/api/job-runs", layer="layer4_backoffice_governance", domain="job_governance", methods=("GET",), mode="prefix"),

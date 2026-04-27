@@ -51,6 +51,7 @@ def _build_layer3_verification_research_deps(
 def _build_layer4_governance_deps(
     *,
     build_info: Callable[[], dict[str, Any]],
+    build_data_readiness_runtime_deps: Callable[[], dict[str, Any]],
     permission_matrix: Callable[[], dict[str, Any]],
     effective_permissions_for_user: Callable[[dict[str, Any] | None], list[str]],
     get_navigation_groups: Callable[[], dict[str, Any]],
@@ -63,6 +64,7 @@ def _build_layer4_governance_deps(
 ) -> dict[str, Any]:
     return {
         "build_info": build_info,
+        **build_data_readiness_runtime_deps(),
         "permission_matrix": permission_matrix,
         "effective_permissions_for_user": effective_permissions_for_user,
         "get_navigation_groups": get_navigation_groups,
@@ -85,6 +87,7 @@ def build_layered_route_deps(
     build_signals_service_runtime_deps: Callable[[], dict[str, Any]],
     build_quantaalpha_runtime_deps: Callable[[], dict[str, Any]],
     build_decision_runtime_deps: Callable[[], dict[str, Any]],
+    build_data_readiness_runtime_deps: Callable[[], dict[str, Any]],
     roundtable_create: Callable[..., Any],
     roundtable_get: Callable[..., Any],
     roundtable_list: Callable[..., Any],
@@ -128,6 +131,7 @@ def build_layered_route_deps(
     deps.update(
         _build_layer4_governance_deps(
             build_info=build_info,
+            build_data_readiness_runtime_deps=build_data_readiness_runtime_deps,
             permission_matrix=permission_matrix,
             effective_permissions_for_user=effective_permissions_for_user,
             get_navigation_groups=get_navigation_groups,

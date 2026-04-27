@@ -63,6 +63,28 @@ def _build_metrics_summary_payload() -> dict:
 
 
 def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
+    if parsed.path == "/api/system/data-readiness/run":
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可运行数据就绪 Agent"}, status=403)
+            return True
+        error = _guard_governance_write(deps, scope="data_readiness.run")
+        if error:
+            handler._send_json({"ok": False, "error": error}, status=403)
+            return True
+        try:
+            result = deps["run_data_readiness_agent"](
+                auto_fix=bool(payload.get("auto_fix", True)),
+                dry_run=bool(payload.get("dry_run", False)),
+                ai_enabled=bool(payload.get("ai_enabled", True)),
+                path_selection_enabled=bool(payload.get("path_selection_enabled", True)),
+            )
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"数据就绪 Agent 运行失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
     if parsed.path in {
         "/api/system/llm-providers/multi-role-v2-policies",
         "/api/llm-providers/multi-role-v2-policies",
@@ -709,6 +731,19 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
 
     if parsed.path == "/api/health":
         handler._send_json({"ok": True, "db": deps["db_label"](), **deps["build_info"]()})
+        return True
+
+    if parsed.path == "/api/system/data-readiness":
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可查看数据就绪报告"}, status=403)
+            return True
+        try:
+            result = deps["query_latest_data_readiness_report"]()
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"数据就绪报告查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
         return True
 
     if parsed.path == "/api/auth/status":
