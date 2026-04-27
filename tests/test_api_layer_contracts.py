@@ -27,6 +27,27 @@ class ApiLayerContractsTest(unittest.TestCase):
         self.assertTrue(is_api_method_allowed("/api/funnel/candidates/123/transition", "POST"))
         self.assertFalse(is_api_method_allowed("/api/funnel/candidates/123/transition", "GET"))
 
+    def test_trade_advisor_refresh_is_layer1_post(self):
+        contract = resolve_api_layer_contract("/api/decision/trade-advisor/refresh")
+        self.assertIsNotNone(contract)
+        self.assertEqual(contract.layer, "layer1_user_decision")
+        self.assertTrue(is_api_method_allowed("/api/decision/trade-advisor/refresh", "POST"))
+        self.assertFalse(is_api_method_allowed("/api/decision/trade-advisor/refresh", "GET"))
+
+    def test_strategy_selection_run_is_layer1_post(self):
+        contract = resolve_api_layer_contract("/api/decision/strategy-selection/run")
+        self.assertIsNotNone(contract)
+        self.assertEqual(contract.layer, "layer1_user_decision")
+        self.assertTrue(is_api_method_allowed("/api/decision/strategy-selection/run", "POST"))
+        self.assertFalse(is_api_method_allowed("/api/decision/strategy-selection/run", "GET"))
+
+    def test_data_readiness_is_layer4(self):
+        contract = resolve_api_layer_contract("/api/system/data-readiness")
+        self.assertIsNotNone(contract)
+        self.assertEqual(contract.layer, "layer4_backoffice_governance")
+        self.assertTrue(is_api_method_allowed("/api/system/data-readiness", "GET"))
+        self.assertTrue(is_api_method_allowed("/api/system/data-readiness/run", "POST"))
+
     def test_quant_factors_is_layer3(self):
         contract = resolve_api_layer_contract("/api/quant-factors/task")
         self.assertIsNotNone(contract)

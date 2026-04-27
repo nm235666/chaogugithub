@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import backend.server as backend_server
+import backend.http_server.config as http_server_config
 import db_compat as sqlite3
 
 from llm_gateway import normalize_model_name, normalize_temperature_for_model
@@ -132,7 +133,7 @@ def main() -> int:
     finally:
         conn.close()
 
-    backend_server.DB_PATH = Path(args.db_path).resolve()
+    http_server_config.DB_PATH = Path(args.db_path).resolve()
     payload = run_multi_role_analysis(
         backend_server.build_agent_service_deps(),
         ts_code=ts_code,

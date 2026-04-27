@@ -11,11 +11,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import db_compat as sqlite3
 from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 
+import backend.http_server.config as http_server_config
 import backend.server as score_server
 from realtime_streams import publish_app_event
 
@@ -204,7 +206,7 @@ def build_rows(items: list[dict], score_date: str) -> list[tuple]:
                 item.get("latest_event_date"),
                 item.get("latest_news_time"),
                 item.get("latest_risk_date"),
-                score_server.json.dumps(to_json_safe(payload), ensure_ascii=False, allow_nan=False),
+                json.dumps(to_json_safe(payload), ensure_ascii=False, allow_nan=False),
                 "stock_score_v1",
                 update_time,
             )
@@ -288,12 +290,12 @@ def main() -> int:
     if (not sqlite3.using_postgres()) and not db_path.exists():
         raise SystemExit(f"数据库不存在: {db_path}")
 
-    old_db_path = score_server.DB_PATH
-    score_server.DB_PATH = db_path
+    old_db_path = http_server_config.DB_PATH
+    http_server_config.DB_PATH = db_path
     try:
         universe = score_server._build_stock_score_universe(force_refresh=True)
     finally:
-        score_server.DB_PATH = old_db_path
+        http_server_config.DB_PATH = old_db_path
 
     items = list(universe["items"])
     if args.limit_stocks > 0:

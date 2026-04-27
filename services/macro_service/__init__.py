@@ -7,6 +7,9 @@ from .regime import (
     list_allocations,
     update_regime_outcome,
     suggest_regime,
+    run_macro_regime_agent,
+    get_latest_macro_regime_draft,
+    confirm_macro_regime_draft,
 )
 
 __all__ = [
@@ -18,4 +21,7 @@ __all__ = [
     "list_allocations",
     "update_regime_outcome",
     "suggest_regime",
+    "run_macro_regime_agent",
+    "get_latest_macro_regime_draft",
+    "confirm_macro_regime_draft",
 ]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,9 +19,11 @@ DECISION_CONTROL_TABLE = "decision_controls"
 DECISION_ACTION_TABLE = "decision_actions"
 DECISION_STRATEGY_RUN_TABLE = "decision_strategy_runs"
 DECISION_STRATEGY_CANDIDATE_TABLE = "decision_strategy_candidates"
+DECISION_TRADE_ADVISOR_TABLE = "decision_trade_advisor_opinions"
 FUNNEL_CANDIDATES_TABLE = "funnel_candidates"
 FUNNEL_TRANSITIONS_TABLE = "funnel_transitions"
 DEFAULT_CONTROL_KEY = "global_kill_switch"
+STRATEGY_SELECTION_KEYWORD = "__daily_strategy_selection__"
 
 
 def _utc_now() -> str:
@@ -330,6 +333,25 @@ def _strategy_llm_model() -> str:
     return str(os.getenv("DECISION_STRATEGY_LLM_MODEL", DEFAULT_LLM_MODEL) or DEFAULT_LLM_MODEL).strip() or DEFAULT_LLM_MODEL
 
 
+def _trade_advisor_agent_enabled() -> bool:
+    return str(os.getenv("DECISION_TRADE_ADVISOR_AGENT_ENABLED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _trade_advisor_agent_sync_enabled() -> bool:
+    return str(os.getenv("DECISION_TRADE_ADVISOR_AGENT_SYNC", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _trade_advisor_agent_model() -> str:
+    return str(os.getenv("DECISION_TRADE_ADVISOR_AGENT_MODEL", DEFAULT_LLM_MODEL) or DEFAULT_LLM_MODEL).strip() or DEFAULT_LLM_MODEL
+
+
+def _trade_advisor_agent_limit() -> int:
+    try:
+        return max(0, min(int(os.getenv("DECISION_TRADE_ADVISOR_AGENT_LIMIT", "3") or 3), 10))
+    except (TypeError, ValueError):
+        return 3
+
+
 def _strategy_run_key(run_version: int) -> str:
     return f"strategy-{_utc_now().replace(':', '').replace('-', '').replace('Z', '')}-{run_version:04d}-{uuid.uuid4().hex[:6]}"
 
@@ -435,6 +457,25 @@ def _ensure_tables(conn) -> None:
     )
     conn.execute(
         f"""
+        CREATE TABLE IF NOT EXISTS {DECISION_TRADE_ADVISOR_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            opinion_date TEXT NOT NULL,
+            ts_code TEXT NOT NULL,
+            rule_tier TEXT NOT NULL DEFAULT '',
+            rule_action TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'ready',
+            source TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            opinion_json TEXT NOT NULL DEFAULT '{{}}',
+            input_json TEXT NOT NULL DEFAULT '{{}}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(opinion_date, ts_code, rule_tier)
+        )
+        """
+    )
+    conn.execute(
+        f"""
         CREATE TABLE IF NOT EXISTS {DECISION_STRATEGY_RUN_TABLE} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_key TEXT NOT NULL UNIQUE,
@@ -496,6 +537,9 @@ def _ensure_tables(conn) -> None:
     )
     conn.execute(
         f"CREATE INDEX IF NOT EXISTS idx_{DECISION_ACTION_TABLE}_created_at ON {DECISION_ACTION_TABLE}(created_at DESC, id DESC)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{DECISION_TRADE_ADVISOR_TABLE}_date ON {DECISION_TRADE_ADVISOR_TABLE}(opinion_date DESC, ts_code)"
     )
     conn.execute(
         f"CREATE INDEX IF NOT EXISTS idx_{DECISION_ACTION_TABLE}_ts_code ON {DECISION_ACTION_TABLE}(ts_code, created_at DESC, id DESC)"
@@ -719,6 +763,1334 @@ def _build_actionable_fields(
         "invalidation": invalidation,
         "position_hint": hint,
         "risk_budget_source": budget_source,
+    }
+
+
+TODAY_ACTION_EXECUTABLE_TYPES = {"buy", "add", "reduce", "close", "sell"}
+TODAY_ACTION_LABELS = {
+    "buy": "新开仓",
+    "add": "加仓",
+    "reduce": "减仓",
+    "close": "清仓",
+    "sell": "卖出",
+    "hold": "继续持有",
+    "watch": "观察",
+    "avoid": "放弃",
+}
+TODAY_RULE_TIER_LABELS = {
+    "strong_buy": "强买入",
+    "probe_buy": "小仓位试买",
+    "watch": "观察",
+    "avoid": "放弃",
+    "close": "清仓",
+    "reduce": "减仓",
+    "add": "加仓",
+    "hold": "继续持有",
+    "blocked": "风控阻断",
+}
+
+
+def _decision_account_equity() -> float:
+    return max(_as_float(os.getenv("DECISION_DEFAULT_ACCOUNT_EQUITY"), 100000.0), 1000.0)
+
+
+def _decision_lot_size() -> int:
+    try:
+        return max(int(os.getenv("DECISION_LOT_SIZE", "100") or 100), 1)
+    except (TypeError, ValueError):
+        return 100
+
+
+def _table_columns(conn, table_name: str) -> set[str]:
+    if not _table_exists(conn, table_name):
+        return set()
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    except Exception:
+        return set()
+    columns: set[str] = set()
+    for row in rows:
+        try:
+            columns.add(str(row["name"]))
+        except Exception:
+            if len(row) > 1:
+                columns.add(str(row[1]))
+    return columns
+
+
+def _portfolio_positions_for_decision(conn) -> dict[str, dict[str, Any]]:
+    columns = _table_columns(conn, "portfolio_positions")
+    if not columns or "ts_code" not in columns:
+        return {}
+    wanted = [
+        "id",
+        "ts_code",
+        "name",
+        "quantity",
+        "avg_cost",
+        "last_price",
+        "market_value",
+        "unrealized_pnl",
+        "order_no",
+        "updated_at",
+    ]
+    select_parts = [name for name in wanted if name in columns]
+    if "quantity" not in select_parts:
+        select_parts.append("0 AS quantity")
+    rows = conn.execute(
+        f"""
+        SELECT {", ".join(select_parts)}
+        FROM portfolio_positions
+        WHERE COALESCE(quantity, 0) > 0
+        """
+    ).fetchall()
+    return {str(dict(row).get("ts_code") or "").upper(): dict(row) for row in rows}
+
+
+def _latest_close_prices(conn, ts_codes: list[str]) -> dict[str, float]:
+    normalized = [str(code or "").strip().upper() for code in ts_codes if str(code or "").strip()]
+    if not normalized or not _table_exists(conn, "stock_daily_prices"):
+        return {}
+    columns = _table_columns(conn, "stock_daily_prices")
+    if not {"ts_code", "close"}.issubset(columns):
+        return {}
+    date_col = "trade_date" if "trade_date" in columns else ""
+    placeholders = ",".join("?" for _ in normalized)
+    order_sql = f"ORDER BY ts_code, {date_col} DESC" if date_col else "ORDER BY ts_code"
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT ts_code, close
+            FROM stock_daily_prices
+            WHERE ts_code IN ({placeholders})
+            {order_sql}
+            """,
+            normalized,
+        ).fetchall()
+    except Exception:
+        return {}
+    prices: dict[str, float] = {}
+    for row in rows:
+        item = dict(row)
+        ts_code = str(item.get("ts_code") or "").upper()
+        if ts_code not in prices:
+            prices[ts_code] = _as_float(item.get("close"))
+    return prices
+
+
+def _reference_price(score_item: dict[str, Any] | None, position: dict[str, Any] | None, latest_prices: dict[str, float]) -> float:
+    ts_code = str((score_item or {}).get("ts_code") or (position or {}).get("ts_code") or "").upper()
+    for value in (
+        latest_prices.get(ts_code),
+        (position or {}).get("last_price"),
+        (position or {}).get("avg_cost"),
+        (score_item or {}).get("close"),
+    ):
+        price = _as_float(value)
+        if price > 0:
+            return price
+    return 10.0
+
+
+def _target_position_pct(score: float, *, action_type: str, market_mode: str, rule_tier: str = "") -> float:
+    if action_type == "close":
+        return 0.0
+    if action_type == "reduce":
+        return 2.0
+    if rule_tier == "probe_buy":
+        return 2.0
+    base = 4.0
+    if score >= 90:
+        base = 8.0
+    elif score >= 85:
+        base = 6.0
+    elif score >= 78:
+        base = 4.0
+    if market_mode == "defensive":
+        base = min(base, 3.0)
+    elif market_mode == "aggressive":
+        base += 1.0
+    return round(base, 2)
+
+
+def _round_lot(quantity: float, lot_size: int) -> int:
+    if quantity <= 0:
+        return 0
+    if quantity < lot_size:
+        return 0
+    return int(quantity // lot_size * lot_size)
+
+
+def _quantity_for_target(*, account_equity: float, target_pct: float, current_quantity: int, price: float, lot_size: int) -> int:
+    if target_pct <= 0 or price <= 0:
+        return 0
+    target_value = account_equity * target_pct / 100.0
+    current_value = current_quantity * price
+    return _round_lot((target_value - current_value) / price, lot_size)
+
+
+def _risk_level(score_item: dict[str, Any] | None, market_mode: str) -> str:
+    risk_score = _as_float((score_item or {}).get("risk_score"), 60.0)
+    trend_score = _as_float((score_item or {}).get("trend_score"), 60.0)
+    if market_mode == "defensive" or risk_score < 45 or trend_score < 45:
+        return "high"
+    if risk_score < 60 or trend_score < 55:
+        return "medium"
+    return "low"
+
+
+def _non_executable_reasons(*, risk_gate: dict[str, Any], executable: bool, quantity: int, action_type: str) -> list[str]:
+    reasons: list[str] = []
+    if not risk_gate.get("ok"):
+        reasons.extend(str(item) for item in (risk_gate.get("blockers") or []) if str(item).strip())
+    if not executable:
+        if action_type == "watch":
+            reasons.append("观察动作只进入观察池，不生成计划单。")
+        elif action_type == "hold":
+            reasons.append("继续持有不需要生成新的计划单。")
+        elif action_type == "avoid":
+            reasons.append("规则判断为放弃，不进入计划单。")
+        else:
+            reasons.append(f"{TODAY_ACTION_LABELS.get(action_type, action_type)} 不是当前可执行交易动作。")
+    if executable and int(quantity or 0) <= 0:
+        if action_type in {"buy", "add"}:
+            reasons.append(f"A股买入必须至少 1 手（{_decision_lot_size()} 股）且按整手下单；当前目标仓位折算不足 1 手。")
+        else:
+            reasons.append("建议数量为 0，说明当前仓位或资金假设下没有可下单数量。")
+    return reasons
+
+
+def _decision_data_readiness_gate(conn) -> dict[str, Any]:
+    try:
+        if not _table_exists(conn, "data_readiness_runs"):
+            return {
+                "ok": False,
+                "status": "blocked",
+                "source": "missing_report_table",
+                "blockers": ["数据就绪 Gate 未初始化：尚未生成数据就绪报告"],
+                "warnings": [],
+                "ai_diagnosis": {},
+            }
+        row = conn.execute(
+            """
+            SELECT run_key, status, mode, before_json, after_json, actions_json, summary_json, created_at, updated_at
+            FROM data_readiness_runs
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "blocked",
+            "source": "data_readiness_error",
+            "blockers": [f"数据就绪 Gate 查询失败：{exc}"],
+            "warnings": [],
+            "ai_diagnosis": {},
+        }
+
+    if not row:
+        return {
+            "ok": False,
+            "status": "blocked",
+            "source": "missing_report",
+            "blockers": ["数据就绪 Gate 未运行：缺少最近一次数据就绪报告"],
+            "warnings": [],
+            "ai_diagnosis": {},
+        }
+
+    latest_run = dict(row)
+    summary = json.loads(str(latest_run.get("summary_json") or "{}"))
+    after = json.loads(str(latest_run.get("after_json") or "{}"))
+    status = str(latest_run.get("status") or summary.get("status") or after.get("status") or "unknown").strip().lower()
+    issues = after.get("issues") if isinstance(after, dict) else []
+    ai_diagnosis = summary.get("ai_diagnosis") if isinstance(summary.get("ai_diagnosis"), dict) else {}
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    if status == "blocked":
+        blockers.append("数据就绪 Gate 阻断：关键数据未就绪")
+    elif status == "degraded":
+        warnings.append("数据就绪 Gate 降级：部分数据缺口存在，今日动作按降级口径生成")
+    elif status not in {"ready", "ok"}:
+        warnings.append(f"数据就绪 Gate 状态未知：{status or 'unknown'}")
+
+    for issue in issues or []:
+        if not isinstance(issue, dict):
+            continue
+        message = str(issue.get("message") or issue.get("code") or "").strip()
+        if not message:
+            continue
+        if str(issue.get("severity") or "") == "blocked":
+            blockers.append(message)
+        else:
+            warnings.append(message)
+
+    if ai_diagnosis:
+        impact = str(ai_diagnosis.get("business_impact") or "").strip()
+        strategy = str(ai_diagnosis.get("degrade_strategy") or "").strip()
+        if impact and status == "blocked":
+            blockers.append(impact)
+        elif impact:
+            warnings.append(impact)
+        if strategy and status == "degraded":
+            warnings.append(strategy)
+
+    return {
+        "ok": status != "blocked",
+        "status": status or "unknown",
+        "source": "latest_run",
+        "run_key": str(latest_run.get("run_key") or ""),
+        "created_at": str(latest_run.get("created_at") or ""),
+        "blockers": list(dict.fromkeys(blockers)),
+        "warnings": list(dict.fromkeys(warnings)),
+        "ai_diagnosis": ai_diagnosis,
+    }
+
+
+def _strategy_selection_library() -> list[dict[str, Any]]:
+    return [
+        {
+            "strategy_key": "short_momentum",
+            "name": "短线趋势动量",
+            "mode": "short_momentum",
+            "min_total": 78.0,
+            "min_trend": 60.0,
+            "min_risk": 55.0,
+            "min_capital_flow": 60.0,
+            "market_modes": {"aggressive", "balanced", "neutral"},
+            "summary": "优先选择趋势确认、资金流尚可、风险分不弱的短线候选。",
+            "risk_control": "弱市或资金流缺口时降级为观察。",
+        },
+        {
+            "strategy_key": "quality_value",
+            "name": "长线质量估值",
+            "mode": "quality_value",
+            "min_total": 82.0,
+            "min_trend": 45.0,
+            "min_risk": 60.0,
+            "min_financial": 75.0,
+            "min_valuation": 60.0,
+            "market_modes": {"aggressive", "balanced", "neutral", "defensive"},
+            "summary": "优先选择财务质量较高、估值不过热、适合中长期观察或配置的候选。",
+            "risk_control": "估值或财务数据降级时只观察不主动买入。",
+        },
+        {
+            "strategy_key": "risk_defensive",
+            "name": "弱市防守",
+            "mode": "risk_defensive",
+            "min_total": 70.0,
+            "min_trend": 40.0,
+            "min_risk": 75.0,
+            "market_modes": {"defensive", "neutral"},
+            "summary": "弱市优先选择风险分高、波动相对可控的防守候选。",
+            "risk_control": "只允许观察或小仓位，不做激进新开仓。",
+        },
+    ]
+
+
+def _strategy_selection_degraded_blocks(data_readiness_gate: dict[str, Any]) -> set[str]:
+    if str(data_readiness_gate.get("status") or "") != "degraded":
+        return set()
+    text = " ".join(str(item) for item in (data_readiness_gate.get("warnings") or []))
+    blocked: set[str] = set()
+    if "资金流" in text:
+        blocked.add("short_momentum")
+    if "财务" in text or "估值" in text:
+        blocked.add("quality_value")
+    if "风险" in text:
+        blocked.add("risk_defensive")
+    return blocked
+
+
+def _strategy_candidate_for_score(
+    score_item: dict[str, Any],
+    *,
+    strategy: dict[str, Any],
+    market_mode: str,
+) -> dict[str, Any] | None:
+    total = _as_float(score_item.get("total_score"))
+    trend = _as_float(score_item.get("trend_score"))
+    risk = _as_float(score_item.get("risk_score"), 60.0)
+    financial = _as_float(score_item.get("financial_score"), 60.0)
+    valuation = _as_float(score_item.get("valuation_score"), 60.0)
+    capital_flow = _as_float(score_item.get("capital_flow_score"), 60.0)
+    if market_mode not in set(strategy.get("market_modes") or []):
+        return None
+    if total < _as_float(strategy.get("min_total")) or trend < _as_float(strategy.get("min_trend")) or risk < _as_float(strategy.get("min_risk")):
+        return None
+    if strategy.get("min_financial") is not None and financial < _as_float(strategy.get("min_financial")):
+        return None
+    if strategy.get("min_valuation") is not None and valuation < _as_float(strategy.get("min_valuation")):
+        return None
+    if strategy.get("min_capital_flow") is not None and capital_flow < _as_float(strategy.get("min_capital_flow")):
+        return None
+
+    if strategy["strategy_key"] == "short_momentum":
+        fit = total * 0.45 + trend * 0.35 + capital_flow * 0.12 + risk * 0.08
+        action_bias = "buy" if total >= 85 and trend >= 60 and risk >= 55 else "watch"
+    elif strategy["strategy_key"] == "quality_value":
+        fit = total * 0.35 + financial * 0.25 + valuation * 0.2 + risk * 0.2
+        action_bias = "buy" if total >= 88 and risk >= 65 else "watch"
+    else:
+        fit = risk * 0.45 + total * 0.3 + trend * 0.15 + valuation * 0.1
+        action_bias = "watch"
+    rationale = (
+        f"{strategy['name']}入选：总分 {total:.1f}，趋势 {trend:.1f}，风险 {risk:.1f}，"
+        f"财务 {financial:.1f}，估值 {valuation:.1f}，资金流 {capital_flow:.1f}。"
+    )
+    return {
+        "strategy_key": strategy["strategy_key"],
+        "name": score_item.get("name") or score_item.get("ts_code") or "",
+        "mode": strategy["mode"],
+        "status": "selected",
+        "fit_score": round(fit, 2),
+        "llm_feasibility_score": round(fit, 2),
+        "llm_feasibility_label": _strategy_feasibility_label(fit),
+        "llm_explanation": rationale,
+        "llm_risk_note": strategy["risk_control"],
+        "summary": strategy["summary"],
+        "entry_rule": f"{strategy['name']} 入选阈值",
+        "exit_rule": "跌破策略核心阈值或 Data Readiness Gate blocked 时退出候选。",
+        "position_bias": action_bias,
+        "universe": "stock_scores_daily latest",
+        "rationale": rationale,
+        "risk_control": strategy["risk_control"],
+        "linked_industries": [score_item.get("industry")] if score_item.get("industry") else [],
+        "linked_stocks": [score_item.get("ts_code")],
+        "ts_code": str(score_item.get("ts_code") or "").upper(),
+        "stock_name": score_item.get("name") or "",
+        "action_bias": action_bias,
+        "score_date": score_item.get("score_date") or "",
+        "evidence": {
+            "total_score": round(total, 2),
+            "trend_score": round(trend, 2),
+            "risk_score": round(risk, 2),
+            "financial_score": round(financial, 2),
+            "valuation_score": round(valuation, 2),
+            "capital_flow_score": round(capital_flow, 2),
+            "market_mode": market_mode,
+        },
+    }
+
+
+def _build_strategy_selection_packet(
+    *,
+    score_rows: list[dict[str, Any]],
+    market_regime: dict[str, Any],
+    data_readiness_gate: dict[str, Any],
+    limit: int,
+) -> dict[str, Any]:
+    market_mode = str(market_regime.get("mode") or "neutral")
+    blocked_strategies = _strategy_selection_degraded_blocks(data_readiness_gate)
+    strategies = [item for item in _strategy_selection_library() if item["strategy_key"] not in blocked_strategies]
+    candidates_by_code: dict[str, dict[str, Any]] = {}
+    for score_item in score_rows:
+        for strategy in strategies:
+            candidate = _strategy_candidate_for_score(score_item, strategy=strategy, market_mode=market_mode)
+            if not candidate:
+                continue
+            code = str(candidate.get("ts_code") or "").upper()
+            current = candidates_by_code.get(code)
+            if current is None or _as_float(candidate.get("fit_score")) > _as_float(current.get("fit_score")):
+                candidates_by_code[code] = candidate
+    candidates = sorted(candidates_by_code.values(), key=lambda item: (-_as_float(item.get("fit_score")), str(item.get("ts_code") or "")))[: max(1, limit)]
+    for idx, candidate in enumerate(candidates, start=1):
+        candidate["rank"] = idx
+        candidate["priority"] = idx
+    summary = {
+        "strategy_count": len(strategies),
+        "candidate_count": len(candidates),
+        "market_mode": market_mode,
+        "data_readiness_status": data_readiness_gate.get("status"),
+        "blocked_strategies": sorted(blocked_strategies),
+        "best_strategy": candidates[0]["mode"] if candidates else "",
+        "best_fit_score": _as_float(candidates[0].get("fit_score")) if candidates else 0,
+    }
+    return {
+        "title": "Strategy Selection Agent V1",
+        "source_mode": "strategy_selection",
+        "market_regime": market_regime,
+        "summary": summary,
+        "generator_rules": strategies,
+        "strategies": candidates,
+        "all_strategies": candidates,
+        "run": {"llm_model": "", "llm_enabled": False},
+    }
+
+
+def run_strategy_selection_agent(
+    *,
+    sqlite3_module,
+    db_path: str,
+    limit: int = 30,
+) -> dict[str, Any]:
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    try:
+        _ensure_tables(conn)
+        latest_score_date, universe_size, score_rows = _load_stock_score_rows(conn, page=1, page_size=max(limit * 8, 100))
+        data_readiness_gate = _decision_data_readiness_gate(conn)
+        market_regime = _aggregate_market_regime(score_rows)
+        if not data_readiness_gate.get("ok"):
+            packet = {
+                "title": "Strategy Selection Agent V1",
+                "source_mode": "strategy_selection",
+                "market_regime": market_regime,
+                "summary": {
+                    "strategy_count": 0,
+                    "candidate_count": 0,
+                    "market_mode": market_regime.get("mode") or "neutral",
+                    "data_readiness_status": data_readiness_gate.get("status"),
+                    "blocked_reason": "Data Readiness Gate blocked",
+                },
+                "generator_rules": [],
+                "strategies": [],
+                "all_strategies": [],
+                "run": {"llm_model": "", "llm_enabled": False},
+            }
+        else:
+            packet = _build_strategy_selection_packet(
+                score_rows=score_rows,
+                market_regime=market_regime,
+                data_readiness_gate=data_readiness_gate,
+                limit=limit,
+            )
+        board = {
+            "snapshot_date": latest_score_date,
+            "universe_size": universe_size,
+            "data_readiness_gate": data_readiness_gate,
+            "market_regime": market_regime,
+        }
+        stored = _persist_strategy_run(
+            conn=conn,
+            board=board,
+            packet=packet,
+            ts_code="",
+            keyword=STRATEGY_SELECTION_KEYWORD,
+            source_mode="strategy_selection",
+        )
+        return {
+            "ok": bool(data_readiness_gate.get("ok")),
+            "run_id": stored["run_id"],
+            "run_key": stored["run_key"],
+            "snapshot_date": latest_score_date,
+            "data_readiness_gate": data_readiness_gate,
+            "market_regime": market_regime,
+            "summary": packet["summary"],
+            "candidates": packet["strategies"],
+        }
+    finally:
+        conn.close()
+
+
+def _latest_strategy_selection_candidates(conn) -> dict[str, dict[str, Any]]:
+    row = _load_latest_strategy_run_row(conn, keyword=STRATEGY_SELECTION_KEYWORD)
+    if not row or str(row.get("source_mode") or "") != "strategy_selection":
+        return {}
+    candidates = _load_strategy_candidate_rows_all(conn, run_id=int(row.get("id") or 0))
+    out: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        payload = candidate.get("candidate_json") if isinstance(candidate.get("candidate_json"), dict) else _parse_json(candidate.get("candidate_json"))
+        code = str(payload.get("ts_code") or (payload.get("linked_stocks") or [""])[0] or "").upper()
+        if not code:
+            continue
+        out[code] = {**candidate, "candidate_json": payload, "run_id": int(row.get("id") or 0), "run_key": row.get("run_key")}
+    return out
+
+
+def _agent_action_label(action: str) -> str:
+    return {
+        "strong_buy": "强买入",
+        "probe_buy": "小仓位试买",
+        "buy": "买入",
+        "add": "加仓",
+        "hold": "继续持有",
+        "watch": "继续观察",
+        "reduce": "减仓",
+        "close": "清仓",
+        "avoid": "放弃",
+    }.get(str(action or "").strip(), str(action or "watch"))
+
+
+def _heuristic_trade_advisor_opinion(item: dict[str, Any], *, source: str = "heuristic") -> dict[str, Any]:
+    evidence = item.get("evidence") or {}
+    score = _as_float(evidence.get("total_score"))
+    trend = _as_float(evidence.get("trend_score"))
+    risk = _as_float(evidence.get("risk_score"), 60.0)
+    rule_action = str(item.get("action_type") or "")
+    action = "watch"
+    confidence = 55.0
+    target_pct = 0.0
+    if rule_action in {"buy", "add", "reduce", "close", "sell"} and item.get("can_create_order"):
+        action = rule_action
+        confidence = 78.0
+        target_pct = _as_float(item.get("target_position_pct"))
+    elif rule_action == "watch" and score >= 78 and trend >= 60 and risk >= 70:
+        action = "probe_buy"
+        confidence = 68.0
+        target_pct = 2.0
+    elif rule_action == "hold" and score >= 78 and trend >= 60 and risk >= 60:
+        action = "hold"
+        confidence = 66.0
+        target_pct = _as_float(item.get("target_position_pct"))
+    elif score < 55 or trend < 45 or risk < 40:
+        action = "avoid" if rule_action == "watch" else "close"
+        confidence = 70.0
+    summary = f"规则动作为{TODAY_ACTION_LABELS.get(rule_action, rule_action)}；总分 {score:.1f}、趋势 {trend:.1f}、风险 {risk:.1f}。"
+    if action == "probe_buy":
+        summary += " 未到强买阈值，但趋势和风险条件较好，可作为小仓位试买候选。"
+    elif action == rule_action:
+        summary += " Agent 未推翻规则动作，建议按规则进入人工确认。"
+    elif action == "avoid":
+        summary += " 综合分或趋势不足，建议继续回避。"
+    else:
+        summary += " 当前更适合观察或持有。"
+    return {
+        "agent_key": "trade_advisor_agent",
+        "source": source,
+        "model": "",
+        "action": action,
+        "action_label": _agent_action_label(action),
+        "confidence": round(_clamp(confidence), 2),
+        "target_position_pct": target_pct,
+        "summary": summary,
+        "buy_reason": summary if action in {"strong_buy", "probe_buy", "buy", "add"} else "",
+        "sell_reason": summary if action in {"reduce", "close", "sell", "avoid"} else "",
+        "risk_note": str((item.get("risk") or {}).get("summary") or "保持仓位纪律，等待人工确认。"),
+        "invalid_if": "跌破关键均线、行业继续走弱，或风控门禁关闭。",
+        "requires_user_confirm": action in {"strong_buy", "probe_buy", "buy", "add", "reduce", "close", "sell"},
+        "can_override_rule": action == "probe_buy" and rule_action == "watch",
+    }
+
+
+def _trade_advisor_prompt(item: dict[str, Any], *, market_regime: dict[str, Any], risk_gate: dict[str, Any]) -> list[dict[str, str]]:
+    evidence = item.get("evidence") or {}
+    payload = {
+        "rule_action": item.get("action_type"),
+        "can_create_order": item.get("can_create_order"),
+        "non_executable_reasons": item.get("non_executable_reasons") or [],
+        "ts_code": item.get("ts_code"),
+        "name": item.get("name"),
+        "horizon": item.get("horizon"),
+        "quantity": item.get("quantity"),
+        "target_position_pct": item.get("target_position_pct"),
+        "current_quantity": item.get("current_quantity"),
+        "reference_price": item.get("reference_price"),
+        "reason": (item.get("reason") or {}).get("summary"),
+        "risk": item.get("risk"),
+        "evidence": {
+            "total_score": evidence.get("total_score"),
+            "trend_score": evidence.get("trend_score"),
+            "risk_score": evidence.get("risk_score"),
+            "industry": evidence.get("industry"),
+            "market_mode": evidence.get("market_mode"),
+        },
+        "market_regime": market_regime,
+        "risk_gate": risk_gate,
+    }
+    return [
+        {
+            "role": "system",
+            "content": (
+                "你是交易建议 Agent，只能给建议，不能直接下单。必须基于输入数据判断，输出严格 JSON。"
+                "允许 action: strong_buy, probe_buy, buy, add, hold, watch, reduce, close, avoid。"
+                "如果规则是 watch 但总分接近、趋势和风险较好，可给 probe_buy；所有交易建议都需要用户确认。"
+                "A股买入/加仓必须按整手下单，1手=100股；不足1手时不能建议生成买入计划单。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "请评估这条今日动作，返回 JSON 字段："
+                "action, confidence, target_position_pct, summary, buy_reason, sell_reason, risk_note, invalid_if, requires_user_confirm, can_override_rule。\n"
+                f"输入：{json.dumps(payload, ensure_ascii=False, default=str)}"
+            ),
+        },
+    ]
+
+
+def _trade_advisor_agent_opinion(item: dict[str, Any], *, market_regime: dict[str, Any], risk_gate: dict[str, Any], force_sync: bool = False) -> dict[str, Any]:
+    fallback = _heuristic_trade_advisor_opinion(item)
+    if not _trade_advisor_agent_enabled():
+        return {**fallback, "source": "heuristic_disabled"}
+    if not force_sync and not _trade_advisor_agent_sync_enabled():
+        return {
+            **fallback,
+            "source": "heuristic_fast",
+            "model": _trade_advisor_agent_model(),
+            "llm_status": "sync_disabled_for_fast_page_load",
+        }
+    try:
+        text = chat_completion_text(
+            model=_trade_advisor_agent_model(),
+            messages=_trade_advisor_prompt(item, market_regime=market_regime, risk_gate=risk_gate),
+            temperature=0.2,
+            timeout_s=6,
+            max_retries=1,
+        )
+        parsed = _parse_json(text)
+        if not isinstance(parsed, dict):
+            return fallback
+        action = str(parsed.get("action") or fallback["action"]).strip()
+        confidence = _clamp(_as_float(parsed.get("confidence"), fallback["confidence"]))
+        return {
+            **fallback,
+            "source": "llm",
+            "model": _trade_advisor_agent_model(),
+            "action": action,
+            "action_label": _agent_action_label(action),
+            "confidence": round(confidence, 2),
+            "target_position_pct": round(_as_float(parsed.get("target_position_pct"), fallback.get("target_position_pct")), 2),
+            "summary": str(parsed.get("summary") or fallback["summary"]).strip(),
+            "buy_reason": str(parsed.get("buy_reason") or fallback.get("buy_reason") or "").strip(),
+            "sell_reason": str(parsed.get("sell_reason") or fallback.get("sell_reason") or "").strip(),
+            "risk_note": str(parsed.get("risk_note") or fallback["risk_note"]).strip(),
+            "invalid_if": str(parsed.get("invalid_if") or fallback["invalid_if"]).strip(),
+            "requires_user_confirm": bool(parsed.get("requires_user_confirm", fallback["requires_user_confirm"])),
+            "can_override_rule": bool(parsed.get("can_override_rule", fallback["can_override_rule"])),
+        }
+    except (LLMCallError, Exception) as exc:
+        return {**fallback, "source": "heuristic_fallback", "error": str(exc)}
+
+
+def _should_run_trade_advisor(item: dict[str, Any]) -> bool:
+    if item.get("can_create_order"):
+        return True
+    evidence = item.get("evidence") or {}
+    score = _as_float(evidence.get("total_score"))
+    trend = _as_float(evidence.get("trend_score"))
+    risk = _as_float(evidence.get("risk_score"), 60.0)
+    return str(item.get("action_type") or "") in {"watch", "hold"} and score >= 75 and trend >= 55 and risk >= 55
+
+
+def _advisor_cache_key(item: dict[str, Any]) -> tuple[str, str]:
+    return (str(item.get("ts_code") or "").upper(), str(item.get("rule_tier") or item.get("action_type") or ""))
+
+
+def _load_trade_advisor_opinions(conn, opinion_date: str) -> dict[tuple[str, str], dict[str, Any]]:
+    if not opinion_date or not _table_exists(conn, DECISION_TRADE_ADVISOR_TABLE):
+        return {}
+    rows = conn.execute(
+        f"""
+        SELECT ts_code, rule_tier, status, source, model, opinion_json, updated_at
+        FROM {DECISION_TRADE_ADVISOR_TABLE}
+        WHERE opinion_date = ?
+        """,
+        (opinion_date,),
+    ).fetchall()
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        item = dict(row)
+        opinion = _parse_json(item.get("opinion_json"))
+        if not isinstance(opinion, dict):
+            opinion = {}
+        opinion.setdefault("source", item.get("source") or "cached")
+        opinion.setdefault("model", item.get("model") or "")
+        opinion["cache_status"] = item.get("status") or "ready"
+        opinion["cached_at"] = item.get("updated_at") or ""
+        out[(str(item.get("ts_code") or "").upper(), str(item.get("rule_tier") or ""))] = opinion
+    return out
+
+
+def _save_trade_advisor_opinion(conn, *, opinion_date: str, item: dict[str, Any], opinion: dict[str, Any], status: str = "ready") -> None:
+    now = _utc_now()
+    ts_code = str(item.get("ts_code") or "").upper()
+    rule_tier = str(item.get("rule_tier") or item.get("action_type") or "")
+    conn.execute(
+        f"""
+        INSERT INTO {DECISION_TRADE_ADVISOR_TABLE} (
+            opinion_date, ts_code, rule_tier, rule_action, status, source, model,
+            opinion_json, input_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(opinion_date, ts_code, rule_tier) DO UPDATE SET
+            rule_action = excluded.rule_action,
+            status = excluded.status,
+            source = excluded.source,
+            model = excluded.model,
+            opinion_json = excluded.opinion_json,
+            input_json = excluded.input_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            opinion_date,
+            ts_code,
+            rule_tier,
+            str(item.get("action_type") or ""),
+            status,
+            str(opinion.get("source") or ""),
+            str(opinion.get("model") or ""),
+            json.dumps(opinion, ensure_ascii=False, default=str),
+            json.dumps(item, ensure_ascii=False, default=str),
+            now,
+            now,
+        ),
+    )
+
+
+def _pending_trade_advisor_opinion(item: dict[str, Any]) -> dict[str, Any]:
+    if not _should_run_trade_advisor(item):
+        return _heuristic_trade_advisor_opinion(item, source="not_needed")
+    return {
+        "agent_key": "trade_advisor_agent",
+        "source": "pending_review",
+        "action": "pending_review",
+        "action_label": "待评估",
+        "summary": "尚未完成盘前 Agent 评估，可点击重新评估这只。",
+        "requires_user_confirm": False,
+        "can_override_rule": False,
+    }
+
+
+def _refresh_running_trade_advisor_opinion(*, request_id: str) -> dict[str, Any]:
+    return {
+        "agent_key": "trade_advisor_agent",
+        "source": "refresh_running",
+        "action": "refresh_running",
+        "action_label": "评估中",
+        "summary": "已提交单只 Agent 重新评估，后台完成后会写入缓存。",
+        "requires_user_confirm": False,
+        "can_override_rule": False,
+        "request_id": request_id,
+    }
+
+
+def _apply_agent_order_payload(item: dict[str, Any], *, risk_gate: dict[str, Any]) -> None:
+    opinion = item.get("agent_opinion") or {}
+    agent_action = str(opinion.get("action") or "").strip()
+    agent_target_pct = _as_float(opinion.get("target_position_pct"))
+    agent_qty = _quantity_for_target(
+        account_equity=_as_float((item.get("account_assumption") or {}).get("equity")),
+        target_pct=agent_target_pct,
+        current_quantity=int(_as_float(item.get("current_quantity"))),
+        price=_as_float(item.get("reference_price")),
+        lot_size=_decision_lot_size(),
+    )
+    agent_can_create_order = bool(
+        risk_gate.get("ok")
+        and bool(opinion.get("can_override_rule"))
+        and agent_action in {"strong_buy", "probe_buy", "buy", "add"}
+        and agent_qty > 0
+    )
+    item["agent_can_create_order"] = agent_can_create_order
+    if agent_can_create_order:
+        order_action = "add" if int(_as_float(item.get("current_quantity"))) > 0 else "buy"
+        item["agent_order_payload"] = {
+            "ts_code": item.get("ts_code"),
+            "action_type": order_action,
+            "planned_price": item.get("reference_price"),
+            "size": agent_qty,
+            "note": f"Agent建议{_agent_action_label(agent_action)}：{opinion.get('summary') or ''}",
+        }
+
+
+def _attach_trade_advisor_opinions(items: list[dict[str, Any]], *, opinion_cache: dict[tuple[str, str], dict[str, Any]], risk_gate: dict[str, Any]) -> None:
+    for item in items:
+        cached = opinion_cache.get(_advisor_cache_key(item))
+        item["agent_opinion"] = cached if cached else _pending_trade_advisor_opinion(item)
+        _apply_agent_order_payload(item, risk_gate=risk_gate)
+
+
+def _today_action_item(
+    *,
+    action_type: str,
+    horizon: str,
+    score_item: dict[str, Any] | None,
+    position: dict[str, Any] | None,
+    price: float,
+    quantity: int,
+    target_position_pct: float,
+    reason: str,
+    risk_note: str,
+    source: str,
+    market_regime: dict[str, Any],
+    risk_gate: dict[str, Any],
+    account_equity: float,
+    rule_tier: str = "",
+    decision_path: list[str] | None = None,
+) -> dict[str, Any]:
+    score_item = score_item or {}
+    position = position or {}
+    ts_code = str(score_item.get("ts_code") or position.get("ts_code") or "").upper()
+    score = _as_float(score_item.get("total_score"))
+    trend_score = _as_float(score_item.get("trend_score"))
+    risk_score = _as_float(score_item.get("risk_score"), 60.0)
+    executable = action_type in TODAY_ACTION_EXECUTABLE_TYPES
+    can_create_order = bool(risk_gate.get("ok") and executable and int(quantity) > 0)
+    chain_order_no = str(position.get("order_no") or "").strip()
+    non_executable_reasons = _non_executable_reasons(
+        risk_gate=risk_gate,
+        executable=executable,
+        quantity=quantity,
+        action_type=action_type,
+    )
+    chain_mode = "reuse" if action_type in {"add", "reduce", "close", "sell"} and chain_order_no else "new" if action_type == "buy" else "none"
+    next_step = "create_order_plan" if can_create_order else "observe_only" if action_type == "watch" else "hold_position" if action_type == "hold" else "blocked"
+    order_payload = {
+        "ts_code": ts_code,
+        "action_type": action_type,
+        "planned_price": round(price, 4),
+        "size": int(max(quantity, 0)),
+        "note": f"{TODAY_ACTION_LABELS.get(action_type, action_type)}：{reason}",
+    }
+    if chain_order_no and action_type in {"add", "reduce", "close", "sell"}:
+        order_payload["chain_order_no"] = chain_order_no
+    return {
+        "id": f"{horizon}:{action_type}:{ts_code}",
+        "horizon": horizon,
+        "action_type": action_type,
+        "action_label": TODAY_RULE_TIER_LABELS.get(rule_tier, TODAY_ACTION_LABELS.get(action_type, action_type)),
+        "rule_tier": rule_tier or action_type,
+        "rule_tier_label": TODAY_RULE_TIER_LABELS.get(rule_tier or action_type, TODAY_ACTION_LABELS.get(action_type, action_type)),
+        "ts_code": ts_code,
+        "name": score_item.get("name") or position.get("name") or "",
+        "quantity": int(max(quantity, 0)),
+        "reference_price": round(price, 4),
+        "target_position_pct": target_position_pct,
+        "current_quantity": int(_as_float(position.get("quantity"))),
+        "current_market_value": round(_as_float(position.get("market_value")) or int(_as_float(position.get("quantity"))) * price, 2),
+        "reason": {
+            "summary": reason,
+            "buy_reason": reason if action_type in {"buy", "add"} else "",
+            "sell_reason": reason if action_type in {"sell", "reduce", "close"} else "",
+        },
+        "risk": {
+            "level": _risk_level(score_item, str(market_regime.get("mode") or "")),
+            "summary": risk_note,
+            "notes": [risk_note] if risk_note else [],
+        },
+        "evidence": {
+            "source": source,
+            "score_date": score_item.get("score_date") or score_item.get("source_date") or "",
+            "total_score": round(score, 2),
+            "trend_score": round(trend_score, 2),
+            "risk_score": round(risk_score, 2),
+            "industry": score_item.get("industry") or "",
+            "industry_rank": score_item.get("industry_rank"),
+            "market_mode": market_regime.get("mode") or "",
+        },
+        "source": source,
+        "can_create_order": can_create_order,
+        "non_executable_reasons": non_executable_reasons,
+        "next_step": next_step,
+        "execution_flow": {
+            "entry": "today_trading",
+            "risk_gate": "passed" if risk_gate.get("ok") else "blocked",
+            "chain_mode": chain_mode,
+            "chain_order_no": chain_order_no,
+            "decision_path": decision_path or [],
+            "after_order": "计划单 -> 用户确认执行 -> 更新持仓 -> 交易链复盘",
+        },
+        "order_payload": order_payload,
+        "account_assumption": {
+            "equity": account_equity,
+            "sizing": "默认账户资金 × 目标仓位百分比，按手数向下取整；未接真实账户前仅作为计划单建议。",
+        },
+    }
+
+
+def query_decision_today_actions(*, sqlite3_module, db_path: str, limit: int = 30) -> dict[str, Any]:
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    try:
+        _ensure_tables(conn)
+        limit = max(5, min(int(limit or 30), 100))
+        latest_score_date, universe_size, score_rows = _load_stock_score_rows(conn, page=1, page_size=max(limit, 50))
+        market_regime = _aggregate_market_regime(score_rows)
+        kill_switch = _get_control_row(conn)
+        allow_trading = bool(int(kill_switch.get("allow_trading") or 0))
+        pipeline_health = _build_pipeline_health(
+            conn,
+            latest_score_date=str(latest_score_date or ""),
+            universe_size=universe_size,
+            shortlist_size=len(score_rows),
+        )
+        data_readiness_gate = _decision_data_readiness_gate(conn)
+        score_ready = bool(str(latest_score_date or "").strip()) and universe_size > 0
+        risk_gate = {
+            "ok": allow_trading and score_ready and bool(data_readiness_gate.get("ok")),
+            "allow_trading": allow_trading,
+            "pipeline_status": pipeline_health.get("status") or "unknown",
+            "data_readiness_status": data_readiness_gate.get("status") or "unknown",
+            "blockers": [],
+            "warnings": [],
+        }
+        if not allow_trading:
+            risk_gate["blockers"].append(f"Kill Switch 已暂停：{kill_switch.get('reason') or '未填写原因'}")
+        if not score_ready:
+            risk_gate["blockers"].append("主评分数据未就绪：stock_scores_daily 为空")
+        if not data_readiness_gate.get("ok"):
+            risk_gate["blockers"].extend(str(item) for item in (data_readiness_gate.get("blockers") or []) if str(item).strip())
+        else:
+            risk_gate["warnings"].extend(str(item) for item in (data_readiness_gate.get("warnings") or []) if str(item).strip())
+        if score_ready and str(pipeline_health.get("status") or "") in {"empty", "not_initialized", "degraded"}:
+            risk_gate["warnings"].append(f"决策链路不完整：{pipeline_health.get('status')}")
+        if pipeline_health.get("missing_inputs"):
+            risk_gate["warnings"].append(f"缺少输入：{'、'.join(str(x) for x in pipeline_health.get('missing_inputs') or [])}")
+
+        positions = _portfolio_positions_for_decision(conn)
+        score_by_ts = {str(item.get("ts_code") or "").upper(): item for item in score_rows}
+        strategy_selection = _latest_strategy_selection_candidates(conn)
+        strategy_selected_codes = [code for code in strategy_selection if code in score_by_ts]
+        candidate_source = "strategy_selection" if strategy_selected_codes else "score_shortlist"
+        if strategy_selected_codes:
+            rank_by_code = {
+                code: int((strategy_selection.get(code) or {}).get("rank") or idx + 1)
+                for idx, code in enumerate(strategy_selected_codes)
+            }
+            score_rows = sorted(
+                [score_by_ts[code] for code in strategy_selected_codes],
+                key=lambda item: rank_by_code.get(str(item.get("ts_code") or "").upper(), 9999),
+            )
+        price_codes = sorted(set(score_by_ts.keys()) | set(positions.keys()))
+        latest_prices = _latest_close_prices(conn, price_codes)
+        account_equity = _decision_account_equity()
+        lot_size = _decision_lot_size()
+        items: list[dict[str, Any]] = []
+        market_mode = str(market_regime.get("mode") or "neutral")
+
+        for ts_code, position in positions.items():
+            score_item = score_by_ts.get(ts_code, {"ts_code": ts_code, "name": position.get("name") or ""})
+            price = _reference_price(score_item, position, latest_prices)
+            current_quantity = int(_as_float(position.get("quantity")))
+            score = _as_float(score_item.get("total_score"))
+            trend_score = _as_float(score_item.get("trend_score"), 60.0)
+            risk_score = _as_float(score_item.get("risk_score"), 60.0)
+            if not allow_trading:
+                action_type = "hold"
+                rule_tier = "blocked"
+                quantity = 0
+                target_pct = round((current_quantity * price / account_equity) * 100.0, 2) if account_equity else 0.0
+                reason = "风控开关关闭，仓内标的只做观察，不新增或卖出计划单。"
+            elif score and (score < 55 or trend_score < 45 or risk_score < 40):
+                action_type = "close"
+                rule_tier = "close"
+                quantity = current_quantity
+                target_pct = 0.0
+                reason = f"评分或趋势/风险恶化：总分 {score:.1f}，趋势 {trend_score:.1f}，风险 {risk_score:.1f}，建议清仓。"
+            elif score and (score < 70 or trend_score < 55):
+                action_type = "reduce"
+                rule_tier = "reduce"
+                quantity = _round_lot(current_quantity / 2, lot_size)
+                target_pct = _target_position_pct(score, action_type=action_type, market_mode=market_mode, rule_tier=rule_tier)
+                if quantity <= 0:
+                    action_type = "hold"
+                    rule_tier = "hold"
+                    target_pct = round((current_quantity * price / account_equity) * 100.0, 2) if account_equity else 0.0
+                    reason = f"持仓质量下降但减仓数量不足 1 手：总分 {score:.1f}，趋势 {trend_score:.1f}，先继续观察。"
+                else:
+                    reason = f"持仓质量下降但未触发清仓：总分 {score:.1f}，趋势 {trend_score:.1f}，先减仓降低风险。"
+            elif score >= 85 and trend_score >= 70 and risk_score >= 55:
+                action_type = "add"
+                rule_tier = "add"
+                target_pct = _target_position_pct(score, action_type=action_type, market_mode=market_mode, rule_tier=rule_tier)
+                quantity = _quantity_for_target(
+                    account_equity=account_equity,
+                    target_pct=target_pct,
+                    current_quantity=current_quantity,
+                    price=price,
+                    lot_size=lot_size,
+                )
+                if quantity <= 0:
+                    action_type = "hold"
+                    rule_tier = "hold"
+                    reason = f"评分仍强但当前仓位已接近目标仓位 {target_pct:.1f}%，继续持有。"
+                else:
+                    reason = f"高分持仓继续强化：总分 {score:.1f}，趋势 {trend_score:.1f}，建议加到目标仓位 {target_pct:.1f}%。"
+            else:
+                action_type = "hold"
+                rule_tier = "hold"
+                quantity = 0
+                target_pct = round((current_quantity * price / account_equity) * 100.0, 2) if account_equity else 0.0
+                reason = f"持仓状态未触发加减仓：总分 {score:.1f}，趋势 {trend_score:.1f}，继续观察。"
+            decision_path = [
+                "入口：已有持仓，进入持仓诊断",
+                f"市场状态：{market_mode}",
+                f"规则分层：{TODAY_RULE_TIER_LABELS.get(rule_tier, rule_tier)}",
+            ]
+            items.append(
+                _today_action_item(
+                    action_type=action_type,
+                    horizon="long",
+                    score_item=score_item,
+                    position=position,
+                    price=price,
+                    quantity=quantity,
+                    target_position_pct=target_pct,
+                    reason=reason,
+                    risk_note=_build_stock_risk(score_item) if score else "缺少最新评分，先按持仓管理观察。",
+                    source="portfolio_diagnosis",
+                    market_regime=market_regime,
+                    risk_gate=risk_gate,
+                    account_equity=account_equity,
+                    rule_tier=rule_tier,
+                    decision_path=decision_path,
+                )
+            )
+
+        for score_item in score_rows:
+            ts_code = str(score_item.get("ts_code") or "").upper()
+            if ts_code in positions:
+                continue
+            strategy_candidate = strategy_selection.get(ts_code) or {}
+            strategy_payload = strategy_candidate.get("candidate_json") if isinstance(strategy_candidate.get("candidate_json"), dict) else {}
+            score = _as_float(score_item.get("total_score"))
+            trend_score = _as_float(score_item.get("trend_score"))
+            risk_score = _as_float(score_item.get("risk_score"), 60.0)
+            price = _reference_price(score_item, None, latest_prices)
+            if not allow_trading:
+                action_type = "watch"
+                rule_tier = "blocked"
+                target_pct = 0.0
+                quantity = 0
+                reason = "Kill Switch 关闭，仅保留观察。"
+            elif market_mode == "defensive" and score < 90:
+                action_type = "watch"
+                rule_tier = "watch"
+                target_pct = 0.0
+                quantity = 0
+                reason = f"防御市场下提高新开仓门槛：总分 {score:.1f}，先观察。"
+            elif score >= 85 and trend_score >= 60 and risk_score >= 50:
+                action_type = "buy"
+                rule_tier = "strong_buy"
+                target_pct = _target_position_pct(score, action_type=action_type, market_mode=market_mode, rule_tier=rule_tier)
+                quantity = _quantity_for_target(
+                    account_equity=account_equity,
+                    target_pct=target_pct,
+                    current_quantity=0,
+                    price=price,
+                    lot_size=lot_size,
+                )
+                reason = f"短线新开仓候选：总分 {score:.1f}，趋势 {trend_score:.1f}，风险 {risk_score:.1f}，满足入场阈值。"
+            elif score >= 78 and trend_score >= 60 and risk_score >= 70 and market_mode != "defensive":
+                action_type = "buy"
+                rule_tier = "probe_buy"
+                target_pct = _target_position_pct(score, action_type=action_type, market_mode=market_mode, rule_tier=rule_tier)
+                quantity = _quantity_for_target(
+                    account_equity=account_equity,
+                    target_pct=target_pct,
+                    current_quantity=0,
+                    price=price,
+                    lot_size=lot_size,
+                )
+                reason = f"边界信号：总分 {score:.1f} 未到强买，但趋势 {trend_score:.1f}、风险安全分 {risk_score:.1f} 较好，可小仓位试买。"
+            elif score >= 65 and trend_score >= 45:
+                action_type = "watch"
+                rule_tier = "watch"
+                target_pct = 0.0
+                quantity = 0
+                reason = f"普通信号：总分 {score:.1f}，进入观察，不生成计划单。"
+            else:
+                action_type = "avoid"
+                rule_tier = "avoid"
+                target_pct = 0.0
+                quantity = 0
+                reason = f"弱信号：总分 {score:.1f} 或趋势 {trend_score:.1f} 不足，暂时放弃。"
+            decision_path = [
+                "入口：策略候选池，进入新开仓分层" if strategy_candidate else "入口：无持仓，进入新开仓分层",
+                f"市场状态：{market_mode}",
+                f"策略来源：{strategy_payload.get('strategy_key') or strategy_candidate.get('mode')}" if strategy_candidate else "策略来源：评分短名单回退",
+                f"规则分层：{TODAY_RULE_TIER_LABELS.get(rule_tier, rule_tier)}",
+            ]
+            if strategy_candidate:
+                reason = f"{strategy_payload.get('rationale') or strategy_candidate.get('rationale') or reason} 今日动作：{reason}"
+            items.append(
+                _today_action_item(
+                    action_type=action_type,
+                    horizon="short",
+                    score_item=score_item,
+                    position=None,
+                    price=price,
+                    quantity=quantity,
+                    target_position_pct=target_pct,
+                    reason=reason,
+                    risk_note=_build_stock_risk(score_item),
+                    source="strategy_selection" if strategy_candidate else "score_shortlist",
+                    market_regime=market_regime,
+                    risk_gate=risk_gate,
+                    account_equity=account_equity,
+                    rule_tier=rule_tier,
+                    decision_path=decision_path,
+                )
+            )
+
+        priority = {"close": 0, "reduce": 1, "buy": 2, "add": 3, "hold": 4, "watch": 5}
+        items = sorted(items, key=lambda item: (priority.get(str(item.get("action_type")), 9), -_as_float((item.get("evidence") or {}).get("total_score"))))[:limit]
+        opinion_cache = _load_trade_advisor_opinions(conn, str(latest_score_date or ""))
+        _attach_trade_advisor_opinions(items, opinion_cache=opinion_cache, risk_gate=risk_gate)
+        summary_counts: dict[str, int] = defaultdict(int)
+        for item in items:
+            summary_counts[str(item.get("action_type") or "unknown")] += 1
+        return {
+            "generated_at": _utc_now(),
+            "snapshot_date": latest_score_date or "",
+            "account": {"equity": account_equity, "lot_size": lot_size, "source": "env:DECISION_DEFAULT_ACCOUNT_EQUITY"},
+            "risk_gate": risk_gate,
+            "data_readiness_gate": data_readiness_gate,
+            "market_regime": market_regime,
+            "pipeline_health": pipeline_health,
+            "summary": {
+                "total": len(items),
+                "executable": sum(1 for item in items if item.get("can_create_order")),
+                "agent_reviewed": sum(1 for item in items if str((item.get("agent_opinion") or {}).get("source") or "") in {"llm", "heuristic", "heuristic_fallback", "heuristic_disabled"}),
+                "agent_pending": sum(1 for item in items if str((item.get("agent_opinion") or {}).get("source") or "") in {"pending_review", "refresh_running"}),
+                "positions": len(positions),
+                "universe_size": universe_size,
+                "candidate_source": candidate_source,
+                "strategy_selection_count": len(strategy_selected_codes),
+                "by_action": dict(summary_counts),
+            },
+            "items": items,
+        }
+    finally:
+        conn.close()
+
+
+def refresh_trade_advisor_opinion(
+    *,
+    sqlite3_module,
+    db_path: str,
+    ts_code: str,
+    limit: int = 100,
+) -> dict[str, Any]:
+    code = str(ts_code or "").strip().upper()
+    if not code:
+        raise ValueError("缺少 ts_code")
+    payload = query_decision_today_actions(sqlite3_module=sqlite3_module, db_path=db_path, limit=limit)
+    item = next((x for x in payload.get("items", []) if str(x.get("ts_code") or "").upper() == code), None)
+    if not item:
+        raise ValueError(f"今日动作清单中没有找到 {code}")
+    opinion = _trade_advisor_agent_opinion(
+        item,
+        market_regime=payload.get("market_regime") or {},
+        risk_gate=payload.get("risk_gate") or {},
+        force_sync=True,
+    )
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    try:
+        _ensure_tables(conn)
+        opinion_date = str(payload.get("snapshot_date") or "")
+        _save_trade_advisor_opinion(conn, opinion_date=opinion_date, item=item, opinion=opinion)
+        conn.commit()
+    finally:
+        conn.close()
+    item["agent_opinion"] = opinion
+    _apply_agent_order_payload(item, risk_gate=payload.get("risk_gate") or {})
+    return {
+        "evaluated_at": _utc_now(),
+        "snapshot_date": payload.get("snapshot_date") or "",
+        "item": item,
+        "opinion": opinion,
+    }
+
+
+def queue_trade_advisor_opinion_refresh(
+    *,
+    sqlite3_module,
+    db_path: str,
+    ts_code: str,
+    limit: int = 100,
+) -> dict[str, Any]:
+    code = str(ts_code or "").strip().upper()
+    if not code:
+        raise ValueError("缺少 ts_code")
+    payload = query_decision_today_actions(sqlite3_module=sqlite3_module, db_path=db_path, limit=limit)
+    item = next((x for x in payload.get("items", []) if str(x.get("ts_code") or "").upper() == code), None)
+    if not item:
+        raise ValueError(f"今日动作清单中没有找到 {code}")
+
+    request_id = _trace_token("trade_advisor_refresh", f"{code}:{_utc_now()}")
+    opinion = _refresh_running_trade_advisor_opinion(request_id=request_id)
+    opinion_date = str(payload.get("snapshot_date") or "")
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    try:
+        _ensure_tables(conn)
+        _save_trade_advisor_opinion(conn, opinion_date=opinion_date, item=item, opinion=opinion, status="running")
+        conn.commit()
+    finally:
+        conn.close()
+
+    def _run_refresh() -> None:
+        try:
+            refresh_trade_advisor_opinion(sqlite3_module=sqlite3_module, db_path=db_path, ts_code=code, limit=limit)
+        except Exception as exc:  # pragma: no cover - background safety net
+            failed = {
+                **_heuristic_trade_advisor_opinion(item, source="heuristic_fallback"),
+                "source": "refresh_failed",
+                "error": str(exc),
+                "request_id": request_id,
+                "summary": f"Agent 重新评估失败，保留规则结论：{exc}",
+            }
+            fail_conn = sqlite3_module.connect(db_path)
+            fail_conn.row_factory = sqlite3_module.Row
+            try:
+                _ensure_tables(fail_conn)
+                _save_trade_advisor_opinion(fail_conn, opinion_date=opinion_date, item=item, opinion=failed, status="failed")
+                fail_conn.commit()
+            finally:
+                fail_conn.close()
+
+    thread = threading.Thread(target=_run_refresh, name=f"trade-advisor-refresh-{code}", daemon=True)
+    thread.start()
+    item["agent_opinion"] = opinion
+    _apply_agent_order_payload(item, risk_gate=payload.get("risk_gate") or {})
+    return {
+        "queued": True,
+        "request_id": request_id,
+        "submitted_at": _utc_now(),
+        "snapshot_date": opinion_date,
+        "item": item,
+        "opinion": opinion,
+    }
+
+
+def refresh_trade_advisor_daily(
+    *,
+    sqlite3_module,
+    db_path: str,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    max_items = int(limit or _trade_advisor_agent_limit() or 20)
+    payload = query_decision_today_actions(sqlite3_module=sqlite3_module, db_path=db_path, limit=max(max_items, 30))
+    opinion_date = str(payload.get("snapshot_date") or "")
+    candidates = [item for item in payload.get("items", []) if _should_run_trade_advisor(item)]
+    candidates = candidates[: max(1, max_items)]
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    evaluated: list[dict[str, Any]] = []
+    try:
+        _ensure_tables(conn)
+        for item in candidates:
+            opinion = _trade_advisor_agent_opinion(
+                item,
+                market_regime=payload.get("market_regime") or {},
+                risk_gate=payload.get("risk_gate") or {},
+                force_sync=True,
+            )
+            _save_trade_advisor_opinion(conn, opinion_date=opinion_date, item=item, opinion=opinion)
+            evaluated.append(
+                {
+                    "ts_code": item.get("ts_code"),
+                    "name": item.get("name"),
+                    "rule_tier": item.get("rule_tier"),
+                    "action": opinion.get("action"),
+                    "source": opinion.get("source"),
+                    "confidence": opinion.get("confidence"),
+                }
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "evaluated_at": _utc_now(),
+        "snapshot_date": opinion_date,
+        "requested_limit": max_items,
+        "candidate_count": len(candidates),
+        "evaluated_count": len(evaluated),
+        "items": evaluated,
     }
 
 
@@ -1905,6 +3277,12 @@ def _strategy_candidate_packet_for_store(candidate: dict[str, Any]) -> dict[str,
         "linked_industries": list(candidate.get("linked_industries") or []),
         "linked_stocks": list(candidate.get("linked_stocks") or []),
         "approval_hint": candidate.get("approval_hint"),
+        "strategy_key": candidate.get("strategy_key"),
+        "ts_code": candidate.get("ts_code"),
+        "stock_name": candidate.get("stock_name"),
+        "action_bias": candidate.get("action_bias"),
+        "score_date": candidate.get("score_date"),
+        "evidence": candidate.get("evidence") or {},
     }
 
 
@@ -3131,12 +4509,17 @@ def run_decision_scheduled_job(*, sqlite3_module, db_path: str, job_key: str) ->
 def build_decision_runtime_deps(*, sqlite3_module, db_path: str) -> dict[str, Any]:
     return {
         "query_decision_board": lambda **kwargs: query_decision_board(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
+        "query_decision_today_actions": lambda **kwargs: query_decision_today_actions(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
+        "queue_trade_advisor_opinion_refresh": lambda **kwargs: queue_trade_advisor_opinion_refresh(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
+        "refresh_trade_advisor_opinion": lambda **kwargs: refresh_trade_advisor_opinion(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
+        "refresh_trade_advisor_daily": lambda **kwargs: refresh_trade_advisor_daily(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_scoreboard": lambda **kwargs: query_decision_scoreboard(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_stock": lambda **kwargs: query_decision_stock(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_trade_plan": lambda **kwargs: query_decision_trade_plan(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_strategy_lab": lambda **kwargs: query_decision_strategy_lab(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_strategy_runs": lambda **kwargs: query_decision_strategy_runs(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "run_decision_strategy_generation": lambda **kwargs: run_decision_strategy_generation(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
+        "run_strategy_selection_agent": lambda **kwargs: run_strategy_selection_agent(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_history": lambda **kwargs: query_decision_history(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_actions": lambda **kwargs: query_decision_actions(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_calibration": lambda **kwargs: query_decision_calibration(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),

@@ -39,6 +39,21 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json({"ok": True, **payload})
         return True
 
+    if parsed.path == "/api/decision/today-actions":
+        params = parse_qs(parsed.query)
+        try:
+            limit = int(params.get("limit", ["30"])[0] or 30)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "limit 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_decision_today_actions"](limit=limit)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"今日动作清单查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **payload})
+        return True
+
     if parsed.path == "/api/decision/scores":
         params = parse_qs(parsed.query)
         try:
@@ -218,6 +233,71 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
     if not parsed.path.startswith("/api/decision"):
         return False
 
+    if parsed.path == "/api/decision/trade-advisor/refresh":
+        denied = _guard_write(deps, scope="decision.trade_advisor")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("authenticated"):
+            handler._send_json({"ok": False, "error": "请先登录后再重新评估"}, status=401)
+            return True
+        ts_code = str(payload.get("ts_code", "") or "").strip().upper()
+        if not ts_code:
+            handler._send_json({"ok": False, "error": "缺少 ts_code"}, status=400)
+            return True
+        try:
+            result = deps["queue_trade_advisor_opinion_refresh"](ts_code=ts_code)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"Agent 重新评估提交失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **result})
+        return True
+
+    if parsed.path == "/api/decision/trade-advisor/daily-refresh":
+        denied = _guard_write(deps, scope="decision.trade_advisor_daily")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可触发盘前批量评估"}, status=403)
+            return True
+        try:
+            limit = int(payload.get("limit", 20) or 20)
+        except (TypeError, ValueError):
+            handler._send_json({"ok": False, "error": "limit 必须是整数"}, status=400)
+            return True
+        try:
+            result = deps["refresh_trade_advisor_daily"](limit=limit)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"盘前 Agent 批量评估失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **result})
+        return True
+
+    if parsed.path == "/api/decision/strategy-selection/run":
+        denied = _guard_write(deps, scope="decision.strategy_selection")
+        if denied:
+            handler._send_json({"ok": False, "error": denied}, status=403)
+            return True
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可触发策略选股 Agent"}, status=403)
+            return True
+        try:
+            limit = int(payload.get("limit", 30) or 30)
+        except (TypeError, ValueError):
+            handler._send_json({"ok": False, "error": "limit 必须是整数"}, status=400)
+            return True
+        try:
+            result = deps["run_strategy_selection_agent"](limit=limit)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"策略选股 Agent 运行失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **result})
+        return True
+
     if parsed.path == "/api/decision/kill-switch":
         denied = _guard_write(deps, scope="decision.kill_switch")
         if denied:
@@ -395,7 +475,8 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         if evidence_warnings:
             response["evidence_warnings"] = evidence_warnings
 
-        # P0-4: Auto-create execution task for actionable verdicts
+        # P0-4: Auto-create a non-executable audit task.
+        # Executable portfolio orders must be created with explicit size/price later.
         # Use integer id for DB operations; action_id (trace format) is for display only
         _numeric_action_id = result.get("id")  # integer PK
         action_id = str(result.get("action_id") or _numeric_action_id or "")
@@ -419,14 +500,14 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
             try:
                 from services.portfolio_service.service import create_order as _create_portfolio_order
                 order_action_type = {
-                    "confirm": "buy",
-                    "reject": "sell",  # reject maps to a sell/cancel record for audit trail
+                    "confirm": "watch",
+                    "reject": "defer",
                     "defer": "defer",
                     "watch": "watch",
                 }.get(action_type, action_type)
                 order_note_prefix = {
-                    "confirm": "",
-                    "reject": "[拒绝记录] ",
+                    "confirm": "[已确认，待手动创建交易计划] ",
+                    "reject": "[拒绝记录，不生成交易计划] ",
                     "defer": "[延迟观察] ",
                     "watch": "[跟踪观察] ",
                 }.get(action_type, "")
@@ -443,6 +524,7 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
                         "order_id": order_result.get("id"),
                         "status": "planned",
                         "auto_created": True,
+                        "audit_only": True,
                     }
                     # Writeback initial execution_status = "planned" to the decision action
                 else:

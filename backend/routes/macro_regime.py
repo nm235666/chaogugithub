@@ -7,6 +7,16 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
     if not parsed.path.startswith("/api/macro/regime"):
         return False
 
+    if parsed.path == "/api/macro/regime/agent-draft":
+        from services.macro_service import get_latest_macro_regime_draft
+        try:
+            payload = get_latest_macro_regime_draft()
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"三周期 Agent 草案查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
     if parsed.path == "/api/macro/regime":
         from services.macro_service.regime import get_latest_regime, list_regimes
 
@@ -52,6 +62,43 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
 def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
     if not parsed.path.startswith("/api/macro/regime"):
         return False
+
+    if parsed.path == "/api/macro/regime/agent-draft/run":
+        from services.macro_service import run_macro_regime_agent
+
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可触发三周期状态 Agent"}, status=403)
+            return True
+        try:
+            result = run_macro_regime_agent()
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"三周期状态 Agent 运行失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
+    if parsed.path == "/api/macro/regime/agent-draft/confirm":
+        from services.macro_service import confirm_macro_regime_draft
+
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("authenticated"):
+            handler._send_json({"ok": False, "error": "请先登录后再确认三周期草案"}, status=401)
+            return True
+        draft_id = str(payload.get("draft_id") or "").strip()
+        if not draft_id:
+            handler._send_json({"ok": False, "error": "缺少 draft_id"}, status=400)
+            return True
+        user = auth_ctx.get("user") or {}
+        actor = str(user.get("username") or user.get("display_name") or "")
+        overrides = payload.get("overrides") if isinstance(payload.get("overrides"), dict) else {}
+        try:
+            result = confirm_macro_regime_draft(draft_id, confirmed_by=actor, overrides=overrides)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"三周期草案确认失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
 
     if parsed.path == "/api/macro/regime":
         from services.macro_service.regime import record_regime, VALID_STATES

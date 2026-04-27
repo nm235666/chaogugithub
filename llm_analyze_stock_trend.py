@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 
 import backend.server as backend_server
+import backend.http_server.config as http_server_config
 from llm_gateway import normalize_model_name, normalize_temperature_for_model
 from services.agent_service import run_trend_analysis
 
@@ -29,7 +30,7 @@ def main() -> int:
     args.temperature = normalize_temperature_for_model(args.model, args.temperature)
     ts_code = args.ts_code.strip().upper()
 
-    backend_server.DB_PATH = Path(args.db_path).resolve()
+    http_server_config.DB_PATH = Path(args.db_path).resolve()
     payload = run_trend_analysis(
         backend_server.build_agent_service_deps(),
         ts_code=ts_code,

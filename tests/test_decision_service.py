@@ -8,7 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlparse
 
+from backend.routes import decision as decision_routes
 from services.decision_service import service as decision_service
 
 
@@ -146,9 +148,42 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             worker_id TEXT NOT NULL DEFAULT '',
             owner TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE data_readiness_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_key TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'check',
+            before_json TEXT NOT NULL DEFAULT '{}',
+            after_json TEXT NOT NULL DEFAULT '{}',
+            actions_json TEXT NOT NULL DEFAULT '[]',
+            summary_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO data_readiness_runs (
+            run_key, status, mode, before_json, after_json, actions_json, summary_json, created_at, updated_at
+        ) VALUES (
+            'unit-ready', 'ready', 'dry_run', '{}', '{"status":"ready","issues":[]}', '[]',
+            '{"status":"ready","ai_diagnosis":{"business_impact":"可以运行策略选股","can_run_strategy_agent":true}}',
+            '2026-04-08T07:00:00Z', '2026-04-08T07:00:00Z'
+        )
         """
     )
     conn.commit()
+
+
+class _FakeHandler:
+    def __init__(self) -> None:
+        self.status = 200
+        self.payload = None
+
+    def _send_json(self, payload, status=200):
+        self.status = status
+        self.payload = payload
 
 
 class DecisionServiceTest(unittest.TestCase):
@@ -156,6 +191,67 @@ class DecisionServiceTest(unittest.TestCase):
         fd, path = tempfile.mkstemp(prefix="decision-", suffix=".db")
         os.close(fd)
         return path
+
+    def _insert_score(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        ts_code: str,
+        name: str,
+        total_score: float,
+        trend_score: float,
+        risk_score: float = 70.0,
+        industry: str = "银行",
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO stock_scores_daily (
+                score_date, ts_code, name, symbol, market, area, industry, industry_rank, industry_count,
+                score_grade, industry_score_grade, total_score, industry_total_score, trend_score,
+                industry_trend_score, financial_score, industry_financial_score, valuation_score,
+                industry_valuation_score, capital_flow_score, industry_capital_flow_score, event_score,
+                industry_event_score, news_score, industry_news_score, risk_score, industry_risk_score,
+                latest_trade_date, latest_risk_date, score_payload_json, source, update_time
+            ) VALUES (
+                '2026-04-08', ?, ?, substr(?, 1, 6), '主板', '深圳', ?, 1, 8,
+                'A', 'A', ?, ?, ?, ?, 80, 80, 75, 75, 72, 72, 70, 70, 76, 76, ?, ?,
+                '2026-04-08', '2026-04-08', ?, 'unit_test', '2026-04-08T10:00:00Z'
+            )
+            """,
+            (
+                ts_code,
+                name,
+                ts_code,
+                industry,
+                total_score,
+                total_score,
+                trend_score,
+                trend_score,
+                risk_score,
+                risk_score,
+                json.dumps({"score_summary": {"trend": "趋势确认", "risk": "风险可控"}}, ensure_ascii=False),
+            ),
+        )
+
+    def _set_data_readiness_run(self, conn: sqlite3.Connection, *, status: str, issues: list[dict] | None = None, impact: str = "") -> None:
+        conn.execute("DELETE FROM data_readiness_runs")
+        after = {"status": status, "issues": issues or []}
+        summary = {
+            "status": status,
+            "ai_diagnosis": {
+                "business_impact": impact,
+                "degrade_strategy": "剔除缺失股票或降低相关数据权重" if status == "degraded" else "",
+                "can_run_strategy_agent": status != "blocked",
+            },
+        }
+        conn.execute(
+            """
+            INSERT INTO data_readiness_runs (
+                run_key, status, mode, before_json, after_json, actions_json, summary_json, created_at, updated_at
+            ) VALUES (?, ?, 'dry_run', '{}', ?, '[]', ?, '2026-04-08T07:00:00Z', '2026-04-08T07:00:00Z')
+            """,
+            (f"unit-{status}", status, json.dumps(after, ensure_ascii=False), json.dumps(summary, ensure_ascii=False)),
+        )
 
     def test_build_stock_evidence_packet_reuses_score_news_signal_chatroom(self):
         db_path = self._mk_db()
@@ -630,6 +726,428 @@ class DecisionServiceTest(unittest.TestCase):
                 self.assertEqual(packet["signals"]["count"], 1)
                 self.assertEqual(packet["candidate_pool"]["dominant_bias"], "看多")
                 self.assertEqual(packet["status"], "ok")
+
+    def test_today_actions_returns_buy_reduce_close_with_reasons_and_quantity(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="000001.SZ", name="强势新买", total_score=91.0, trend_score=82.0, risk_score=75.0)
+            self._insert_score(conn, ts_code="000002.SZ", name="趋势减弱", total_score=64.0, trend_score=52.0, risk_score=62.0)
+            self._insert_score(conn, ts_code="000003.SZ", name="风险恶化", total_score=48.0, trend_score=38.0, risk_score=35.0)
+            conn.executescript(
+                """
+                CREATE TABLE portfolio_positions (
+                    id TEXT PRIMARY KEY,
+                    ts_code TEXT,
+                    name TEXT,
+                    quantity INTEGER,
+                    avg_cost REAL,
+                    last_price REAL,
+                    market_value REAL,
+                    unrealized_pnl REAL,
+                    order_no TEXT,
+                    updated_at TEXT
+                );
+                CREATE TABLE stock_daily_prices (
+                    ts_code TEXT,
+                    trade_date TEXT,
+                    close REAL
+                );
+                """
+            )
+            conn.executemany(
+                """
+                INSERT INTO portfolio_positions (id, ts_code, name, quantity, avg_cost, last_price, market_value, unrealized_pnl, order_no, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    ("pos-2", "000002.SZ", "趋势减弱", 1000, 10.0, 10.0, 10000.0, 0.0, "22222222", "2026-04-08T10:00:00Z"),
+                    ("pos-3", "000003.SZ", "风险恶化", 800, 12.0, 12.0, 9600.0, -200.0, "33333333", "2026-04-08T10:00:00Z"),
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO stock_daily_prices (ts_code, trade_date, close) VALUES (?, ?, ?)",
+                [
+                    ("000001.SZ", "2026-04-08", 10.0),
+                    ("000002.SZ", "2026-04-08", 10.0),
+                    ("000003.SZ", "2026-04-08", 12.0),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.dict(os.environ, {"DECISION_DEFAULT_ACCOUNT_EQUITY": "100000", "DECISION_LOT_SIZE": "100", "DECISION_TRADE_ADVISOR_AGENT_ENABLED": "0"}, clear=False):
+            payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=20)
+
+        self.assertTrue(payload["risk_gate"]["ok"], payload["risk_gate"])
+        by_code = {item["ts_code"]: item for item in payload["items"]}
+        self.assertEqual(by_code["000001.SZ"]["action_type"], "buy")
+        self.assertEqual(by_code["000001.SZ"]["rule_tier"], "strong_buy")
+        self.assertEqual(by_code["000001.SZ"]["quantity"], 900)
+        self.assertTrue(by_code["000001.SZ"]["can_create_order"])
+        self.assertIn("短线新开仓", by_code["000001.SZ"]["reason"]["summary"])
+        self.assertEqual(by_code["000002.SZ"]["action_type"], "reduce")
+        self.assertEqual(by_code["000002.SZ"]["quantity"], 500)
+        self.assertEqual(by_code["000002.SZ"]["execution_flow"]["chain_mode"], "reuse")
+        self.assertEqual(by_code["000002.SZ"]["order_payload"]["chain_order_no"], "22222222")
+        self.assertEqual(by_code["000002.SZ"]["next_step"], "create_order_plan")
+        self.assertIn("减仓", by_code["000002.SZ"]["reason"]["sell_reason"])
+        self.assertEqual(by_code["000003.SZ"]["action_type"], "close")
+        self.assertEqual(by_code["000003.SZ"]["quantity"], 800)
+        self.assertEqual(by_code["000003.SZ"]["execution_flow"]["chain_mode"], "reuse")
+        self.assertEqual(by_code["000003.SZ"]["order_payload"]["chain_order_no"], "33333333")
+        self.assertIn("清仓", by_code["000003.SZ"]["reason"]["sell_reason"])
+        self.assertGreaterEqual(payload["summary"]["executable"], 3)
+
+    def test_today_actions_blocked_by_data_readiness_gate(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="000001.SZ", name="强势新买", total_score=91.0, trend_score=82.0, risk_score=75.0)
+            self._set_data_readiness_run(
+                conn,
+                status="blocked",
+                issues=[{"code": "risk_recent_missing", "severity": "blocked", "message": "最近 5 日风险情景缺口过大"}],
+                impact="风险情景缺失，暂停新增买入建议",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.dict(os.environ, {"DECISION_DEFAULT_ACCOUNT_EQUITY": "100000", "DECISION_LOT_SIZE": "100", "DECISION_TRADE_ADVISOR_AGENT_ENABLED": "0"}, clear=False):
+            payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+
+        self.assertFalse(payload["risk_gate"]["ok"])
+        self.assertEqual(payload["risk_gate"]["data_readiness_status"], "blocked")
+        self.assertEqual(payload["data_readiness_gate"]["status"], "blocked")
+        self.assertTrue(any("数据就绪 Gate" in item for item in payload["risk_gate"]["blockers"]))
+        self.assertTrue(payload["items"])
+        self.assertTrue(all(not item["can_create_order"] for item in payload["items"]))
+
+    def test_today_actions_degraded_data_readiness_warns_but_allows_actions(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="000001.SZ", name="强势新买", total_score=91.0, trend_score=82.0, risk_score=75.0)
+            self._set_data_readiness_run(
+                conn,
+                status="degraded",
+                issues=[{"code": "flow_recent_missing", "severity": "degraded", "message": "最近 5 日资金流覆盖不足"}],
+                impact="短线策略降级运行",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.dict(os.environ, {"DECISION_DEFAULT_ACCOUNT_EQUITY": "100000", "DECISION_LOT_SIZE": "100", "DECISION_TRADE_ADVISOR_AGENT_ENABLED": "0"}, clear=False):
+            payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+
+        self.assertTrue(payload["risk_gate"]["ok"], payload["risk_gate"])
+        self.assertEqual(payload["risk_gate"]["data_readiness_status"], "degraded")
+        self.assertEqual(payload["data_readiness_gate"]["status"], "degraded")
+        self.assertTrue(any("降级" in item or "资金流" in item for item in payload["risk_gate"]["warnings"]))
+        self.assertGreaterEqual(payload["summary"]["executable"], 1)
+
+    def test_strategy_selection_agent_persists_candidates_and_today_actions_use_them(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="000001.SZ", name="强势策略股", total_score=91.0, trend_score=82.0, risk_score=75.0)
+            self._insert_score(conn, ts_code="000002.SZ", name="普通观察股", total_score=70.0, trend_score=50.0, risk_score=60.0)
+            conn.execute("CREATE TABLE stock_daily_prices (ts_code TEXT, trade_date TEXT, close REAL)")
+            conn.execute("INSERT INTO stock_daily_prices VALUES ('000001.SZ', '2026-04-08', 10.0)")
+            conn.execute("INSERT INTO stock_daily_prices VALUES ('000002.SZ', '2026-04-08', 10.0)")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.dict(os.environ, {"DECISION_DEFAULT_ACCOUNT_EQUITY": "100000", "DECISION_LOT_SIZE": "100", "DECISION_TRADE_ADVISOR_AGENT_ENABLED": "0"}, clear=False):
+            result = decision_service.run_strategy_selection_agent(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+            payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(result["summary"]["candidate_count"], 1)
+        self.assertEqual(payload["summary"]["candidate_source"], "strategy_selection")
+        self.assertEqual(payload["summary"]["strategy_selection_count"], 1)
+        item = payload["items"][0]
+        self.assertEqual(item["ts_code"], "000001.SZ")
+        self.assertEqual(item["evidence"]["source"], "strategy_selection")
+        self.assertIn("策略来源", item["execution_flow"]["decision_path"][2])
+
+    def test_strategy_selection_agent_blocked_by_data_readiness(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="000001.SZ", name="强势策略股", total_score=91.0, trend_score=82.0, risk_score=75.0)
+            self._set_data_readiness_run(
+                conn,
+                status="blocked",
+                issues=[{"code": "risk_recent_missing", "severity": "blocked", "message": "风险情景缺失"}],
+                impact="暂停策略选股",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = decision_service.run_strategy_selection_agent(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["summary"]["candidate_count"], 0)
+        self.assertEqual(result["data_readiness_gate"]["status"], "blocked")
+
+    def test_today_actions_kill_switch_blocks_plan_creation(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="000001.SZ", name="强势新买", total_score=91.0, trend_score=82.0, risk_score=75.0)
+            conn.commit()
+        finally:
+            conn.close()
+
+        decision_service.set_decision_kill_switch(sqlite3_module=sqlite3, db_path=db_path, allow_trading=False, reason="暂停交易")
+        with patch.dict(os.environ, {"DECISION_TRADE_ADVISOR_AGENT_ENABLED": "0"}, clear=False):
+            payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+
+        self.assertFalse(payload["risk_gate"]["ok"])
+        self.assertIn("Kill Switch", payload["risk_gate"]["blockers"][0])
+        self.assertTrue(payload["items"])
+        self.assertTrue(all(not item["can_create_order"] for item in payload["items"]))
+        self.assertTrue(all(item["non_executable_reasons"] for item in payload["items"]))
+        self.assertEqual(payload["items"][0]["action_type"], "watch")
+        self.assertEqual(payload["items"][0]["next_step"], "observe_only")
+
+    def test_today_actions_trade_advisor_agent_can_suggest_probe_buy(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="600519.SH", name="贵州茅台", total_score=76.8, trend_score=73.4, risk_score=98.7, industry="白酒")
+            conn.execute("CREATE TABLE stock_daily_prices (ts_code TEXT, trade_date TEXT, close REAL)")
+            conn.execute("INSERT INTO stock_daily_prices (ts_code, trade_date, close) VALUES (?, ?, ?)", ("600519.SH", "2026-04-08", 1500.0))
+            conn.commit()
+        finally:
+            conn.close()
+
+        agent_json = json.dumps(
+            {
+                "action": "probe_buy",
+                "confidence": 72,
+                "target_position_pct": 2,
+                "summary": "总分未到强买阈值，但趋势和风险较好，可小仓位试买。",
+                "buy_reason": "低风险核心资产，趋势尚可。",
+                "sell_reason": "",
+                "risk_note": "白酒板块若继续走弱则不买。",
+                "invalid_if": "跌破20日均线。",
+                "requires_user_confirm": True,
+                "can_override_rule": True,
+            },
+            ensure_ascii=False,
+        )
+        with patch.dict(os.environ, {"DECISION_TRADE_ADVISOR_AGENT_ENABLED": "1", "DECISION_TRADE_ADVISOR_AGENT_SYNC": "0", "DECISION_TRADE_ADVISOR_AGENT_LIMIT": "1"}, clear=False):
+            with patch.object(decision_service, "chat_completion_text", return_value=agent_json):
+                refreshed = decision_service.refresh_trade_advisor_opinion(sqlite3_module=sqlite3, db_path=db_path, ts_code="600519.SH", limit=5)
+                payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=5)
+
+        item = payload["items"][0]
+        self.assertEqual(refreshed["opinion"]["source"], "llm")
+        self.assertEqual(item["action_type"], "watch")
+        self.assertFalse(item["can_create_order"])
+        self.assertEqual(item["agent_opinion"]["source"], "llm")
+        self.assertEqual(item["agent_opinion"]["action"], "probe_buy")
+        self.assertTrue(item["agent_opinion"]["requires_user_confirm"])
+        self.assertTrue(item["agent_opinion"]["can_override_rule"])
+        self.assertFalse(item["agent_can_create_order"])
+        self.assertNotIn("agent_order_payload", item)
+        self.assertEqual(payload["summary"]["agent_reviewed"], 1)
+
+    def test_today_actions_trade_advisor_reads_cache_and_does_not_call_llm(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="600519.SH", name="贵州茅台", total_score=79.8, trend_score=73.4, risk_score=98.7, industry="白酒")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.dict(os.environ, {"DECISION_TRADE_ADVISOR_AGENT_ENABLED": "1", "DECISION_TRADE_ADVISOR_AGENT_SYNC": "0", "DECISION_TRADE_ADVISOR_AGENT_LIMIT": "1"}, clear=False):
+            with patch.object(decision_service, "chat_completion_text", side_effect=AssertionError("llm should not block today-actions")):
+                payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=5)
+
+        item = payload["items"][0]
+        self.assertEqual(item["agent_opinion"]["source"], "pending_review")
+        self.assertEqual(item["agent_opinion"]["action"], "pending_review")
+        self.assertEqual(payload["summary"]["agent_pending"], 1)
+
+    def test_trade_advisor_refresh_api_queues_without_calling_llm(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="600519.SH", name="贵州茅台", total_score=79.8, trend_score=73.4, risk_score=98.7, industry="白酒")
+            conn.commit()
+        finally:
+            conn.close()
+
+        class _FakeThread:
+            def __init__(self, *, target, name, daemon):
+                self.target = target
+                self.name = name
+                self.daemon = daemon
+
+            def start(self):
+                return None
+
+        with patch.object(decision_service.threading, "Thread", _FakeThread):
+            with patch.object(decision_service, "chat_completion_text", side_effect=AssertionError("refresh API should return before LLM")):
+                result = decision_service.queue_trade_advisor_opinion_refresh(sqlite3_module=sqlite3, db_path=db_path, ts_code="600519.SH", limit=5)
+                payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=5)
+
+        self.assertTrue(result["queued"])
+        item = payload["items"][0]
+        self.assertEqual(item["agent_opinion"]["source"], "refresh_running")
+        self.assertEqual(item["agent_opinion"]["cache_status"], "running")
+
+    def test_trade_advisor_daily_refresh_persists_cached_opinion(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="600519.SH", name="贵州茅台", total_score=79.8, trend_score=73.4, risk_score=98.7, industry="白酒")
+            conn.commit()
+        finally:
+            conn.close()
+
+        agent_json = json.dumps(
+            {
+                "action": "probe_buy",
+                "confidence": 70,
+                "target_position_pct": 2,
+                "summary": "盘前批量评估：可小仓位试买。",
+                "buy_reason": "趋势和风险较好。",
+                "risk_note": "跌破均线不买。",
+                "invalid_if": "趋势转弱。",
+                "requires_user_confirm": True,
+                "can_override_rule": True,
+            },
+            ensure_ascii=False,
+        )
+        with patch.dict(os.environ, {"DECISION_TRADE_ADVISOR_AGENT_ENABLED": "1", "DECISION_TRADE_ADVISOR_AGENT_SYNC": "0", "DECISION_TRADE_ADVISOR_AGENT_LIMIT": "2"}, clear=False):
+            with patch.object(decision_service, "chat_completion_text", return_value=agent_json) as chat_mock:
+                result = decision_service.refresh_trade_advisor_daily(sqlite3_module=sqlite3, db_path=db_path, limit=2)
+                payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=5)
+
+        self.assertEqual(result["evaluated_count"], 1)
+        self.assertEqual(chat_mock.call_count, 1)
+        item = payload["items"][0]
+        self.assertEqual(item["agent_opinion"]["source"], "llm")
+        self.assertEqual(item["agent_opinion"]["action"], "probe_buy")
+        self.assertTrue(item["agent_opinion"]["cached_at"])
+
+    def test_today_actions_rule_engine_has_probe_buy_and_avoid_tiers(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            self._insert_score(conn, ts_code="600519.SH", name="贵州茅台", total_score=79.8, trend_score=73.4, risk_score=98.7, industry="白酒")
+            self._insert_score(conn, ts_code="000004.SZ", name="弱信号", total_score=50.0, trend_score=40.0, risk_score=55.0, industry="测试")
+            conn.execute("CREATE TABLE stock_daily_prices (ts_code TEXT, trade_date TEXT, close REAL)")
+            conn.executemany(
+                "INSERT INTO stock_daily_prices (ts_code, trade_date, close) VALUES (?, ?, ?)",
+                [
+                    ("600519.SH", "2026-04-08", 1500.0),
+                    ("000004.SZ", "2026-04-08", 10.0),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.dict(os.environ, {"DECISION_DEFAULT_ACCOUNT_EQUITY": "100000", "DECISION_LOT_SIZE": "100", "DECISION_TRADE_ADVISOR_AGENT_ENABLED": "0"}, clear=False):
+            payload = decision_service.query_decision_today_actions(sqlite3_module=sqlite3, db_path=db_path, limit=10)
+
+        by_code = {item["ts_code"]: item for item in payload["items"]}
+        self.assertEqual(by_code["600519.SH"]["action_type"], "buy")
+        self.assertEqual(by_code["600519.SH"]["rule_tier"], "probe_buy")
+        self.assertFalse(by_code["600519.SH"]["can_create_order"])
+        self.assertEqual(by_code["600519.SH"]["quantity"], 0)
+        self.assertEqual(by_code["600519.SH"]["target_position_pct"], 2.0)
+        self.assertIn("A股买入必须至少 1 手", "；".join(by_code["600519.SH"]["non_executable_reasons"]))
+        self.assertEqual(by_code["000004.SZ"]["action_type"], "avoid")
+        self.assertEqual(by_code["000004.SZ"]["rule_tier"], "avoid")
+        self.assertFalse(by_code["000004.SZ"]["can_create_order"])
+
+    def test_today_actions_api_contract(self):
+        handler = _FakeHandler()
+        handled = decision_routes.dispatch_get(
+            handler,
+            urlparse("/api/decision/today-actions?limit=3"),
+            {
+                "query_decision_today_actions": lambda limit=30: {
+                    "generated_at": "2026-04-08T10:00:00Z",
+                    "summary": {"total": 1, "executable": 1},
+                    "risk_gate": {"ok": True},
+                    "items": [
+                        {
+                            "id": "short:buy:000001.SZ",
+                            "action_type": "buy",
+                            "ts_code": "000001.SZ",
+                            "quantity": 100,
+                            "reason": {"summary": "测试买入原因"},
+                        }
+                    ],
+                    "limit_seen": limit,
+                }
+            },
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(handler.status, 200)
+        self.assertTrue(handler.payload["ok"])
+        self.assertEqual(handler.payload["items"][0]["action_type"], "buy")
+        self.assertEqual(handler.payload["limit_seen"], 3)
+
+    def test_trade_advisor_refresh_api_contract(self):
+        handler = _FakeHandler()
+        handled = decision_routes.dispatch_post(
+            handler,
+            urlparse("/api/decision/trade-advisor/refresh"),
+            {"ts_code": "600519.SH"},
+            {
+                "auth_context": {"authenticated": True},
+                "queue_trade_advisor_opinion_refresh": lambda ts_code: {
+                    "queued": True,
+                    "submitted_at": "2026-04-08T08:45:00Z",
+                    "snapshot_date": "2026-04-08",
+                    "opinion": {"source": "refresh_running", "action": "refresh_running"},
+                    "item": {"ts_code": ts_code},
+                },
+            },
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(handler.status, 200)
+        self.assertTrue(handler.payload["ok"])
+        self.assertTrue(handler.payload["queued"])
+        self.assertEqual(handler.payload["item"]["ts_code"], "600519.SH")
 
     def test_scheduled_job_uses_cn_date(self):
         db_path = self._mk_db()
