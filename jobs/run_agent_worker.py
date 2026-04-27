@@ -18,6 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Agent runtime worker")
     parser.add_argument("--once", action="store_true", help="Process at most one queued run and exit")
     parser.add_argument("--agent-key", default="", help="Create a run for this agent before processing")
+    parser.add_argument("--job-key", default="", help="job_registry job_key stored on run metadata for traceability")
     parser.add_argument("--schedule-key", default="", help="Schedule de-dupe key for created runs")
     parser.add_argument("--trigger-source", default="worker", help="Run trigger source")
     parser.add_argument("--actor", default="agent-worker", help="Actor recorded on the created run")
@@ -26,6 +27,10 @@ def main(argv: list[str] | None = None) -> int:
 
     ensure_agent_tables()
     if args.agent_key.strip():
+        meta: dict = {}
+        jk = str(args.job_key or "").strip()
+        if jk:
+            meta["job_key"] = jk
         create_run(
             agent_key=args.agent_key.strip(),
             mode="auto",
@@ -34,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
             goal={},
             schedule_key=args.schedule_key.strip(),
             dedupe=True,
+            metadata=meta,
         )
     if args.once:
         run_next_once()

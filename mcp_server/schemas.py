@@ -68,8 +68,11 @@ class AgentStartRunArgs(BaseModel):
     trigger_source: str = "mcp"
     actor: str = "mcp"
     goal: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     schedule_key: str = ""
     dedupe: bool = True
+    correlation_id: str = ""
+    parent_run_id: str = ""
 
 
 class AgentGetRunArgs(BaseModel):
@@ -93,3 +96,63 @@ class AgentApprovalArgs(BaseModel):
     actor: str = "mcp"
     reason: str = ""
     idempotency_key: str = ""
+
+
+class MemoryListArgs(BaseModel):
+    memory_type: str = ""
+    ts_code: str = ""
+    scope: str = ""
+    source_agent_key: str = ""
+    status: str = "active"
+    limit: int = 50
+
+
+class MemorySearchArgs(BaseModel):
+    ts_code: str = ""
+    scope: str = ""
+    memory_type: str = ""
+    limit: int = 20
+
+
+class MemoryRecordArgs(WriteRequest):
+    memory_type: str
+    source_run_id: str = ""
+    source_agent_key: str = ""
+    ts_code: str = ""
+    scope: str = ""
+    summary: str
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    score: float = 0
+    status: str = "active"
+
+
+class GovernanceQualityArgs(BaseModel):
+    agent_key: str = ""
+    window_days: int = 7
+    refresh: bool = False
+
+
+class GovernanceRuleListArgs(BaseModel):
+    agent_key: str = ""
+    tool_name: str = ""
+    enabled: str = ""
+    limit: int = 100
+
+
+class GovernanceRuleUpsertArgs(WriteRequest):
+    rule_key: str
+    agent_key: str = ""
+    tool_name: str = ""
+    risk_level: str = "low"
+    decision: str = "allow"
+    enabled: bool = True
+    thresholds: dict[str, Any] = Field(default_factory=dict)
+
+
+class GovernanceEvaluateArgs(BaseModel):
+    agent_key: str
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    run_id: str = ""
+    correlation_id: str = ""
+    requested_dry_run: bool = True

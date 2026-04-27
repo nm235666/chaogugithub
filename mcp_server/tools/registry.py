@@ -6,7 +6,7 @@ from typing import Any, Callable
 from pydantic import BaseModel, ValidationError
 
 from mcp_server import schemas
-from . import agents_tools, business, db_tools, jobs_tools, scheduler_tools, system_tools
+from . import agents_tools, business, db_tools, governance_tools, jobs_tools, memory_tools, scheduler_tools, system_tools
 
 
 class MCPToolError(RuntimeError):
@@ -154,6 +154,48 @@ TOOLS: dict[str, ToolDefinition] = {
         "Reject a waiting Agent run without executing pending write steps.",
         schemas.AgentApprovalArgs,
         agents_tools.reject_agent_run,
+    ),
+    "memory.list_items": ToolDefinition(
+        "memory.list_items",
+        "List persisted Agent quality memories.",
+        schemas.MemoryListArgs,
+        memory_tools.list_items,
+    ),
+    "memory.record_item": ToolDefinition(
+        "memory.record_item",
+        "Record a quality memory item with write guards.",
+        schemas.MemoryRecordArgs,
+        memory_tools.record_item,
+    ),
+    "memory.search_relevant": ToolDefinition(
+        "memory.search_relevant",
+        "Search active quality memories relevant to a symbol or scope.",
+        schemas.MemorySearchArgs,
+        memory_tools.search_relevant,
+    ),
+    "governance.quality_snapshot": ToolDefinition(
+        "governance.quality_snapshot",
+        "Return Agent quality scores and risk status.",
+        schemas.GovernanceQualityArgs,
+        governance_tools.quality_snapshot,
+    ),
+    "governance.list_rules": ToolDefinition(
+        "governance.list_rules",
+        "List Agent governance policy rules.",
+        schemas.GovernanceRuleListArgs,
+        governance_tools.list_rules,
+    ),
+    "governance.upsert_rule": ToolDefinition(
+        "governance.upsert_rule",
+        "Create or update an Agent governance policy rule.",
+        schemas.GovernanceRuleUpsertArgs,
+        governance_tools.upsert_rule,
+    ),
+    "governance.evaluate_action": ToolDefinition(
+        "governance.evaluate_action",
+        "Evaluate the policy decision for an Agent action.",
+        schemas.GovernanceEvaluateArgs,
+        governance_tools.evaluate_action,
     ),
 }
 

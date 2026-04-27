@@ -8,10 +8,20 @@ import db_compat as db
 
 from . import config, store
 from .agents import (
+    DECISION_OPS_READ_AGENT_KEY,
     FUNNEL_AGENT_KEY,
+    JOB_FAILURE_DIAG_AGENT_KEY,
+    DECISION_ORCHESTRATOR_AGENT_KEY,
+    GOVERNANCE_QUALITY_REFRESH_AGENT_KEY,
+    MEMORY_REFRESH_AGENT_KEY,
     PORTFOLIO_RECONCILE_AGENT_KEY,
     PORTFOLIO_REVIEW_AGENT_KEY,
+    run_decision_orchestrator_agent,
+    run_decision_ops_read_agent,
     run_funnel_progress_agent,
+    run_governance_quality_refresh_agent,
+    run_job_failure_diag_agent,
+    run_memory_refresh_agent,
     run_portfolio_reconcile_agent,
     run_portfolio_review_agent,
 )
@@ -38,6 +48,9 @@ def create_run(
     goal: dict[str, Any] | None = None,
     schedule_key: str = "",
     dedupe: bool = True,
+    metadata: dict[str, Any] | None = None,
+    correlation_id: str = "",
+    parent_run_id: str = "",
 ) -> dict[str, Any]:
     return store.create_run(
         agent_key=agent_key,
@@ -47,11 +60,20 @@ def create_run(
         goal=goal,
         schedule_key=schedule_key,
         dedupe=dedupe,
+        metadata=metadata,
+        correlation_id=correlation_id,
+        parent_run_id=parent_run_id,
     )
 
 
-def list_runs(*, agent_key: str = "", status: str = "", limit: int = 50) -> dict[str, Any]:
-    return store.list_runs(agent_key=agent_key, status=status, limit=limit)
+def list_runs(*, agent_key: str = "", status: str = "", limit: int = 50, correlation_id: str = "", parent_run_id: str = "") -> dict[str, Any]:
+    return store.list_runs(
+        agent_key=agent_key,
+        status=status,
+        limit=limit,
+        correlation_id=correlation_id,
+        parent_run_id=parent_run_id,
+    )
 
 
 def get_run(run_id: str) -> dict[str, Any] | None:
@@ -175,6 +197,16 @@ def run_one(run: dict[str, Any]) -> dict[str, Any]:
             result = run_portfolio_reconcile_agent(run)
         elif agent_key == PORTFOLIO_REVIEW_AGENT_KEY:
             result = run_portfolio_review_agent(run)
+        elif agent_key == JOB_FAILURE_DIAG_AGENT_KEY:
+            result = run_job_failure_diag_agent(run)
+        elif agent_key == DECISION_OPS_READ_AGENT_KEY:
+            result = run_decision_ops_read_agent(run)
+        elif agent_key == DECISION_ORCHESTRATOR_AGENT_KEY:
+            result = run_decision_orchestrator_agent(run)
+        elif agent_key == MEMORY_REFRESH_AGENT_KEY:
+            result = run_memory_refresh_agent(run)
+        elif agent_key == GOVERNANCE_QUALITY_REFRESH_AGENT_KEY:
+            result = run_governance_quality_refresh_agent(run)
         else:
             raise ValueError(f"unknown_agent_key:{run.get('agent_key')}")
         plan = result.get("plan") if isinstance(result.get("plan"), dict) else {}
@@ -218,3 +250,59 @@ def run_worker_loop(*, once: bool = False, poll_seconds: float | None = None) ->
             return
         if int(out.get("processed") or 0) <= 0:
             time.sleep(sleep_s)
+
+
+def list_memory_items(**kwargs) -> dict[str, Any]:
+    return store.list_memory_items(**kwargs)
+
+
+def search_memory_items(**kwargs) -> dict[str, Any]:
+    return store.search_memory_items(**kwargs)
+
+
+def get_correlation_timeline(correlation_id: str, *, limit: int = 200) -> dict[str, Any]:
+    correlation_id = str(correlation_id or "").strip()
+    if not correlation_id:
+        return {"ok": False, "error": "correlation_id_required"}
+    runs = store.list_runs(correlation_id=correlation_id, limit=limit).get("items") or []
+    messages = store.list_messages(correlation_id=correlation_id, limit=limit).get("items") or []
+    events: list[dict[str, Any]] = []
+    for run in runs:
+        events.append(
+            {
+                "type": "run",
+                "at": run.get("created_at") or "",
+                "run_id": run.get("id"),
+                "agent_key": run.get("agent_key"),
+                "status": run.get("status"),
+                "parent_run_id": run.get("parent_run_id") or "",
+                "payload": run,
+            }
+        )
+        for step in run.get("steps") or []:
+            events.append(
+                {
+                    "type": "step",
+                    "at": step.get("created_at") or run.get("created_at") or "",
+                    "run_id": run.get("id"),
+                    "agent_key": run.get("agent_key"),
+                    "tool_name": step.get("tool_name"),
+                    "status": step.get("status"),
+                    "audit_id": step.get("audit_id"),
+                    "payload": step,
+                }
+            )
+    for msg in messages:
+        events.append(
+            {
+                "type": "message",
+                "at": msg.get("created_at") or "",
+                "run_id": msg.get("run_id") or "",
+                "agent_key": msg.get("source_agent_key") or "",
+                "target_agent_key": msg.get("target_agent_key") or "",
+                "message_type": msg.get("message_type") or "",
+                "payload": msg,
+            }
+        )
+    events.sort(key=lambda item: str(item.get("at") or ""))
+    return {"ok": True, "correlation_id": correlation_id, "runs": runs, "messages": messages, "events": events[-limit:]}

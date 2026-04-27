@@ -17,6 +17,9 @@ def start_run(args: schemas.AgentStartRunArgs) -> dict[str, Any]:
         goal=args.goal,
         schedule_key=args.schedule_key,
         dedupe=bool(args.dedupe),
+        metadata=args.metadata,
+        correlation_id=args.correlation_id,
+        parent_run_id=args.parent_run_id,
     )
     return {"ok": True, "run": run}
 

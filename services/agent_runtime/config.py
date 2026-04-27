@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import os
 
-
-DEFAULT_AUTO_WRITE_ALLOWLIST = {
-    "business.repair_funnel_score_align",
-    "business.repair_funnel_review_refresh",
-}
+from .platform_allowlist import FUNNEL_AUTO_WRITE_TOOLS
 
 
 def _csv_set(value: str) -> set[str]:
@@ -17,8 +13,17 @@ def auto_write_enabled() -> bool:
     return os.getenv("AGENT_AUTO_WRITE_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def funnel_auto_write_tools_frozen() -> frozenset[str]:
+    return frozenset(FUNNEL_AUTO_WRITE_TOOLS)
+
+
 def auto_write_allowlist() -> set[str]:
-    return _csv_set(os.getenv("AGENT_AUTO_WRITE_TOOL_ALLOWLIST", "")) or set(DEFAULT_AUTO_WRITE_ALLOWLIST)
+    base = set(FUNNEL_AUTO_WRITE_TOOLS)
+    env_raw = _csv_set(os.getenv("AGENT_AUTO_WRITE_TOOL_ALLOWLIST", ""))
+    if not env_raw:
+        return base
+    allowed = {t for t in env_raw if t in base}
+    return allowed or base
 
 
 def worker_poll_seconds() -> float:
